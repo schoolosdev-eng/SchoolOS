@@ -11,6 +11,21 @@ export default function HomePage() {
   const [password, setPassword] = useState('123456')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  const [windowWidth, setWindowWidth] = useState(1200)
+
+useEffect(() => {
+  function handleResize() {
+    setWindowWidth(window.innerWidth)
+  }
+
+  handleResize()
+  window.addEventListener('resize', handleResize)
+
+  return () => window.removeEventListener('resize', handleResize)
+}, [])
+
+const isMobile = windowWidth < 768
+const isTablet = windowWidth >= 768 && windowWidth < 1024
 
   useEffect(() => {
     async function checkSession() {
@@ -67,7 +82,7 @@ export default function HomePage() {
       style={{
         minHeight: '100vh',
         display: 'grid',
-        gridTemplateColumns: '1.1fr 0.9fr',
+        gridTemplateColumns: isMobile ? '1fr' : '1.1fr 0.9fr',
         background:
           'linear-gradient(135deg, #07111f 0%, #0b172a 45%, #0f223d 100%)',
       }}
@@ -76,7 +91,7 @@ export default function HomePage() {
         style={{
           position: 'relative',
           overflow: 'hidden',
-          padding: '64px 56px',
+          padding: isMobile ? '32px 20px' : isTablet ? '48px 32px' : '64px 56px',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
@@ -142,7 +157,7 @@ export default function HomePage() {
 
         <div
           style={{
-            display: 'grid',
+            display: isMobile ? 'none' : 'grid',
             gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
             gap: 16,
             maxWidth: 720,
@@ -192,7 +207,7 @@ export default function HomePage() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '32px 24px',
+          padding: isMobile ? '24px 16px 40px' : '32px 24px',
           background: 'rgba(255,255,255,0.02)',
         }}
       >
@@ -200,8 +215,8 @@ export default function HomePage() {
           style={{
             width: '100%',
             maxWidth: 440,
-            borderRadius: 28,
-            padding: 32,
+            borderRadius: isMobile ? 22 : 28,
+            padding: isMobile ? 22 : 32,
             background: 'rgba(255,255,255,0.96)',
             boxShadow: '0 30px 80px rgba(0,0,0,0.28)',
             border: '1px solid rgba(255,255,255,0.65)',
@@ -232,7 +247,7 @@ export default function HomePage() {
               style={{
                 margin: 0,
                 color: '#0f172a',
-                fontSize: 30,
+                fontSize: isMobile ? 25 : 30,
                 fontWeight: 800,
                 lineHeight: 1.1,
               }}
@@ -278,7 +293,7 @@ export default function HomePage() {
                   borderRadius: 14,
                   border: '1px solid #cbd5e1',
                   outline: 'none',
-                  fontSize: 15,
+                  fontSize: 16,
                   color: '#0f172a',
                   background: '#fff',
                   boxSizing: 'border-box',
@@ -310,7 +325,7 @@ export default function HomePage() {
                   borderRadius: 14,
                   border: '1px solid #cbd5e1',
                   outline: 'none',
-                  fontSize: 15,
+                  fontSize: 16,
                   color: '#0f172a',
                   background: '#fff',
                   boxSizing: 'border-box',
@@ -321,35 +336,46 @@ export default function HomePage() {
   onClick={handleGoogleLogin}
   disabled={loading}
   style={{
-    padding: 12,
-    background: '#fff',
-    color: '#000',
-    border: '1px solid #ccc',
-    borderRadius: 6,
-    cursor: 'pointer',
-  }}
+  padding: isMobile ? 14 : 12,
+  background: '#ffffff',
+  color: '#111827',
+  border: '1px solid #e5e7eb',
+  borderRadius: 12,
+  cursor: 'pointer',
+  width: '100%',
+  fontSize: 15,
+  fontWeight: 600,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 10,
+}}
 >
-  🔵 Entrar com Google
+  <>
+  <span>🔵</span>
+  Entrar com Google
+</>
 </button>
 
             <button
               onClick={handleLogin}
               disabled={loading}
               style={{
-                marginTop: 6,
-                height: 54,
-                border: 'none',
-                borderRadius: 16,
-                background:
-                  loading
-                    ? 'linear-gradient(135deg, #64748b 0%, #475569 100%)'
-                    : 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-                color: '#fff',
-                fontSize: 16,
-                fontWeight: 700,
-                cursor: loading ? 'not-allowed' : 'pointer',
-                boxShadow: '0 18px 35px rgba(37,99,235,0.28)',
-              }}
+  marginTop: 8,
+  height: isMobile ? 52 : 54,
+  border: 'none',
+  borderRadius: 14,
+  background:
+    loading
+      ? 'linear-gradient(135deg, #64748b, #475569)'
+      : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+  color: '#fff',
+  fontSize: 16,
+  fontWeight: 700,
+  cursor: loading ? 'not-allowed' : 'pointer',
+  boxShadow: '0 12px 25px rgba(37,99,235,0.25)',
+  width: '100%',
+}}
             >
               {loading ? 'Entrando...' : 'Entrar'}
             </button>
@@ -357,15 +383,16 @@ export default function HomePage() {
             <button
               onClick={() => router.push('/signup')}
               style={{
-                height: 52,
-                borderRadius: 16,
-                border: '1px solid #cbd5e1',
-                background: '#ffffff',
-                color: '#0f172a',
-                fontSize: 15,
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
+  height: isMobile ? 50 : 52,
+  borderRadius: 14,
+  border: '1px solid #e5e7eb',
+  background: '#ffffff',
+  color: '#0f172a',
+  fontSize: 15,
+  fontWeight: 700,
+  cursor: 'pointer',
+  width: '100%',
+}}
             >
               Criar conta
             </button>
