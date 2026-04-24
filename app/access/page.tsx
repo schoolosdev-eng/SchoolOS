@@ -220,7 +220,7 @@ export default function AccessPage() {
         return
       }
 
-      const rows = (data || []) as MembershipRow[]
+      const rows = (data || []) as unknown as MembershipRow[]
       setMemberships(rows)
 
       if (rows.length === 0) {

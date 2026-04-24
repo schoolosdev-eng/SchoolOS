@@ -315,7 +315,11 @@ export default function GatePage() {
         .maybeSingle()
 
       const classId = enrollment?.class_id || null
-      const className = enrollment?.classes?.name || 'Sem turma'
+      const classData = Array.isArray(enrollment?.classes)
+  ? enrollment?.classes[0]
+  : enrollment?.classes
+
+const className = classData?.name || 'Sem turma'
 
       if (!classId) {
         setResultWithTimeout({

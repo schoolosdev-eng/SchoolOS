@@ -295,11 +295,15 @@ return true
         .limit(1)
         .maybeSingle()
 
-      return {
-        ...student,
-        profile_photo_url: profilePhotoUrl,
-        class_name: enrollment?.classes?.name || 'Sem turma',
-      }
+      const classData = Array.isArray(enrollment?.classes)
+  ? enrollment?.classes[0]
+  : enrollment?.classes
+
+return {
+  ...student,
+  profile_photo_url: profilePhotoUrl,
+  class_name: classData?.name || 'Sem turma',
+}
     })
   )
 
@@ -600,7 +604,12 @@ async function handleScan(text: string) {
       .maybeSingle()
 
     const classId = enrollment?.class_id || null
-    const className = enrollment?.classes?.name || 'Sem turma'
+
+const classData = Array.isArray(enrollment?.classes)
+  ? enrollment?.classes[0]
+  : enrollment?.classes
+
+const className = classData?.name || 'Sem turma'
 
     if (!classId) {
       setResultWithTimeout({
@@ -2250,11 +2259,11 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
             setSelectedClassId={setSelectedClassId}
             handleEnrollStudent={handleEnrollStudent}
             students={students.map((student) => ({
-              id: student.id,
-              name: student.full_name,
-              birth_date: student.birth_date,
-              school_id: student.school_id,
-            }))}
+  id: student.id,
+  name: student.full_name || student.name || 'Aluno sem nome',
+  birth_date: student.birth_date,
+  school_id: student.school_id || null,
+}))}
             schoolYears={schoolYears}
             classes={classes}
             enrollments={enrollments}
@@ -2461,7 +2470,11 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
 
           <AttendanceReportsSection
             schoolName={schoolName}
-            students={students}
+            students={students.map((student) => ({
+  id: student.id,
+  full_name: student.full_name || student.name || 'Aluno sem nome',
+  name: student.name || student.full_name || 'Aluno sem nome',
+}))}
             classes={classes}
             records={reportRecords}
             selectedClassId={reportClassId}
