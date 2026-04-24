@@ -95,6 +95,105 @@ export default function GatePage() {
     // Se o navegador bloquear áudio, apenas ignora.
   }
 }
+function ResponsiveStyles() {
+  return (
+    <style jsx global>{`
+      @keyframes scanPop {
+        0% {
+          transform: scale(0.92);
+          opacity: 0;
+        }
+        60% {
+          transform: scale(1.03);
+          opacity: 1;
+        }
+        100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+
+      @keyframes scannerPulse {
+        0% {
+          box-shadow: 0 0 0 rgba(37, 99, 235, 0);
+        }
+        50% {
+          box-shadow: 0 0 34px rgba(37, 99, 235, 0.35);
+        }
+        100% {
+          box-shadow: 0 0 0 rgba(37, 99, 235, 0);
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      #reader {
+        width: 100% !important;
+      }
+
+      #reader video {
+        width: 100% !important;
+        max-height: 68vh;
+        object-fit: cover;
+      }
+
+      @media (max-width: 1024px) {
+        .gate-grid {
+          grid-template-columns: 1fr !important;
+        }
+
+        .top-bar {
+          align-items: flex-start !important;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .gate-page {
+          padding: 12px !important;
+        }
+
+        .top-bar,
+        .scanner-card,
+        .result-card {
+          border-radius: 20px !important;
+          padding: 16px !important;
+        }
+
+        .top-bar {
+          flex-direction: column !important;
+        }
+
+        .top-bar button {
+          width: 100% !important;
+        }
+
+        .scanner-actions {
+          width: 100% !important;
+          flex-direction: column !important;
+        }
+
+        .scanner-actions button {
+          width: 100% !important;
+        }
+
+        h1 {
+          font-size: 30px !important;
+        }
+
+        h2 {
+          font-size: 22px !important;
+        }
+
+        input,
+        button {
+          width: 100%;
+        }
+      }
+    `}</style>
+  )
+}
 
   function setResultWithTimeout(data: ScanResult) {
   setScanResult(data)
@@ -469,7 +568,8 @@ const className = classData?.name || 'Sem turma'
 
   if (loading) {
     return (
-      <main style={pageStyle}>
+      <main style={pageStyle} className="gate-page">
+        <ResponsiveStyles />
         <style jsx global>{`
   @keyframes scanPop {
     0% {
@@ -504,8 +604,9 @@ const className = classData?.name || 'Sem turma'
   }
 
   return (
-    <main style={pageStyle}>
-      <section style={topBarStyle}>
+    <main style={pageStyle} className="gate-page">
+      <ResponsiveStyles />
+      <section style={topBarStyle} className="top-bar">
         <div>
           <div style={badgeStyle}>Modo portaria</div>
           <h1 style={titleStyle}>{schoolName}</h1>
@@ -522,8 +623,8 @@ const className = classData?.name || 'Sem turma'
         </button>
       </section>
 
-      <section style={gateGridStyle}>
-        <div style={scannerCardStyle}>
+      <section style={gateGridStyle} className="gate-grid">
+        <div style={scannerCardStyle} className="scanner-card">
           <div style={scannerHeaderStyle}>
             <div>
               <h2 style={sectionTitleStyle}>Leitura de entrada</h2>
@@ -532,7 +633,7 @@ const className = classData?.name || 'Sem turma'
               </p>
             </div>
 
-            <div style={scannerActionsStyle}>
+            <div style={scannerActionsStyle} className="scanner-actions">
               {!isScannerActive && !manualMode && (
                 <button
                   onClick={handleStartReading}
@@ -610,7 +711,7 @@ const className = classData?.name || 'Sem turma'
           )}
         </div>
 
-        <div style={resultCardStyle}>
+        <div style={resultCardStyle} className="result-card">
           <h2 style={sectionTitleStyle}>Resultado</h2>
 
           {!scanResult ? (
@@ -687,6 +788,7 @@ const pageStyle: React.CSSProperties = {
   minHeight: '100vh',
   padding: 24,
   background: 'linear-gradient(135deg, #eef2ff 0%, #f8fafc 55%, #e0f2fe 100%)',
+  overflowX: 'hidden',
 }
 
 const loadingCardStyle: React.CSSProperties = {
@@ -743,9 +845,10 @@ const gateGridStyle: React.CSSProperties = {
   maxWidth: 1500,
   margin: '0 auto',
   display: 'grid',
-  gridTemplateColumns: 'minmax(0, 1fr) minmax(380px, 520px)',
+  gridTemplateColumns: 'minmax(0, 1fr) minmax(320px, 520px)',
   gap: 24,
   alignItems: 'start',
+  width: '100%',
 }
 
 const scannerCardStyle: React.CSSProperties = {
@@ -754,6 +857,8 @@ const scannerCardStyle: React.CSSProperties = {
   borderRadius: 28,
   padding: 24,
   boxShadow: '0 20px 50px rgba(15, 23, 42, 0.06)',
+  width: '100%',
+  minWidth: 0,
 }
 
 const scannerHeaderStyle: React.CSSProperties = {
@@ -777,6 +882,7 @@ const scannerBoxStyle: React.CSSProperties = {
   overflow: 'hidden',
   background: '#0f172a',
   animation: 'scannerPulse 1.8s ease-in-out infinite',
+  width: '100%',
 }
 
 const resultCardStyle: React.CSSProperties = {
@@ -785,6 +891,8 @@ const resultCardStyle: React.CSSProperties = {
   borderRadius: 28,
   padding: 24,
   boxShadow: '0 20px 50px rgba(15, 23, 42, 0.06)',
+  width: '100%',
+  minWidth: 0,
 }
 
 const sectionTitleStyle: React.CSSProperties = {
