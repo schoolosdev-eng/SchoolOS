@@ -175,6 +175,22 @@ const [reportRecords, setReportRecords] = useState<
   const isManager = userRole === 'gestor'
 
   const canManage = useMemo(() => isAdmin || isManager, [isAdmin, isManager])
+  const [windowWidth, setWindowWidth] = useState(1200)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+useEffect(() => {
+  function handleResize() {
+    setWindowWidth(window.innerWidth)
+  }
+
+  handleResize()
+  window.addEventListener('resize', handleResize)
+
+  return () => window.removeEventListener('resize', handleResize)
+}, [])
+
+const isMobile = windowWidth < 768
+const isTablet = windowWidth >= 768 && windowWidth < 1024
 
   function pushRecentScan(data: {
   status: 'success' | 'duplicate' | 'error'
@@ -1425,19 +1441,27 @@ const dashboardShellStyle: React.CSSProperties = {
   maxWidth: 1600,
   margin: '0 auto',
   display: 'grid',
-  gridTemplateColumns: '280px minmax(0, 1fr)',
+  gridTemplateColumns: isMobile ? '1fr' : '280px minmax(0, 1fr)',
   gap: 24,
   alignItems: 'start',
 }
 
 const dashboardSidebarStyle: React.CSSProperties = {
-  position: 'sticky',
-  top: 24,
-  background: 'rgba(255,255,255,0.94)',
+  position: isMobile ? 'fixed' : 'sticky',
+  top: isMobile ? 0 : 24,
+  left: isMobile ? (sidebarOpen ? 0 : -320) : 'auto',
+  width: 280,
+  height: isMobile ? '100vh' : 'auto',
+  overflowY: 'auto',
+  zIndex: 100,
+  transition: 'left 0.3s ease',
+  background: 'rgba(255,255,255,0.98)',
   border: '1px solid #e2e8f0',
-  borderRadius: 28,
+  borderRadius: isMobile ? 0 : 28,
   padding: 24,
-  boxShadow: '0 20px 50px rgba(15, 23, 42, 0.06)',
+  boxShadow: isMobile
+    ? '0 30px 80px rgba(15, 23, 42, 0.3)'
+    : '0 20px 50px rgba(15, 23, 42, 0.06)',
 }
 
 const dashboardBrandStyle: React.CSSProperties = {
@@ -1611,7 +1635,7 @@ const dashboardBadgeStyle: React.CSSProperties = {
 
 const dashboardTitleStyle: React.CSSProperties = {
   margin: 0,
-  fontSize: 56,
+  fontSize: isMobile ? 28 : isTablet ? 40 : 56,
   lineHeight: 1.02,
   fontWeight: 900,
   color: '#0f172a',
@@ -1772,7 +1796,10 @@ const dashboardStatIconOrangeStyle: React.CSSProperties = {
 
 const dashboardMainGridStyle: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'minmax(0, 1.2fr) minmax(360px, 0.8fr)',
+  gridTemplateColumns:
+    isMobile || isTablet
+      ? '1fr'
+      : 'minmax(0, 1.2fr) minmax(360px, 0.8fr)',
   gap: 24,
   alignItems: 'start',
 }
@@ -1917,6 +1944,23 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
     <main style={dashboardPageStyle}>
       <div style={dashboardShellStyle}>
         <aside style={dashboardSidebarStyle}>
+          {isMobile && (
+  <button
+    onClick={() => setSidebarOpen(false)}
+    style={{
+      marginBottom: 16,
+      padding: '10px 14px',
+      borderRadius: 12,
+      border: '1px solid #e2e8f0',
+      background: '#ffffff',
+      fontWeight: 800,
+      cursor: 'pointer',
+      width: '100%',
+    }}
+  >
+    Fechar
+  </button>
+)}
           <div style={dashboardBrandStyle}>
             <div style={dashboardBrandIconStyle}>🎓</div>
             <div>
@@ -1991,6 +2035,36 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
         </aside>
 
         <section style={dashboardContentStyle}>
+          {isMobile && (
+  <div
+    style={{
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      background: '#ffffff',
+      borderRadius: 16,
+      padding: 14,
+      marginBottom: 12,
+      boxShadow: '0 10px 30px rgba(15, 23, 42, 0.08)',
+    }}
+  >
+    <strong>Painel Escolar</strong>
+
+    <button
+      onClick={() => setSidebarOpen(true)}
+      style={{
+        padding: '10px 14px',
+        borderRadius: 12,
+        border: '1px solid #cbd5e1',
+        background: '#ffffff',
+        fontWeight: 800,
+        cursor: 'pointer',
+      }}
+    >
+      Menu
+    </button>
+  </div>
+)}
           <section style={dashboardHeroCardStyle}>
             <div style={dashboardHeroTopStyle}>
               <div style={{ minWidth: 0 }}>
@@ -2015,11 +2089,11 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
                   Trocar Escola
                 </button>
                 <button
-  onClick={() => router.push(`/school/${schoolId}/gate`)}
-  style={dashboardPrimaryButtonStyle}
->
-  Modo Portaria
-</button>
+                  onClick={() => router.push(`/school/${schoolId}/gate`)}
+                      style={dashboardPrimaryButtonStyle}
+                                          >
+                                          Modo Portaria
+                                                  </button>
 
                 <button
                   onClick={handleLogout}

@@ -1,4 +1,5 @@
 'use client'
+import { useEffect, useState } from 'react'
 
 type Student = {
   id: string
@@ -53,6 +54,37 @@ export default function AttendanceReportsSection({
   onGenerate,
   loading,
 }: AttendanceReportsSectionProps) {
+  const [windowWidth, setWindowWidth] = useState(1200)
+
+useEffect(() => {
+  function handleResize() {
+    setWindowWidth(window.innerWidth)
+  }
+
+  handleResize()
+  window.addEventListener('resize', handleResize)
+
+  return () => window.removeEventListener('resize', handleResize)
+}, [])
+
+const isMobile = windowWidth < 768
+const isTablet = windowWidth >= 768 && windowWidth < 1024
+const thStyle: React.CSSProperties = {
+  textAlign: 'left',
+  padding: isMobile ? '10px 8px' : '14px 12px',
+  borderBottom: '1px solid #cbd5e1',
+  color: '#0f172a',
+  fontSize: isMobile ? 12 : 14,
+  whiteSpace: 'nowrap',
+}
+
+const tdStyle: React.CSSProperties = {
+  padding: isMobile ? '10px 8px' : '12px',
+  borderBottom: '1px solid #e2e8f0',
+  color: '#334155',
+  fontSize: isMobile ? 12 : 14,
+  whiteSpace: 'nowrap',
+}
   const selectedClass = classes.find((item) => item.id === selectedClassId)
 
   const groupedByClass = records.reduce<Record<string, AttendanceRecord[]>>(
@@ -84,14 +116,16 @@ export default function AttendanceReportsSection({
   >
     {/* HEADER */}
     <div
-      style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        gap: 16,
-        flexWrap: 'wrap',
-        marginBottom: 20,
-      }}
-    >
+  style={{
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 16,
+    flexWrap: 'wrap',
+    flexDirection: isMobile ? 'column' : 'row',
+    alignItems: isMobile ? 'stretch' : 'center',
+    marginBottom: 20,
+  }}
+>
       <div>
         <h2
           style={{
@@ -113,17 +147,18 @@ export default function AttendanceReportsSection({
         onClick={onGenerate}
         disabled={loading}
         style={{
-          padding: '14px 18px',
-          borderRadius: 16,
-          border: 'none',
-          background: loading
-            ? '#94a3b8'
-            : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-          color: '#fff',
-          fontWeight: 800,
-          cursor: loading ? 'not-allowed' : 'pointer',
-          boxShadow: '0 14px 30px rgba(37,99,235,0.25)',
-        }}
+  padding: '14px 18px',
+  borderRadius: 16,
+  border: 'none',
+  background: loading
+    ? '#94a3b8'
+    : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+  color: '#fff',
+  fontWeight: 800,
+  cursor: loading ? 'not-allowed' : 'pointer',
+  boxShadow: '0 14px 30px rgba(37,99,235,0.25)',
+  width: isMobile ? '100%' : 'auto',
+}}
       >
         {loading ? 'Gerando...' : 'Gerar relatório'}
       </button>
@@ -196,10 +231,10 @@ export default function AttendanceReportsSection({
         marginBottom: 24,
       }}
     >
-      <StatCard label="Registros" value={totalRecords} />
-      <StatCard label="Presentes" value={totalPresent} color="green" />
-      <StatCard label="Faltosos" value={totalAbsent} color="red" />
-      <StatCard label="Frequência" value={`${attendanceRate}%`} color="blue" />
+      <StatCard label="Registros" value={totalRecords} isMobile={isMobile} />
+<StatCard label="Presentes" value={totalPresent} color="green" isMobile={isMobile} />
+<StatCard label="Faltosos" value={totalAbsent} color="red" isMobile={isMobile} />
+<StatCard label="Frequência" value={`${attendanceRate}%`} color="blue" isMobile={isMobile} />
     </div>
 
     {/* TABELA */}
@@ -286,20 +321,6 @@ export default function AttendanceReportsSection({
 )
 }
 
-const thStyle: React.CSSProperties = {
-  textAlign: 'left',
-  padding: '14px 12px',
-  borderBottom: '1px solid #cbd5e1',
-  color: '#0f172a',
-  fontSize: 14,
-}
-
-const tdStyle: React.CSSProperties = {
-  padding: '12px',
-  borderBottom: '1px solid #e2e8f0',
-  color: '#334155',
-  fontSize: 14,
-}
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '14px',
@@ -331,10 +352,12 @@ function StatCard({
   label,
   value,
   color = 'default',
+  isMobile,
 }: {
   label: string
   value: string | number
   color?: 'default' | 'green' | 'red' | 'blue'
+  isMobile: boolean
 }) {
   const colors = {
     default: '#f8fafc',
@@ -349,14 +372,14 @@ function StatCard({
         background: colors[color],
         border: '1px solid #e2e8f0',
         borderRadius: 18,
-        padding: 16,
+        padding: isMobile ? 12 : 16,
       }}
     >
       <div style={{ fontWeight: 700, color: '#64748b' }}>{label}</div>
       <div
         style={{
           marginTop: 6,
-          fontSize: 26,
+          fontSize: isMobile ? 20 : 26,
           fontWeight: 900,
           color: '#0f172a',
         }}

@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+
 type Result = {
   status: 'success' | 'duplicate' | 'error'
   message: string
@@ -30,6 +32,21 @@ export default function AttendanceSection({
   recentScans = [],
   children,
 }: AttendanceSectionProps) {
+  const [windowWidth, setWindowWidth] = useState(1200)
+
+useEffect(() => {
+  function handleResize() {
+    setWindowWidth(window.innerWidth)
+  }
+
+  handleResize()
+  window.addEventListener('resize', handleResize)
+
+  return () => window.removeEventListener('resize', handleResize)
+}, [])
+
+const isMobile = windowWidth < 768
+const isTablet = windowWidth >= 768 && windowWidth < 1024
   const resultBg =
     result?.status === 'success'
       ? '#dcfce7'
@@ -44,7 +61,7 @@ export default function AttendanceSection({
     style={{
       display: 'flex',
       flexDirection: 'column',
-      gap: 20,
+      gap: isMobile ? 14 : 20,
     }}
   >
     {/* RESULTADO PRINCIPAL */}
@@ -68,7 +85,7 @@ export default function AttendanceSection({
               : '#fecaca',
           display: 'flex',
           alignItems: 'center',
-          gap: 16,
+          gap: isMobile ? 14 : 20,
           boxShadow: '0 10px 30px rgba(0,0,0,0.05)',
         }}
       >
@@ -77,8 +94,8 @@ export default function AttendanceSection({
             src={result.student.photo}
             alt="Aluno"
             style={{
-              width: 64,
-              height: 64,
+              width: isMobile ? 56 : 64,
+              height: isMobile ? 56 : 64,
               borderRadius: 16,
               objectFit: 'cover',
             }}
@@ -127,9 +144,9 @@ export default function AttendanceSection({
     {/* SCANNER / CHILDREN */}
     <div
       style={{
-        borderRadius: 20,
+        borderRadius: isMobile ? 16 : 20,
         border: '1px solid #e2e8f0',
-        padding: 16,
+        padding: isMobile ? 12 : 16,
         background: '#ffffff',
       }}
     >
@@ -139,17 +156,17 @@ export default function AttendanceSection({
     {/* HISTÓRICO */}
     <div
       style={{
-        borderRadius: 24,
+        borderRadius: isMobile ? 18 : 24,
         border: '1px solid #e2e8f0',
         background: 'rgba(255,255,255,0.94)',
-        padding: 20,
+        padding: isMobile ? 14 : 20,
       }}
     >
       <h3
         style={{
           margin: 0,
           marginBottom: 14,
-          fontSize: 20,
+          fontSize: isMobile ? 18 : 20,
           fontWeight: 900,
           color: '#0f172a',
         }}
@@ -166,7 +183,7 @@ export default function AttendanceSection({
           style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: 10,
+            gap: isMobile ? 14 : 20,
             maxHeight: 300,
             overflowY: 'auto',
           }}
@@ -176,10 +193,11 @@ export default function AttendanceSection({
               key={scan.id}
               style={{
                 display: 'flex',
-                alignItems: 'center',
-                gap: 12,
+                alignItems: isMobile ? 'flex-start' : 'center',
+                gap: isMobile ? 14 : 20,
                 padding: 12,
-                borderRadius: 16,
+                borderRadius: isMobile ? 16 : 20,
+                flexDirection: isMobile ? 'column' : 'row',
                 border: '1px solid #e2e8f0',
                 background: '#f8fafc',
               }}
