@@ -1,7 +1,7 @@
 'use client'
 
 import { Html5Qrcode } from 'html5-qrcode'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 type Props = {
   onScan: (text: string) => void
@@ -9,10 +9,18 @@ type Props = {
   isActive: boolean
 }
 
+type CameraDevice = {
+  id: string
+  label: string
+}
+
 export default function QRScanner({ onScan, onNoCamera, isActive }: Props) {
   const scannerRef = useRef<Html5Qrcode | null>(null)
   const lastScanRef = useRef<string | null>(null)
   const isRunningRef = useRef(false)
+
+  const [cameras, setCameras] = useState<CameraDevice[]>([])
+  const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isActive) return
@@ -31,10 +39,25 @@ export default function QRScanner({ onScan, onNoCamera, isActive }: Props) {
           return
         }
 
-        const cameraId = devices[0].id
+        setCameras(devices)
+
+        const preferredCamera =
+          selectedCameraId ||
+          devices.find((device) =>
+            device.label.toLowerCase().includes('back')
+          )?.id ||
+          devices.find((device) =>
+            device.label.toLowerCase().includes('traseira')
+          )?.id ||
+          devices[0].id
+
+        if (!selectedCameraId) {
+          setSelectedCameraId(preferredCamera)
+          return
+        }
 
         await scanner.start(
-          cameraId,
+          preferredCamera,
           {
             fps: 10,
             qrbox: 250,
@@ -77,48 +100,71 @@ export default function QRScanner({ onScan, onNoCamera, isActive }: Props) {
           })
       }
     }
-  }, [isActive, onNoCamera, onScan])
+  }, [isActive, selectedCameraId, onNoCamera, onScan])
 
   if (!isActive) return null
 
   return (
-  <div
-    style={{
-      display: 'flex',
-      flexDirection: 'column',
-      gap: 12,
-    }}
-  >
-    {/* AREA DO SCANNER */}
     <div
-      id="reader"
       style={{
-        width: '100%',
-        minHeight: 260,
-        borderRadius: 20,
-        border: '1px solid #e2e8f0',
-        background: '#0f172a',
-        overflow: 'hidden',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        position: 'relative',
-      }}
-    />
-
-    {/* STATUS */}
-    <div
-      style={{
-        fontSize: 13,
-        color: '#64748b',
-        textAlign: 'center',
-        fontWeight: 600,
+        flexDirection: 'column',
+        gap: 12,
       }}
     >
-      {isActive
-        ? 'Câmera ativa. Aponte para o QR Code.'
-        : 'Scanner inativo.'}
+      {cameras.length > 1 && (
+        <button
+          type="button"
+          onClick={() => {
+            const currentIndex = cameras.findIndex(
+              (camera) => camera.id === selectedCameraId
+            )
+
+            const nextCamera = cameras[(currentIndex + 1) % cameras.length]
+            setSelectedCameraId(nextCamera.id)
+          }}
+          style={{
+            padding: '10px 14px',
+            borderRadius: 12,
+            border: '1px solid #cbd5e1',
+            background: '#ffffff',
+            color: '#0f172a',
+            fontWeight: 800,
+            cursor: 'pointer',
+          }}
+        >
+          Alternar câmera
+        </button>
+      )}
+
+      <div
+        id="reader"
+        style={{
+          width: '100%',
+          minHeight: 260,
+          borderRadius: 20,
+          border: '1px solid #e2e8f0',
+          background: '#0f172a',
+          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          position: 'relative',
+        }}
+      />
+
+      <div
+        style={{
+          fontSize: 13,
+          color: '#64748b',
+          textAlign: 'center',
+          fontWeight: 600,
+        }}
+      >
+        {isActive
+          ? 'Câmera ativa. Aponte para o QR Code.'
+          : 'Scanner inativo.'}
+      </div>
     </div>
-  </div>
-)
+  )
 }
