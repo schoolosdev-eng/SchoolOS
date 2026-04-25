@@ -85,86 +85,85 @@ const filteredStudents = useMemo(() => {
       return
     }
 
-    const printWindow = window.open('', '_blank', 'width=1000,height=800')
+    const printWindow = window.open('', '_blank')
 
-    if (!printWindow) {
-      alert('Não foi possível abrir a janela de impressão.')
-      return
-    }
+if (!printWindow) return
 
-    const qrCards = filteredStudents
-      .filter((student) => student.qr_code_token)
-      .map((student) => {
-        const canvas = document.getElementById(
-          `student-qr-${student.id}`
-        ) as HTMLCanvasElement | null
+const qrCards = filteredStudents
+  .filter((student) => student.qr_code_token)
+  .map((student) => {
+    const qrContainer = document.getElementById(`student-qr-${student.id}`)
+    const canvas = qrContainer?.querySelector('canvas') as HTMLCanvasElement | null
 
-        const qrImage = canvas?.toDataURL('image/png') || ''
+    const qrImage = canvas?.toDataURL('image/png') || ''
 
-        return `
-          <div class="qr-card">
-            <img src="${qrImage}" />
-            <h3>${student.full_name || student.name || 'Aluno'}</h3>
-            <p>${student.class_name || 'Sem turma'}</p>
-          </div>
-        `
-      })
-      .join('')
+    return `
+      <div class="qr-card">
+        <img src="${qrImage}" />
+        <h3>${student.full_name || student.name || 'Aluno'}</h3>
+        <p>${student.class_name || 'Sem turma'}</p>
+      </div>
+    `
+  })
+  .join('')
 
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>QR Codes dos alunos</title>
-          <style>
-            body {
-              font-family: Arial, sans-serif;
-              padding: 24px;
-              color: #0f172a;
-            }
+printWindow.document.write(`
+  <html>
+    <head>
+      <title>QR Codes dos alunos</title>
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          padding: 24px;
+          color: #0f172a;
+        }
 
-            .grid {
-              display: grid;
-              grid-template-columns: repeat(3, 1fr);
-              gap: 18px;
-            }
+        .grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 18px;
+        }
 
-            .qr-card {
-              border: 1px solid #cbd5e1;
-              border-radius: 14px;
-              padding: 16px;
-              text-align: center;
-              break-inside: avoid;
-            }
+        .qr-card {
+          border: 1px solid #cbd5e1;
+          border-radius: 14px;
+          padding: 16px;
+          text-align: center;
+          break-inside: avoid;
+        }
 
-            .qr-card img {
-  width: 190px;
-  height: 190px;
-  image-rendering: crisp-edges;
-  image-rendering: pixelated;
-}
+        .qr-card img {
+          width: 190px;
+          height: 190px;
+          image-rendering: crisp-edges;
+          image-rendering: pixelated;
+        }
 
-            .qr-card h3 {
-              margin: 10px 0 4px;
-              font-size: 15px;
-            }
+        .qr-card h3 {
+          margin: 10px 0 4px;
+          font-size: 15px;
+        }
 
-            .qr-card p {
-              margin: 0;
-              font-size: 13px;
-              color: #64748b;
-            }
-          </style>
-        </head>
-        <body>
-          <h1>QR Codes dos alunos filtrados</h1>
-          <div class="grid">${qrCards}</div>
-        </body>
-      </html>
-    `)
+        .qr-card p {
+          margin: 0;
+          font-size: 13px;
+          color: #64748b;
+        }
+      </style>
+    </head>
+    <body>
+      <h1>QR Codes dos alunos filtrados</h1>
+      <div class="grid">${qrCards}</div>
+    </body>
+  </html>
+`)
 
-    printWindow.document.close()
-    printWindow.focus()
-    printWindow.print()
+printWindow.document.close()
+
+setTimeout(() => {
+  printWindow.focus()
+  printWindow.print()
+}, 1500)
   }
 
   return (
@@ -238,7 +237,7 @@ const filteredStudents = useMemo(() => {
       <div style={cardStyle}>
         <div style={listHeaderStyle}>
           <div>
-            <h3 style={titleStyle}>Alunos cadastrados</h3>
+            <h3 style={titleStyle}>Filtre alunos cadastrados</h3>
             <p style={subtitleStyle}>
               Exibindo {filteredStudents.length} de {students.length} aluno(s)
             </p>
@@ -317,17 +316,18 @@ const filteredStudents = useMemo(() => {
 
                   {student.qr_code_token && (
                     <div style={{ textAlign: 'center' }}>
-                      <QRCodeCanvas
-  id={`student-qr-${student.id}`}
-  value={`schoolos:student:${student.qr_code_token}`}
-  size={220}
-  level="H"
-  includeMargin
-  style={{
-    width: 92,
-    height: 92,
-  }}
-/>
+                      <div id={`student-qr-${student.id}`}>
+  <QRCodeCanvas
+    value={`schoolos:student:${student.qr_code_token}`}
+    size={220}
+    level="H"
+    includeMargin
+    style={{
+      width: 92,
+      height: 92,
+    }}
+  />
+</div>
 
                       <div style={{ marginTop: 6, fontSize: 12, color: '#64748b' }}>
   QR do aluno

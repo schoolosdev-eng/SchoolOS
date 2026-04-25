@@ -13,6 +13,8 @@ import QRScanner from '@/components/QRScanner'
 import AttendanceSection from '@/components/AttendanceSection'
 import { useRef } from 'react'
 import AttendanceReportsSection from '@/components/AttendanceReportsSection'
+import ClassesAreaSection from '@/components/ClassesAreaSection'
+import OccurrenceReportsSection from '@/components/OccurrenceReportsSection'
 
 type Student = {
   id: string
@@ -74,6 +76,17 @@ type Enrollment = {
   year_id: string
 }
 
+type Occurrence = {
+  id: string
+  school_id: string
+  class_id: string
+  student_id: string
+  teacher_id: string
+  situation: string
+  description: string | null
+  created_at: string
+}
+
 type SchoolInfo = {
   id: string
   name: string
@@ -87,6 +100,8 @@ export default function SchoolPage() {
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(true)
   const [userRole, setUserRole] = useState<string | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null)
   const [userArea, setUserArea] = useState<string | null>(null)
   const [school, setSchool] = useState<SchoolInfo | null>(null)
 
@@ -160,6 +175,13 @@ const [reportRecords, setReportRecords] = useState<
     source: 'system_default' | 'qr' | 'facial' | 'manual'
   }[]
 >([])
+  const [occurrenceRecords, setOccurrenceRecords] = useState<Occurrence[]>([])
+  const [occurrenceLoading, setOccurrenceLoading] = useState(false)
+  const [occurrenceStartDate, setOccurrenceStartDate] = useState(today)
+  const [occurrenceEndDate, setOccurrenceEndDate] = useState(today)
+  const [occurrenceClassId, setOccurrenceClassId] = useState('')
+  const [occurrenceStudentId, setOccurrenceStudentId] = useState('')
+  const [occurrenceSituation, setOccurrenceSituation] = useState('')
   const [schoolName, setSchoolName] = useState('SchoolOS')
   const [absenceAlerts, setAbsenceAlerts] = useState<AlertStudent[]>([])
   const [alertsLoading, setAlertsLoading] = useState(false)
@@ -168,7 +190,7 @@ const [reportRecords, setReportRecords] = useState<
   const [guardianWhatsapp, setGuardianWhatsapp] = useState('')
 
   const [activeSection, setActiveSection] = useState<
-  'overview' | 'registrations' | 'attendance' | 'reports'
+  'overview' | 'registrations' | 'classes' | 'attendance' | 'reports'
 >('overview')
 
   const isAdmin = userRole === 'admin'
@@ -177,6 +199,23 @@ const [reportRecords, setReportRecords] = useState<
   const canManage = useMemo(() => isAdmin || isManager, [isAdmin, isManager])
   const [windowWidth, setWindowWidth] = useState(1200)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [logoSize, setLogoSize] = useState(40)
+
+useEffect(() => {
+  function updateSize() {
+    const width = window.innerWidth
+
+    if (width < 480) setLogoSize(28)
+    else if (width < 768) setLogoSize(32)
+    else if (width < 1024) setLogoSize(40)
+    else setLogoSize(56)
+  }
+
+  updateSize()
+  window.addEventListener('resize', updateSize)
+
+  return () => window.removeEventListener('resize', updateSize)
+}, [])
 
 useEffect(() => {
   function handleResize() {
@@ -224,6 +263,8 @@ function formatDateBR(date: string) {
       router.replace('/')
       return false
     }
+    setCurrentUserId(user.id)
+    setCurrentUserEmail(user.email || null)
 
     const { data, error } = await supabase
   .from('school_memberships')
@@ -252,7 +293,7 @@ return true
     .maybeSingle()
 
   if (error || !data) {
-    setMessage('Não foi possível carregar a escola.')
+    showMessage('Não foi possível carregar a escola.')
     return
   }
 
@@ -283,7 +324,7 @@ return true
     .order('created_at', { ascending: false })
 
   if (error) {
-    setMessage(`Erro ao buscar alunos: ${error.message}`)
+    showMessage(`Erro ao buscar alunos: ${error.message}`)
     return
   }
 
@@ -334,7 +375,7 @@ return {
       .order('created_at', { ascending: true })
 
     if (error) {
-      setMessage(`Erro ao buscar professores: ${error.message}`)
+      showMessage(`Erro ao buscar professores: ${error.message}`)
       return
     }
 
@@ -349,7 +390,7 @@ return {
       .order('created_at', { ascending: true })
 
     if (error) {
-      setMessage(`Erro ao buscar gestores: ${error.message}`)
+      showMessage(`Erro ao buscar gestores: ${error.message}`)
       return
     }
 
@@ -364,7 +405,7 @@ return {
       .order('year', { ascending: true })
 
     if (error) {
-      setMessage(`Erro ao buscar anos letivos: ${error.message}`)
+      showMessage(`Erro ao buscar anos letivos: ${error.message}`)
       return
     }
 
@@ -379,7 +420,7 @@ return {
       .order('name', { ascending: true })
 
     if (error) {
-      setMessage(`Erro ao buscar turmas: ${error.message}`)
+      showMessage(`Erro ao buscar turmas: ${error.message}`)
       return
     }
 
@@ -393,7 +434,7 @@ return {
       .eq('school_id', schoolId)
 
     if (error) {
-      setMessage(`Erro ao buscar matrículas: ${error.message}`)
+      showMessage(`Erro ao buscar matrículas: ${error.message}`)
       return
     }
 
@@ -432,12 +473,12 @@ return {
 
 async function initializeAttendanceForToday() {
   if (!schoolId) {
-    setMessage('Escola não identificada.')
+    showMessage('Escola não identificada.')
     return false
   }
 
   if (enrollments.length === 0) {
-    setMessage('Não há matrículas para gerar a chamada do dia.')
+    showMessage('Não há matrículas para gerar a chamada do dia.')
     return false
   }
 
@@ -454,7 +495,7 @@ async function initializeAttendanceForToday() {
     .eq('attendance_date', today)
 
   if (existingError) {
-    setMessage(`Erro ao verificar chamada do dia: ${existingError.message}`)
+    showMessage(`Erro ao verificar chamada do dia: ${existingError.message}`)
     return false
   }
 
@@ -485,7 +526,7 @@ async function initializeAttendanceForToday() {
       .insert(missingRecords)
 
     if (insertError) {
-      setMessage(`Erro ao iniciar chamada: ${insertError.message}`)
+      showMessage(`Erro ao iniciar chamada: ${insertError.message}`)
       return false
     }
   }
@@ -503,7 +544,7 @@ async function handleStartReading() {
 
   setScannerMode('camera')
   setIsScannerActive(true)
-  setMessage('Leitura iniciada. Todos os alunos do dia começaram como faltosos.')
+  showMessage('Leitura iniciada. Todos os alunos do dia começaram como faltosos.')
 }
 
 function handleStopReading() {
@@ -764,21 +805,21 @@ const className = classData?.name || 'Sem turma'
 
 async function handleGenerateAttendanceReport() {
   if (!schoolId) {
-    setMessage('Escola não identificada.')
+    showMessage('Escola não identificada.')
     return
   }
 
   if (!reportStartDate || !reportEndDate) {
-    setMessage('Informe a data inicial e final do relatório.')
+    showMessage('Informe a data inicial e final do relatório.')
     return
   }
 
   setReportLoading(true)
-  setMessage('Gerando relatório...')
+  showMessage('Gerando relatório...')
 
   let query = supabase
     .from('attendance_records')
-    .select('id, student_id, class_id, attendance_date, status, source')
+    .select('id, student_id, class_id, attendance_date, status, source, created_at, updated_at')
     .eq('school_id', schoolId)
     .gte('attendance_date', reportStartDate)
     .lte('attendance_date', reportEndDate)
@@ -797,26 +838,222 @@ async function handleGenerateAttendanceReport() {
   setReportLoading(false)
 
   if (error) {
-    setMessage(`Erro ao gerar relatório: ${error.message}`)
+    showMessage(`Erro ao gerar relatório: ${error.message}`)
     return
   }
 
   setReportRecords((data || []) as typeof reportRecords)
-  setMessage('Relatório gerado com sucesso.')
+  showMessage('Relatório gerado com sucesso.')
 }
 
-function handlePrintAttendanceReport() {
-  const printContents = document.getElementById('attendance-report-print')
+function getSituationsByRisk(risk: string) {
+  const leve = [
+    'Não realizou atividade',
+    'Não trouxe material',
+    'Atraso frequente',
+    'Dormindo',
+    'Apatia / desinteresse',
+    'Isolamento social',
+    'Falta de participação',
+    'Fardamento incompleto',
+    'Documentação pendente',
+    'Responsável não compareceu',
+    'Fora do mapa de turma',
+  ]
+
+  const medio = [
+    'Conversando Muito',
+    'Interrompendo a aula',
+    'Desobediência',
+    'Provocando colegas',
+    'Linguagem inadequada',
+    'Uso indevido de celular',
+    'Saída sem autorização',
+    'Disperso em sala',
+  ]
+
+  const grave = [
+    'Desrespeitando o professor',
+    'Desrespeitando colegas',
+    'Brigando',
+    'Agressão física',
+    'Ameaça a colega',
+    'Ameaça a professor',
+    'Bullying',
+    'Danificando patrimônio',
+  ]
+
+  if (risk === 'leve') return leve
+  if (risk === 'medio') return medio
+  if (risk === 'grave') return grave
+
+  return []
+}
+
+async function handleGenerateOccurrenceReport() {
+  if (!schoolId) {
+    showMessage('Escola não identificada.')
+    return
+  }
+
+  if (!occurrenceStartDate || !occurrenceEndDate) {
+    showMessage('Informe a data inicial e final.')
+    return
+  }
+
+  setOccurrenceLoading(true)
+  showMessage('Gerando relatório de ocorrências...')
+
+  let query = supabase
+    .from('student_occurrences')
+    .select('id, school_id, class_id, student_id, teacher_id, situation, description, created_at')
+    .eq('school_id', schoolId)
+    .gte('created_at', `${occurrenceStartDate}T00:00:00`)
+    .lte('created_at', `${occurrenceEndDate}T23:59:59`)
+    .order('created_at', { ascending: false })
+
+  if (occurrenceClassId) {
+    query = query.eq('class_id', occurrenceClassId)
+  }
+
+  if (occurrenceStudentId) {
+    query = query.eq('student_id', occurrenceStudentId)
+  }
+
+  if (occurrenceSituation) {
+  query = query.in('situation', getSituationsByRisk(occurrenceSituation))
+}
+
+  const { data, error } = await query
+
+  setOccurrenceLoading(false)
+
+  if (error) {
+    showMessage(`Erro ao gerar relatório de ocorrências: ${error.message}`)
+    return
+  }
+
+  setOccurrenceRecords((data || []) as Occurrence[])
+  showMessage('Relatório de ocorrências gerado com sucesso.')
+}
+
+function handlePrintOccurrenceReport() {
+  const printContents = document.getElementById('occurrence-report-print')
 
   if (!printContents) {
-    setMessage('Área do relatório não encontrada.')
+    showMessage('Área do relatório de ocorrências não encontrada.')
     return
   }
 
   const printWindow = window.open('', '_blank', 'width=1200,height=900')
 
   if (!printWindow) {
-    setMessage('Não foi possível abrir a janela de impressão.')
+    showMessage('Não foi possível abrir a janela de impressão.')
+    return
+  }
+
+  printWindow.document.write(`
+    <html>
+      <head>
+        <title>Relatório de Ocorrências</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            padding: 16px;
+            color: #0f172a;
+          }
+
+          .header {
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+          }
+
+          .school-name {
+            font-size: 24px;
+            font-weight: 900;
+            margin-bottom: 6px;
+          }
+
+          .report-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #475569;
+            margin-bottom: 12px;
+          }
+
+          .filters {
+            font-size: 13px;
+            color: #64748b;
+            line-height: 1.6;
+          }
+
+          .footer {
+            position: fixed;
+            bottom: 14px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 12px;
+            color: #94a3b8;
+            font-weight: 700;
+          }
+
+          @page {
+            margin: 8mm;
+          }
+        </style>
+      </head>
+
+      <body>
+        <div class="header">
+          <div class="school-name">${schoolName}</div>
+          <div class="report-title">Relatório de Ocorrências</div>
+
+          <div class="filters">
+            <strong>Filtros utilizados:</strong><br />
+            Período: ${formatDateBR(occurrenceStartDate)} até ${formatDateBR(occurrenceEndDate)}
+          </div>
+        </div>
+
+        ${printContents.innerHTML}
+
+        <div class="footer">SchoolOS</div>
+      </body>
+    </html>
+  `)
+
+  printWindow.document.close()
+
+  setTimeout(() => {
+    printWindow.focus()
+    printWindow.print()
+  }, 800)
+}
+
+function handlePrintAttendanceReport() {
+  const printContents = document.getElementById('attendance-report-print')
+
+  if (!printContents) {
+    showMessage('Área do relatório não encontrada.')
+    return
+  }
+
+  const selectedReportClass = classes.find((item) => item.id === reportClassId)
+
+  const statusLabel =
+    reportStatus === 'all'
+      ? 'Todos'
+      : reportStatus === 'present'
+      ? 'Presentes'
+      : 'Faltosos'
+
+  const classLabel = selectedReportClass?.name || 'Todas as turmas'
+
+  const printWindow = window.open('', '_blank', 'width=1200,height=900')
+
+  if (!printWindow) {
+    showMessage('Não foi possível abrir a janela de impressão.')
     return
   }
 
@@ -827,36 +1064,94 @@ function handlePrintAttendanceReport() {
         <style>
           body {
             font-family: Arial, sans-serif;
-            padding: 32px;
+            padding: 16px;
             color: #0f172a;
           }
+
+          .header {
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+          }
+
+          .school-name {
+            font-size: 24px;
+            font-weight: 900;
+            margin-bottom: 6px;
+          }
+
+          .report-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #475569;
+            margin-bottom: 12px;
+          }
+
+          .filters {
+            font-size: 13px;
+            color: #64748b;
+            line-height: 1.6;
+          }
+
           table {
             width: 100%;
             border-collapse: collapse;
           }
+
           th, td {
             padding: 10px;
             border-bottom: 1px solid #cbd5e1;
             text-align: left;
             font-size: 13px;
           }
+
           h1, h2, h3 {
             margin: 0 0 12px;
           }
-          .page-break {
-            page-break-before: always;
+
+          .footer {
+            position: fixed;
+            bottom: 14px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 12px;
+            color: #94a3b8;
+            font-weight: 700;
+          }
+
+          @page {
+            margin: 8mm;
           }
         </style>
       </head>
+
       <body>
+        <div class="header">
+          <div class="school-name">${schoolName}</div>
+          <div class="report-title">Relatório de Presença</div>
+
+          <div class="filters">
+            <strong>Filtros utilizados:</strong><br />
+            Período: ${formatDateBR(reportStartDate)} até ${formatDateBR(reportEndDate)}<br />
+            Turma: ${classLabel}<br />
+            Tipo: ${statusLabel}
+          </div>
+        </div>
+
         ${printContents.innerHTML}
+
+        <div class="footer">SchoolOS</div>
       </body>
     </html>
   `)
 
   printWindow.document.close()
-  printWindow.focus()
-  printWindow.print()
+
+  setTimeout(() => {
+    printWindow.focus()
+    printWindow.print()
+  }, 800)
 }
 
 function sendWhatsappToAllFromReport(records: any[]) {
@@ -885,12 +1180,12 @@ function sendWhatsappToAllFromReport(records: any[]) {
 
 async function handleGenerateAbsenceAlerts() {
   if (!schoolId) {
-    setMessage('Escola não identificada.')
+    showMessage('Escola não identificada.')
     return
   }
 
   setAlertsLoading(true)
-  setMessage('Analisando faltas e gerando alertas...')
+  showMessage('Analisando faltas e gerando alertas...')
 
   const today = new Date()
   const past15Days = new Date()
@@ -910,7 +1205,7 @@ async function handleGenerateAbsenceAlerts() {
   setAlertsLoading(false)
 
   if (error) {
-    setMessage(`Erro ao gerar alertas: ${error.message}`)
+    showMessage(`Erro ao gerar alertas: ${error.message}`)
     return
   }
 
@@ -921,6 +1216,8 @@ async function handleGenerateAbsenceAlerts() {
     attendance_date: string
     status: 'present' | 'absent'
     source: 'system_default' | 'qr' | 'facial' | 'manual'
+created_at?: string
+updated_at?: string
   }[]
 
   const grouped = typedRecords.reduce<
@@ -1006,7 +1303,7 @@ async function handleGenerateAbsenceAlerts() {
   })
 
   setAbsenceAlerts(alerts)
-  setMessage(
+  showMessage(
     alerts.length > 0
       ? `Alertas gerados: ${alerts.length}`
       : 'Nenhum alerta de faltas encontrado.'
@@ -1023,20 +1320,20 @@ async function handleCopyAlertMessage(alert: AlertStudent) {
 
   try {
     await navigator.clipboard.writeText(text)
-    setMessage('Mensagem copiada com sucesso.')
+    showMessage('Mensagem copiada com sucesso.')
   } catch {
-    setMessage('Não foi possível copiar a mensagem.')
+    showMessage('Não foi possível copiar a mensagem.')
   }
 }
 
 async function handleCreateStudent() {
   if (!studentName.trim() || !studentEmail.trim() || !studentBirthDate) {
-    setMessage('Preencha todos os campos do aluno.')
+    showMessage('Preencha todos os campos do aluno.')
     return
   }
 
   if (!schoolId) {
-    setMessage('Escola não identificada.')
+    showMessage('Escola não identificada.')
     return
   }
 
@@ -1063,11 +1360,11 @@ async function handleCreateStudent() {
 })
 
     if (error) {
-      setMessage(`Erro ao cadastrar aluno: ${error.message}`)
+      showMessage(`Erro ao cadastrar aluno: ${error.message}`)
       return
     }
 
-    setMessage('Aluno cadastrado com sucesso.')
+    showMessage('Aluno(a) cadastrado com sucesso.')
     setStudentName('')
     setStudentEmail('')
     setStudentBirthDate('')
@@ -1079,7 +1376,7 @@ async function handleCreateStudent() {
   } catch (err) {
     const errorMessage =
       err instanceof Error ? err.message : 'Erro ao enviar a foto.'
-    setMessage(`Erro ao cadastrar aluno: ${errorMessage}`)
+    showMessage(`Erro ao cadastrar aluno: ${errorMessage}`)
   }
 }
 
@@ -1101,19 +1398,19 @@ async function fetchSchoolName(currentSchoolId?: string | null) {
 
   async function handleCreateSchoolYear() {
     if (!canManage) {
-      setMessage('Você não tem permissão para cadastrar ano letivo.')
+      showMessage('Você não tem permissão para cadastrar ano letivo.')
       return
     }
 
     if (!yearValue.trim()) {
-      setMessage('Informe o ano letivo.')
+      showMessage('Informe o ano letivo.')
       return
     }
 
     const parsedYear = Number(yearValue)
 
     if (Number.isNaN(parsedYear)) {
-      setMessage('O ano letivo precisa ser numérico.')
+      showMessage('O ano letivo precisa ser numérico.')
       return
     }
 
@@ -1129,22 +1426,22 @@ async function fetchSchoolName(currentSchoolId?: string | null) {
 
     setYearValue('')
     await fetchSchoolYears()
-    setMessage('Ano letivo cadastrado com sucesso.')
+    showMessage('Ano letivo cadastrado com sucesso.')
   }
 
   async function handleCreateClass() {
     if (!canManage) {
-      setMessage('Você não tem permissão para cadastrar turma.')
+      showMessage('Você não tem permissão para cadastrar turma.')
       return
     }
 
     if (!className.trim()) {
-      setMessage('Informe o nome da turma.')
+      showMessage('Informe o nome da turma.')
       return
     }
 
     if (!selectedYearId) {
-      setMessage('Selecione um ano letivo.')
+      showMessage('Selecione um ano letivo.')
       return
     }
 
@@ -1155,7 +1452,7 @@ async function fetchSchoolName(currentSchoolId?: string | null) {
     })
 
     if (error) {
-      setMessage(`Erro ao cadastrar turma: ${error.message}`)
+      showMessage(`Erro ao cadastrar turma: ${error.message}`)
       return
     }
 
@@ -1167,16 +1464,16 @@ async function fetchSchoolName(currentSchoolId?: string | null) {
 
   async function handleCreateTeacher() {
     if (!canManage) {
-      setMessage('Você não tem permissão para cadastrar professor.')
+      showMessage('Você não tem permissão para cadastrar professor.')
       return
     }
 
     if (!teacherName.trim() || !teacherEmail.trim()) {
-      setMessage('Preencha nome e e-mail do professor.')
+      showMessage('Preencha nome e e-mail do professor.')
       return
     }
 
-    setMessage('Cadastrando professor...')
+    showMessage('Cadastrando professor...')
 
     const normalizedEmail = teacherEmail.trim().toLowerCase()
 
@@ -1188,9 +1485,9 @@ async function fetchSchoolName(currentSchoolId?: string | null) {
 
     if (error) {
       if (error.message.toLowerCase().includes('duplicate key')) {
-        setMessage('Já existe um professor com esse e-mail nesta escola.')
+        showMessage('Já existe um professor com esse e-mail nesta escola.')
       } else {
-        setMessage(`Erro ao cadastrar professor: ${error.message}`)
+        showMessage(`Erro ao cadastrar professor: ${error.message}`)
       }
       return
     }
@@ -1206,7 +1503,7 @@ async function fetchSchoolName(currentSchoolId?: string | null) {
       })
 
     if (invitationError) {
-      setMessage(`Professor cadastrado, mas houve erro ao criar convite: ${invitationError.message}`)
+      showMessage(`Professor cadastrado, mas houve erro ao criar convite: ${invitationError.message}`)
       await fetchTeachers()
       return
     }
@@ -1214,21 +1511,21 @@ async function fetchSchoolName(currentSchoolId?: string | null) {
     setTeacherName('')
     setTeacherEmail('')
     await fetchTeachers()
-    setMessage('Professor cadastrado com sucesso.')
+    showMessage('Professor cadastrado com sucesso.')
   }
 
   async function handleCreateManager() {
     if (!canManage) {
-      setMessage('Você não tem permissão para cadastrar gestor.')
+      showMessage('Você não tem permissão para cadastrar gestor.')
       return
     }
 
     if (!managerName.trim() || !managerEmail.trim() || !managerArea.trim()) {
-      setMessage('Preencha nome, e-mail e área do gestor.')
+      showMessage('Preencha nome, e-mail e área do gestor.')
       return
     }
 
-    setMessage('Cadastrando gestor...')
+    showMessage('Cadastrando gestor...')
 
     const normalizedEmail = managerEmail.trim().toLowerCase()
 
@@ -1241,9 +1538,9 @@ async function fetchSchoolName(currentSchoolId?: string | null) {
 
     if (error) {
       if (error.message.toLowerCase().includes('duplicate key')) {
-        setMessage('Já existe um gestor com esse e-mail nesta escola.')
+        showMessage('Já existe um gestor com esse e-mail nesta escola.')
       } else {
-        setMessage(`Erro ao cadastrar gestor: ${error.message}`)
+        showMessage(`Erro ao cadastrar gestor: ${error.message}`)
       }
       return
     }
@@ -1259,7 +1556,7 @@ async function fetchSchoolName(currentSchoolId?: string | null) {
       })
 
     if (invitationError) {
-      setMessage(`Gestor cadastrado, mas houve erro ao criar convite: ${invitationError.message}`)
+      showMessage(`Gestor cadastrado, mas houve erro ao criar convite: ${invitationError.message}`)
       await fetchManagers()
       return
     }
@@ -1268,50 +1565,91 @@ async function fetchSchoolName(currentSchoolId?: string | null) {
     setManagerEmail('')
     setManagerArea('')
     await fetchManagers()
-    setMessage('Gestor cadastrado com sucesso.')
+    showMessage('Gestor cadastrado com sucesso.')
   }
 
-  async function handleEnrollStudent() {
-    if (!canManage) {
-      setMessage('Você não tem permissão para matricular aluno.')
-      return
-    }
+  async function handleEnrollStudent(
+  studentId: string,
+  classId: string,
+  yearId: string
+) {
+  if (!canManage) {
+    showMessage('Você não tem permissão para matricular aluno.')
+    return
+  }
 
-    if (!selectedEnrollmentYearId) {
-      setMessage('Selecione o ano letivo.')
-      return
-    }
+  if (!yearId) {
+    showMessage('Selecione o ano letivo.')
+    return
+  }
 
-    if (!selectedStudentId || !selectedClassId) {
-      setMessage('Selecione aluno e turma.')
-      return
-    }
+  if (!studentId || !classId) {
+    showMessage('Selecione aluno e turma.')
+    return
+  }
 
-    const { error } = await supabase.from('enrollments').insert({
-      student_id: selectedStudentId,
-      class_id: selectedClassId,
-      school_id: schoolId,
-      year_id: selectedEnrollmentYearId,
+  const { error } = await supabase.from('enrollments').insert({
+    student_id: studentId,
+    class_id: classId,
+    school_id: schoolId,
+    year_id: yearId,
+  })
+
+  if (error) {
+    if (
+      error.message.includes('enrollments_unique_student_class') ||
+      error.message.toLowerCase().includes('duplicate key')
+    ) {
+      showMessage('Esse aluno já está matriculado nessa turma.')
+    } else {
+      showMessage(`Erro ao matricular: ${error.message}`)
+    }
+    return
+  }
+
+  await fetchEnrollments()
+  await fetchStudents()
+  showMessage('Aluno matriculado com sucesso.')
+}
+function showMessage(text: string) {
+  setMessage(text)
+
+  setTimeout(() => {
+    setMessage('')
+  }, 2500)
+}
+
+async function handleMoveEnrollment(
+  enrollmentId: string,
+  targetClassId: string
+) {
+  if (!canManage) {
+    showMessage('Você não tem permissão para mover aluno.')
+    return
+  }
+
+  if (!enrollmentId || !targetClassId) {
+    showMessage('Selecione o aluno e a nova turma.')
+    return
+  }
+
+  const { error } = await supabase
+    .from('enrollments')
+    .update({
+      class_id: targetClassId,
     })
+    .eq('id', enrollmentId)
+    .eq('school_id', schoolId)
 
-    if (error) {
-      if (
-        error.message.includes('enrollments_unique_student_class') ||
-        error.message.toLowerCase().includes('duplicate key')
-      ) {
-        setMessage('Esse aluno já está matriculado nessa turma.')
-      } else {
-        setMessage(`Erro ao matricular: ${error.message}`)
-      }
-      return
-    }
-
-    setSelectedEnrollmentYearId('')
-    setSelectedStudentId('')
-    setSelectedClassId('')
-    await fetchEnrollments()
-    setMessage('Aluno matriculado com sucesso.')
+  if (error) {
+    showMessage(`Erro ao mover aluno: ${error.message}`)
+    return
   }
+
+  await fetchEnrollments()
+  await fetchStudents()
+  showMessage('Aluno movido com sucesso.')
+}
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -1962,7 +2300,20 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
   </button>
 )}
           <div style={dashboardBrandStyle}>
-            <div style={dashboardBrandIconStyle}>🎓</div>
+            
+  <div style={{ width: '8vw', maxWidth: 40, minWidth: 28 }}>
+  <img
+    src="/logoteste.png"
+    alt="Logo"
+    style={{
+      width: logoSize,
+      height: logoSize,
+      objectFit: 'contain',
+      display: 'block',
+    }}
+  />
+</div>
+
             <div>
               <div style={dashboardBrandTitleStyle}>Painel Escolar</div>
               <div style={dashboardBrandSubtitleStyle}>{school?.name || 'SchoolOS'}</div>
@@ -1993,6 +2344,16 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
   >
     Cadastros
   </button>
+  <button
+  onClick={() => setActiveSection('classes')}
+  style={
+    activeSection === 'classes'
+      ? dashboardNavButtonActiveStyle
+      : dashboardNavButtonStyle
+  }
+>
+  Turmas
+</button>
 
   <button
     onClick={() => setActiveSection('attendance')}
@@ -2104,9 +2465,6 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
               </div>
             </div>
 
-            {message ? (
-              <div style={dashboardMessageStyle}>{message}</div>
-            ) : null}
           </section>
 
           {activeSection === 'overview' && (
@@ -2325,23 +2683,18 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
           <div style={dashboardSectionSpacerStyle} />
 
           <EnrollmentsSection
-            selectedEnrollmentYearId={selectedEnrollmentYearId}
-            selectedStudentId={selectedStudentId}
-            selectedClassId={selectedClassId}
-            setSelectedEnrollmentYearId={setSelectedEnrollmentYearId}
-            setSelectedStudentId={setSelectedStudentId}
-            setSelectedClassId={setSelectedClassId}
-            handleEnrollStudent={handleEnrollStudent}
-            students={students.map((student) => ({
-  id: student.id,
-  name: student.full_name || student.name || 'Aluno sem nome',
-  birth_date: student.birth_date,
-  school_id: student.school_id || null,
-}))}
-            schoolYears={schoolYears}
-            classes={classes}
-            enrollments={enrollments}
-          />
+  handleEnrollStudent={handleEnrollStudent}
+  handleMoveEnrollment={handleMoveEnrollment}
+  students={students.map((student) => ({
+    id: student.id,
+    name: student.full_name || student.name || 'Aluno sem nome',
+    birth_date: student.birth_date,
+    school_id: student.school_id || null,
+  }))}
+  schoolYears={schoolYears}
+  classes={classes}
+  enrollments={enrollments}
+/>
         </section>
       )}
 
@@ -2527,6 +2880,18 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
     </div>
   </section>
 )}
+{activeSection === 'classes' && currentUserId && userRole && (
+<ClassesAreaSection
+  schoolId={schoolId}
+  userId={currentUserId}
+  userEmail={currentUserEmail}
+  role={userRole}
+  students={students}
+  classes={classes}
+  enrollments={enrollments}
+  showMessage={showMessage}
+/>
+)}
 {activeSection === 'reports' && (
   <section style={dashboardMainGridStyle}>
     <div style={dashboardMainColumnStyle}>
@@ -2545,10 +2910,10 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
           <AttendanceReportsSection
             schoolName={schoolName}
             students={students.map((student) => ({
-  id: student.id,
-  full_name: student.full_name || student.name || 'Aluno sem nome',
-  name: student.name || student.full_name || 'Aluno sem nome',
-}))}
+            id: student.id,
+            full_name: student.full_name || student.name || 'Aluno sem nome',
+            name: student.name || student.full_name || 'Aluno sem nome',
+              }))}
             classes={classes}
             records={reportRecords}
             selectedClassId={reportClassId}
@@ -2582,6 +2947,50 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
           </div>
         </section>
       )}
+      {(isAdmin || isManager) && (
+  <section style={dashboardCardStyle}>
+    <div style={dashboardCardHeaderStyle}>
+      <div>
+        <div style={dashboardCardEyebrowStyle}>Relatórios</div>
+        <h2 style={dashboardCardTitleStyle}>Ocorrências</h2>
+        <p style={dashboardCardTextStyle}>
+          Consulte as ocorrências registradas por turma, aluno, situação e período.
+        </p>
+      </div>
+    </div>
+
+    <OccurrenceReportsSection
+      students={students.map((student) => ({
+        id: student.id,
+        full_name: student.full_name || student.name || 'Aluno sem nome',
+        name: student.name || student.full_name || 'Aluno sem nome',
+      }))}
+      classes={classes}
+      occurrences={occurrenceRecords}
+      loading={occurrenceLoading}
+      startDate={occurrenceStartDate}
+      setStartDate={setOccurrenceStartDate}
+      endDate={occurrenceEndDate}
+      setEndDate={setOccurrenceEndDate}
+      selectedClassId={occurrenceClassId}
+      setSelectedClassId={setOccurrenceClassId}
+      selectedStudentId={occurrenceStudentId}
+      setSelectedStudentId={setOccurrenceStudentId}
+      selectedSituation={occurrenceSituation}
+      setSelectedSituation={setOccurrenceSituation}
+      onGenerate={handleGenerateOccurrenceReport}
+    />
+    <div style={{ marginTop: 14 }}>
+  <button
+    onClick={handlePrintOccurrenceReport}
+    style={dashboardSecondaryButtonStyle}
+    disabled={occurrenceRecords.length === 0}
+  >
+    Imprimir relatório de ocorrências
+  </button>
+</div>
+  </section>
+)}
     </div>
 
     <div style={dashboardSideColumnStyle}>
@@ -2603,6 +3012,30 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
 )}
         </section>
       </div>
+      {message && (
+  <div
+    style={{
+      position: 'fixed',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      background: '#0f172a',
+      color: '#ffffff',
+      padding: '16px 24px',
+      borderRadius: 16,
+      fontWeight: 800,
+      fontSize: 16,
+      zIndex: 9999,
+      boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
+      textAlign: 'center',
+      maxWidth: 360,
+      width: 'calc(100% - 48px)',
+      animation: 'fadeIn 0.4s ease',
+    }}
+  >
+    {message}
+  </div>
+)}
     </main>
   )
 }

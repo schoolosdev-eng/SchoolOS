@@ -7,8 +7,8 @@ import { supabase } from '@/lib/supabase'
 export default function HomePage() {
   const router = useRouter()
 
-  const [email, setEmail] = useState('admin@teste.com')
-  const [password, setPassword] = useState('123456')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
   const [windowWidth, setWindowWidth] = useState(1200)
@@ -126,7 +126,7 @@ const isTablet = windowWidth >= 768 && windowWidth < 1024
                 boxShadow: '0 0 12px rgba(34,197,94,0.7)',
               }}
             />
-            Plataforma escolar inteligente
+            Ferramenta Escolar Integrada
           </div>
 
           <h1
@@ -138,7 +138,7 @@ const isTablet = windowWidth >= 768 && windowWidth < 1024
               fontWeight: 800,
             }}
           >
-            Gestão educacional com mais organização, clareza e presença digital.
+            Utilize nossas ferramentas e tenha mais organização, clareza e presença digital.
           </h1>
 
           <p
@@ -224,24 +224,35 @@ const isTablet = windowWidth >= 768 && windowWidth < 1024
         >
           <div style={{ marginBottom: 28 }}>
             <div
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: 18,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background:
-                  'linear-gradient(135deg, #0f172a 0%, #1d4ed8 100%)',
-                color: '#fff',
-                fontSize: 22,
-                fontWeight: 800,
-                boxShadow: '0 14px 30px rgba(29,78,216,0.28)',
-                marginBottom: 18,
-              }}
-            >
-              GE
-            </div>
+  style={{
+    marginBottom: 18,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+  }}
+>
+  <img
+    src="/logoteste.png"
+    alt="SchoolOS"
+    style={{
+      width: 56,
+      height: 56,
+      objectFit: 'contain',
+      borderRadius: 14,
+      boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+    }}
+  />
+
+  <span
+    style={{
+      fontSize: 20,
+      fontWeight: 800,
+      color: '#0f172a',
+    }}
+  >
+    SchoolOS
+  </span>
+</div>
 
             <h2
               style={{

@@ -19,6 +19,17 @@
   }
 }
 
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -60%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
@@ -35,3 +46,5 @@ input:focus {
   border-color: #2563eb; /* azul */
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2); /* efeito suave */
 }
+
+

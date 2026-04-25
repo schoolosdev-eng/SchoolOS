@@ -51,7 +51,7 @@ export default function SignUpPage() {
       return
     }
 
-    setMessage('Conta criada com sucesso. Agora faça login.')
+    setMessage('Conta criada com sucesso. Por favor confirme seu e-mail e faça login.')
     setLoading(false)
 
     setTimeout(() => {

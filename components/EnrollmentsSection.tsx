@@ -1,5 +1,7 @@
 'use client'
 
+import { useMemo, useState } from 'react'
+
 type Student = {
   id: string
   name: string
@@ -29,13 +31,15 @@ type Enrollment = {
 }
 
 type EnrollmentsSectionProps = {
-  selectedEnrollmentYearId: string
-  selectedStudentId: string
-  selectedClassId: string
-  setSelectedEnrollmentYearId: (value: string) => void
-  setSelectedStudentId: (value: string) => void
-  setSelectedClassId: (value: string) => void
-  handleEnrollStudent: () => void
+  handleEnrollStudent: (
+    studentId: string,
+    classId: string,
+    yearId: string
+  ) => Promise<void>
+  handleMoveEnrollment: (
+    enrollmentId: string,
+    targetClassId: string
+  ) => Promise<void>
   students: Student[]
   schoolYears: SchoolYear[]
   classes: SchoolClass[]
@@ -43,223 +47,300 @@ type EnrollmentsSectionProps = {
 }
 
 export default function EnrollmentsSection({
-  selectedEnrollmentYearId,
-  selectedStudentId,
-  selectedClassId,
-  setSelectedEnrollmentYearId,
-  setSelectedStudentId,
-  setSelectedClassId,
   handleEnrollStudent,
+  handleMoveEnrollment,
   students,
   schoolYears,
   classes,
   enrollments,
 }: EnrollmentsSectionProps) {
-  const filteredClasses = selectedEnrollmentYearId
-    ? classes.filter((schoolClass) => schoolClass.year_id === selectedEnrollmentYearId)
-    : []
+  const [selectedEnrollmentYearId, setSelectedEnrollmentYearId] = useState('')
+  const [selectedClassId, setSelectedClassId] = useState('')
+  const [studentSearch, setStudentSearch] = useState('')
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([])
+  const [movingEnrollmentId, setMovingEnrollmentId] = useState('')
+  const [targetClassId, setTargetClassId] = useState('')
 
-  const sectionStyle: React.CSSProperties = {
-    marginTop: 24,
+  const filteredClasses = useMemo(() => {
+    return selectedEnrollmentYearId
+      ? classes.filter((schoolClass) => schoolClass.year_id === selectedEnrollmentYearId)
+      : []
+  }, [classes, selectedEnrollmentYearId])
+
+  const enrollmentsFromSelectedYear = useMemo(() => {
+    return enrollments.filter(
+      (enrollment) => enrollment.year_id === selectedEnrollmentYearId
+    )
+  }, [enrollments, selectedEnrollmentYearId])
+
+  const enrollmentsFromSelectedClass = useMemo(() => {
+    return enrollments.filter(
+      (enrollment) => enrollment.class_id === selectedClassId
+    )
+  }, [enrollments, selectedClassId])
+
+  const studentsInSelectedClass = useMemo(() => {
+    return enrollmentsFromSelectedClass
+      .map((enrollment) => {
+        const student = students.find((s) => s.id === enrollment.student_id)
+        return student
+          ? {
+              enrollmentId: enrollment.id,
+              student,
+            }
+          : null
+      })
+      .filter(Boolean) as { enrollmentId: string; student: Student }[]
+  }, [enrollmentsFromSelectedClass, students])
+
+  const availableStudents = useMemo(() => {
+    return students.filter((student) => {
+      const alreadyEnrolledInThisYear = enrollmentsFromSelectedYear.some(
+        (enrollment) => enrollment.student_id === student.id
+      )
+
+      const matchesSearch = student.name
+        .toLowerCase()
+        .includes(studentSearch.toLowerCase())
+
+      return !alreadyEnrolledInThisYear && matchesSearch
+    })
+  }, [students, enrollmentsFromSelectedYear, studentSearch])
+
+  const targetClasses = filteredClasses.filter(
+    (schoolClass) => schoolClass.id !== selectedClassId
+  )
+
+  async function handleAddSelectedStudents() {
+    if (!selectedEnrollmentYearId || !selectedClassId) return
+
+    for (const studentId of selectedStudentIds) {
+      await handleEnrollStudent(studentId, selectedClassId, selectedEnrollmentYearId)
+    }
+
+    setSelectedStudentIds([])
+    setStudentSearch('')
   }
 
-  const cardStyle: React.CSSProperties = {
-    background: '#ffffff',
-    borderRadius: 20,
-    padding: 20,
-    border: '1px solid #e2e8f0',
-    boxShadow: '0 10px 25px rgba(15, 23, 42, 0.05)',
-  }
+  async function handleMoveStudent() {
+    if (!movingEnrollmentId || !targetClassId) return
 
-  const titleStyle: React.CSSProperties = {
-    fontSize: 20,
-    fontWeight: 700,
-    margin: 0,
-    marginBottom: 16,
-    color: '#0f172a',
-  }
+    await handleMoveEnrollment(movingEnrollmentId, targetClassId)
 
-  const subtitleStyle: React.CSSProperties = {
-    fontSize: 18,
-    fontWeight: 700,
-    margin: 0,
-    marginTop: 24,
-    marginBottom: 14,
-    color: '#0f172a',
-  }
-
-  const formStyle: React.CSSProperties = {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-  }
-
-  const inputStyle: React.CSSProperties = {
-    padding: '12px 14px',
-    borderRadius: 12,
-    border: '1px solid #cbd5e1',
-    fontSize: 14,
-    outline: 'none',
-    background: '#ffffff',
-    color: '#0f172a',
-  }
-
-  const disabledInputStyle: React.CSSProperties = {
-    ...inputStyle,
-    background: '#f8fafc',
-    color: '#64748b',
-    cursor: 'not-allowed',
-  }
-
-  const buttonStyle: React.CSSProperties = {
-    marginTop: 8,
-    padding: '12px',
-    borderRadius: 12,
-    border: 'none',
-    background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-    color: '#ffffff',
-    fontWeight: 700,
-    cursor: 'pointer',
-    boxShadow: '0 12px 24px rgba(37, 99, 235, 0.22)',
-  }
-
-  const listStyle: React.CSSProperties = {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 10,
-  }
-
-  const itemStyle: React.CSSProperties = {
-    padding: '14px 16px',
-    borderRadius: 14,
-    border: '1px solid #e2e8f0',
-    background: '#f8fafc',
-  }
-
-  const itemLabelStyle: React.CSSProperties = {
-    color: '#334155',
-    fontSize: 14,
-    lineHeight: 1.6,
-  }
-
-  const emptyStyle: React.CSSProperties = {
-    padding: 12,
-    borderRadius: 12,
-    background: '#f1f5f9',
-    color: '#475569',
+    setMovingEnrollmentId('')
+    setTargetClassId('')
   }
 
   return (
-  <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-    {/* FORM */}
-    <div style={cardStyle}>
-      <h3 style={titleStyle}>Matricular aluno</h3>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={cardStyle}>
+        <h3 style={titleStyle}>Matricular aluno</h3>
 
-      <div style={formGridStyle}>
-        {/* ANO */}
-        <div>
-          <label style={labelStyle}>Ano letivo</label>
-          <select
-            value={selectedEnrollmentYearId}
-            onChange={(e) => setSelectedEnrollmentYearId(e.target.value)}
-            style={inputStyle}
-          >
-            <option value="">Selecione</option>
-            {schoolYears.map((year) => (
-              <option key={year.id} value={year.id}>
-                {year.year}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* ALUNO */}
-        <div>
-          <label style={labelStyle}>Aluno</label>
-          <select
-            value={selectedStudentId}
-            onChange={(e) => setSelectedStudentId(e.target.value)}
-            style={inputStyle}
-          >
-            <option value="">Selecione</option>
-            {students.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* TURMA */}
-        <div>
-          <label style={labelStyle}>Turma</label>
-          <select
-            value={selectedClassId}
-            onChange={(e) => setSelectedClassId(e.target.value)}
-            style={inputStyle}
-          >
-            <option value="">Selecione</option>
-            {classes
-              .filter((c) =>
-                selectedEnrollmentYearId
-                  ? c.year_id === selectedEnrollmentYearId
-                  : true
-              )
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
+        <div style={formGridStyle}>
+          <div>
+            <label style={labelStyle}>Ano letivo</label>
+            <select
+              value={selectedEnrollmentYearId}
+              onChange={(e) => {
+                setSelectedEnrollmentYearId(e.target.value)
+                setSelectedClassId('')
+                setSelectedStudentIds([])
+                setMovingEnrollmentId('')
+                setTargetClassId('')
+              }}
+              style={inputStyle}
+            >
+              <option value="">Selecione</option>
+              {schoolYears.map((year) => (
+                <option key={year.id} value={year.id}>
+                  {year.year}
                 </option>
               ))}
-          </select>
+            </select>
+          </div>
+
+          <div>
+            <label style={labelStyle}>Turma</label>
+            <select
+              value={selectedClassId}
+              onChange={(e) => {
+                setSelectedClassId(e.target.value)
+                setSelectedStudentIds([])
+                setMovingEnrollmentId('')
+                setTargetClassId('')
+              }}
+              style={inputStyle}
+              disabled={!selectedEnrollmentYearId}
+            >
+              <option value="">Selecione</option>
+              {filteredClasses.map((schoolClass) => (
+                <option key={schoolClass.id} value={schoolClass.id}>
+                  {schoolClass.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
+
+        {selectedClassId ? (
+          <>
+            <h4 style={subtitleStyle}>Alunos da turma</h4>
+
+            {studentsInSelectedClass.length === 0 ? (
+              <div style={emptyStyle}>Nenhum aluno matriculado nesta turma.</div>
+            ) : (
+              <div style={listStyle}>
+                {studentsInSelectedClass.map(({ enrollmentId, student }) => (
+                  <div key={enrollmentId} style={itemCardStyle}>
+                    <div style={itemTitleStyle}>{student.name}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <h4 style={subtitleStyle}>Adicionar alunos disponíveis</h4>
+
+            <input
+              type="text"
+              placeholder="Buscar aluno..."
+              value={studentSearch}
+              onChange={(e) => setStudentSearch(e.target.value)}
+              style={{ ...inputStyle, marginBottom: 12 }}
+            />
+
+            {availableStudents.length === 0 ? (
+              <div style={emptyStyle}>
+                Nenhum aluno disponível. Alunos já matriculados em qualquer turma deste ano não aparecem aqui.
+              </div>
+            ) : (
+              <div style={listStyle}>
+                {availableStudents.map((student) => {
+                  const checked = selectedStudentIds.includes(student.id)
+
+                  return (
+                    <label key={student.id} style={itemCardStyle}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedStudentIds((prev) => [...prev, student.id])
+                          } else {
+                            setSelectedStudentIds((prev) =>
+                              prev.filter((id) => id !== student.id)
+                            )
+                          }
+                        }}
+                        style={{ marginRight: 10 }}
+                      />
+                      <span style={itemTitleStyle}>{student.name}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+
+            <button
+              onClick={handleAddSelectedStudents}
+              disabled={selectedStudentIds.length === 0}
+              style={{
+                ...primaryButtonStyle,
+                marginTop: 12,
+                opacity: selectedStudentIds.length === 0 ? 0.6 : 1,
+                cursor: selectedStudentIds.length === 0 ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Adicionar selecionados
+            </button>
+
+            <h4 style={subtitleStyle}>Mover aluno entre turmas</h4>
+
+            <div style={formGridStyle}>
+              <div>
+                <label style={labelStyle}>Aluno da turma atual</label>
+                <select
+                  value={movingEnrollmentId}
+                  onChange={(e) => setMovingEnrollmentId(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="">Selecione</option>
+                  {studentsInSelectedClass.map(({ enrollmentId, student }) => (
+                    <option key={enrollmentId} value={enrollmentId}>
+                      {student.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Mover para</label>
+                <select
+                  value={targetClassId}
+                  onChange={(e) => setTargetClassId(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="">Selecione</option>
+                  {targetClasses.map((schoolClass) => (
+                    <option key={schoolClass.id} value={schoolClass.id}>
+                      {schoolClass.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <button
+              onClick={handleMoveStudent}
+              disabled={!movingEnrollmentId || !targetClassId}
+              style={{
+                ...primaryButtonStyle,
+                opacity: !movingEnrollmentId || !targetClassId ? 0.6 : 1,
+                cursor:
+                  !movingEnrollmentId || !targetClassId
+                    ? 'not-allowed'
+                    : 'pointer',
+              }}
+            >
+              Mover aluno
+            </button>
+          </>
+        ) : (
+          <div style={emptyStyle}>Selecione um ano letivo e uma turma.</div>
+        )}
       </div>
 
-      <button onClick={handleEnrollStudent} style={primaryButtonStyle}>
-        Matricular
-      </button>
-    </div>
+      <div style={cardStyle}>
+        <h3 style={titleStyle}>Últimas matrículas realizadas</h3>
 
-    {/* LISTA */}
-    <div style={cardStyle}>
-      <h3 style={titleStyle}>Matrículas realizadas</h3>
+        {enrollments.length === 0 ? (
+          <div style={emptyStyle}>Nenhuma matrícula encontrada.</div>
+        ) : (
+          <div style={listStyle}>
+            {enrollments.slice(0, 5).map((enrollment) => {
+              const student = students.find((s) => s.id === enrollment.student_id)
+              const schoolClass = classes.find((c) => c.id === enrollment.class_id)
+              const year = schoolYears.find((y) => y.id === enrollment.year_id)
 
-      {enrollments.length === 0 ? (
-        <div style={emptyStyle}>Nenhuma matrícula encontrada.</div>
-      ) : (
-        <div style={listStyle}>
-          {enrollments.map((enrollment) => {
-            const student = students.find(
-              (s) => s.id === enrollment.student_id
-            )
+              return (
+                <div key={enrollment.id} style={itemCardStyle}>
+                  <div>
+                    <div style={itemTitleStyle}>
+                      {student?.name || 'Aluno não encontrado'}
+                    </div>
 
-            const schoolClass = classes.find(
-              (c) => c.id === enrollment.class_id
-            )
-
-            const year = schoolYears.find(
-              (y) => y.id === enrollment.year_id
-            )
-
-            return (
-              <div key={enrollment.id} style={itemCardStyle}>
-                <div>
-                  <div style={itemTitleStyle}>
-                    {student?.name || 'Aluno não encontrado'}
-                  </div>
-
-                  <div style={itemSubtitleStyle}>
-                    {schoolClass?.name || 'Turma não encontrada'} •{' '}
-                    {year?.year || 'Ano não encontrado'}
+                    <div style={itemSubtitleStyle}>
+                      {schoolClass?.name || 'Turma não encontrada'} •{' '}
+                      {year?.year || 'Ano não encontrado'}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+              )
+            })}
+          </div>
+        )}
+      </div>
     </div>
-  </div>
-)
+  )
 }
 
 const cardStyle: React.CSSProperties = {
@@ -274,6 +355,15 @@ const titleStyle: React.CSSProperties = {
   marginBottom: 16,
   fontSize: 20,
   fontWeight: 900,
+  color: '#0f172a',
+}
+
+const subtitleStyle: React.CSSProperties = {
+  fontSize: 16,
+  fontWeight: 900,
+  margin: 0,
+  marginTop: 22,
+  marginBottom: 12,
   color: '#0f172a',
 }
 

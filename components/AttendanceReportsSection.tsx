@@ -19,6 +19,7 @@ type AttendanceRecord = {
   attendance_date: string
   status: 'present' | 'absent'
   source: 'system_default' | 'qr' | 'facial' | 'manual'
+  created_at?: string
 }
 
 type AttendanceReportsSectionProps = {
@@ -101,6 +102,12 @@ const tdStyle: React.CSSProperties = {
   const totalAbsent = records.filter((item) => item.status === 'absent').length
   const attendanceRate =
     totalRecords > 0 ? ((totalPresent / totalRecords) * 100).toFixed(1) : '0.0'
+
+  function formatDateBR(date: string) {
+  if (!date) return ''
+  const [year, month, day] = date.split('-')
+  return `${day}/${month}/${year}`
+}
 
   return (
   <section
@@ -236,6 +243,30 @@ const tdStyle: React.CSSProperties = {
 <StatCard label="Faltosos" value={totalAbsent} color="red" isMobile={isMobile} />
 <StatCard label="Frequência" value={`${attendanceRate}%`} color="blue" isMobile={isMobile} />
     </div>
+    <div
+  style={{
+    marginBottom: 16,
+    padding: 16,
+    borderRadius: 16,
+    background: '#f8fafc',
+    border: '1px solid #e2e8f0',
+  }}
+>
+  <div style={{ fontWeight: 900, color: '#0f172a', fontSize: 18 }}>
+    {schoolName}
+  </div>
+
+  <div style={{ marginTop: 6, color: '#64748b', fontSize: 14 }}>
+    Filtros utilizados:{' '}
+    Período: {startDate || '---'} até {endDate || '---'} | Turma:{' '}
+    {selectedClass?.name || 'Todas'} | Tipo:{' '}
+    {filterStatus === 'all'
+      ? 'Todos'
+      : filterStatus === 'present'
+      ? 'Presentes'
+      : 'Faltosos'}
+  </div>
+</div>
 
     {/* TABELA */}
     <div
@@ -273,7 +304,7 @@ const tdStyle: React.CSSProperties = {
                     <th style={thStyle}>Aluno</th>
                     <th style={thStyle}>Data</th>
                     <th style={thStyle}>Status</th>
-                    <th style={thStyle}>Origem</th>
+                    <th style={thStyle}>Horário</th>
                   </tr>
                 </thead>
 
@@ -287,7 +318,9 @@ const tdStyle: React.CSSProperties = {
                           {student?.full_name || student?.name}
                         </td>
 
-                        <td style={tdStyle}>{r.attendance_date}</td>
+                        <td style={tdStyle}>
+  {formatDateBR(r.attendance_date)}
+</td>
 
                         <td
                           style={{
@@ -305,8 +338,13 @@ const tdStyle: React.CSSProperties = {
                         </td>
 
                         <td style={tdStyle}>
-                          {translateSource(r.source)}
-                        </td>
+  {r.status === 'present' && r.created_at
+    ? new Date(r.created_at).toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : ''}
+</td>
                       </tr>
                     )
                   })}
@@ -317,6 +355,17 @@ const tdStyle: React.CSSProperties = {
         })
       )}
     </div>
+    <div
+  style={{
+    marginTop: 18,
+    textAlign: 'center',
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: 700,
+  }}
+>
+  SchoolOS
+</div>
   </section>
 )
 }
