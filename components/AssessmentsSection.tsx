@@ -5,7 +5,6 @@ import { supabase } from '@/lib/supabase'
 import QRCode from 'qrcode'
 import { useEffect, useRef } from 'react'
 import { Html5Qrcode } from 'html5-qrcode'
-import cv from '@techstark/opencv-js'
 
 async function handleExportPDF() {
   const element = document.getElementById('print-area')
@@ -507,6 +506,19 @@ return () => {
 }
 }, [cameraActive])
 
+useEffect(() => {
+  async function loadOpenCV() {
+    if ((window as any).cv) return
+
+    const cvModule = await import('@techstark/opencv-js')
+    ;(window as any).cv = cvModule.default || cvModule
+  }
+
+  loadOpenCV().catch(() => {
+    setLocalMessage('Erro ao carregar OpenCV.')
+  })
+}, [])
+
 async function handleFinishAssessment() {
   if (!createdAssessmentId) {
     setLocalMessage('Avaliação não identificada.')
@@ -943,7 +955,12 @@ function analyzeAnswerCard(imageDataUrl: string) {
   img.src = imageDataUrl
 
   img.onload = () => {
-    const cvAny = cv as any
+    const cvAny = (window as any).cv
+
+if (!cvAny) {
+  setLocalMessage('OpenCV ainda não carregou. Tente novamente em alguns segundos.')
+  return
+}
 
     const originalCanvas = document.createElement('canvas')
     originalCanvas.width = img.width
