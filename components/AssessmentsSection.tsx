@@ -445,14 +445,16 @@ useEffect(() => {
         fps: 10,
         qrbox: 250,
       },
-      async (decodedText) => {
-        if (qrReadRef.current) return
+async (decodedText) => {
+  if (qrReadRef.current) return
 
-        if (decodedText.startsWith('schoolos:student:')) {
-          qrReadRef.current = true
-          await handleQrScan(decodedText)
-        }
-      },
+  console.log('QR detectado:', decodedText)
+
+  if (decodedText.startsWith('schoolos:student:')) {
+    qrReadRef.current = true
+    await handleQrScan(decodedText)
+  }
+},
       () => {}
     )
     .catch(() => {
@@ -998,30 +1000,28 @@ function handleCaptureAnswerCard() {
 }
 
 async function handleQrScan(decodedText: string) {
-  try {
-    if (!decodedText.startsWith('schoolos:student:')) return
+  const token = decodedText.replace('schoolos:student:', '').trim()
 
-    const token = decodedText.replace('schoolos:student:', '').trim()
+  setDetectedStudentToken(token)
+  setLocalMessage('QR Code lido. Buscando aluno...')
 
-    const { data, error } = await supabase
-      .from('students')
-      .select('*')
-      .eq('qr_code_token', token)
-      .single()
+  const studentFromList = students.find(
+    (student) => student.qr_code_token === token
+  )
 
-    if (error || !data) {
-      setLocalMessage('Aluno não encontrado pelo QR Code.')
-      return
-    }
-
-    setDetectedStudent(data)
-    setDetectedStudentToken(token)
-    setSelectedStudentId(data.id)
-
-    setLocalMessage(`Aluno identificado: ${data.full_name || data.name}`)
-  } catch {
-    setLocalMessage('Erro ao ler QR Code do aluno.')
+  if (!studentFromList) {
+    setLocalMessage('QR lido, mas aluno não encontrado na lista carregada.')
+    return
   }
+
+  setDetectedStudent(studentFromList)
+  setSelectedStudentId(studentFromList.id)
+
+  setLocalMessage(
+    `Aluno identificado: ${
+      studentFromList.full_name || studentFromList.name || 'Aluno sem nome'
+    }`
+  )
 }
 
   return (
@@ -1915,6 +1915,23 @@ async function handleQrScan(decodedText: string) {
     >
       Iniciar leitura da prova
     </button>
+
+    {detectedStudent && (
+  <div
+    style={{
+      marginTop: 16,
+      padding: 14,
+      borderRadius: 14,
+      background: '#dcfce7',
+      border: '1px solid #86efac',
+      color: '#166534',
+      fontWeight: 800,
+    }}
+  >
+    Aluno identificado:{' '}
+    {detectedStudent.full_name || detectedStudent.name || 'Aluno sem nome'}
+  </div>
+)}
 
     {cameraActive && (
       <div style={{ marginTop: 20 }}>
