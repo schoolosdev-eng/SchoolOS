@@ -507,16 +507,25 @@ return () => {
 }, [cameraActive])
 
 useEffect(() => {
-  async function loadOpenCV() {
-    if ((window as any).cv) return
+  if ((window as any).cv) return
 
-    const cvModule = await import('@techstark/opencv-js')
-    ;(window as any).cv = cvModule.default || cvModule
+  const script = document.createElement('script')
+  script.src = '/opencv.js'
+  script.async = true
+
+  script.onload = () => {
+    setLocalMessage('OpenCV carregado com sucesso.')
   }
 
-  loadOpenCV().catch(() => {
+  script.onerror = () => {
     setLocalMessage('Erro ao carregar OpenCV.')
-  })
+  }
+
+  document.body.appendChild(script)
+
+  return () => {
+    script.remove()
+  }
 }, [])
 
 async function handleFinishAssessment() {
