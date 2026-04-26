@@ -202,6 +202,7 @@ const [capturedImage, setCapturedImage] = useState<string | null>(null)
 const [detectedAnswers, setDetectedAnswers] = useState<Record<number, string>>({})
 const [detectedStudentToken, setDetectedStudentToken] = useState('')
 const [studentAnswers, setStudentAnswers] = useState<Record<number, string>>({})
+const [debugPoints, setDebugPoints] = useState<{ x: number; y: number; label: string }[]>([])
 const [correctionResult, setCorrectionResult] = useState<{
   correct: number
   total: number
@@ -309,27 +310,44 @@ const [ranking, setRanking] = useState<any[]>([])
 useEffect(() => {
   if (!cameraActive) return
 
+  let stream: MediaStream | null = null
+
   async function startCamera() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: 'environment', // câmera traseira
+          facingMode: 'environment',
         },
       })
 
       const video = document.getElementById(
         'camera-video'
-      ) as HTMLVideoElement
+      ) as HTMLVideoElement | null
 
       if (video) {
         video.srcObject = stream
+        await video.play()
       }
     } catch (err) {
-      alert('Erro ao acessar a câmera.')
+      setLocalMessage('Erro ao acessar a câmera.')
     }
   }
 
   startCamera()
+
+  return () => {
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop())
+    }
+
+    const video = document.getElementById(
+      'camera-video'
+    ) as HTMLVideoElement | null
+
+    if (video) {
+      video.srcObject = null
+    }
+  }
 }, [cameraActive])
 
 async function handleSaveQuestion() {
@@ -904,9 +922,10 @@ function analyzeAnswerCard(imageDataUrl: string) {
     const rows = 3
     const columns = 4
 
-    const letters = ['A', 'B', 'C', 'D', 'E']
+const letters = ['A', 'B', 'C', 'D', 'E']
+const points: { x: number; y: number; label: string }[] = []
 
-    for (let col = 0; col < columns; col++) {
+for (let col = 0; col < columns; col++) {
       for (let row = 0; row < rows; row++) {
         const questionNumber = col * rows + row + 1
 
@@ -921,6 +940,11 @@ function analyzeAnswerCard(imageDataUrl: string) {
         letters.forEach((letter, optionIndex) => {
           const x = baseX + optionIndex * optionGap
           const y = baseY
+          points.push({
+  x,
+  y,
+  label: `${questionNumber}${letter}`,
+})
 
           const brightness = getBrightness(data, canvas.width, x, y)
 
@@ -937,6 +961,7 @@ function analyzeAnswerCard(imageDataUrl: string) {
     }
 
     setDetectedAnswers(answers)
+    setDebugPoints(points)
     setStudentAnswers(answers)
     setLocalMessage('Leitura do cartão concluída.')
   }
@@ -1887,17 +1912,42 @@ function handleCaptureAnswerCard() {
       <div style={{ marginTop: 20 }}>
         <h3 style={titleStyle}>Imagem capturada</h3>
 
-        <img
-          src={capturedImage}
-          alt="Cartão capturado"
-          style={{
-            width: '100%',
-            maxWidth: 420,
-            borderRadius: 16,
-            border: '1px solid #cbd5e1',
-            marginTop: 12,
-          }}
-        />
+<div
+  style={{
+    position: 'relative',
+    width: '100%',
+    maxWidth: 420,
+    marginTop: 12,
+  }}
+>
+  <img
+    src={capturedImage}
+    alt="Cartão capturado"
+    style={{
+      width: '100%',
+      borderRadius: 16,
+      border: '1px solid #cbd5e1',
+      display: 'block',
+    }}
+  />
+
+  {debugPoints.map((point, index) => (
+    <div
+      key={index}
+      title={point.label}
+      style={{
+        position: 'absolute',
+        left: `${(point.x / 1000) * 100}%`,
+        top: `${(point.y / 1000) * 100}%`,
+        width: 8,
+        height: 8,
+        borderRadius: '50%',
+        background: 'red',
+        transform: 'translate(-50%, -50%)',
+      }}
+    />
+  ))}
+</div>
       </div>
     )}
 
