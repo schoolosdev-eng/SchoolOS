@@ -15,6 +15,7 @@ import { useRef } from 'react'
 import AttendanceReportsSection from '@/components/AttendanceReportsSection'
 import ClassesAreaSection from '@/components/ClassesAreaSection'
 import OccurrenceReportsSection from '@/components/OccurrenceReportsSection'
+import AssessmentsSection from '@/components/AssessmentsSection'
 
 type Student = {
   id: string
@@ -190,7 +191,12 @@ const [reportRecords, setReportRecords] = useState<
   const [guardianWhatsapp, setGuardianWhatsapp] = useState('')
 
   const [activeSection, setActiveSection] = useState<
-  'overview' | 'registrations' | 'classes' | 'attendance' | 'reports'
+  | 'overview'
+  | 'registrations'
+  | 'classes'
+  | 'attendance'
+  | 'reports'
+  | 'assessments'
 >('overview')
 
   const isAdmin = userRole === 'admin'
@@ -2351,9 +2357,9 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
       ? dashboardNavButtonActiveStyle
       : dashboardNavButtonStyle
   }
->
+    >
   Turmas
-</button>
+    </button>
 
   <button
     onClick={() => setActiveSection('attendance')}
@@ -2376,6 +2382,16 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
   >
     Relatórios
   </button>
+  <button
+  onClick={() => setActiveSection('assessments')}
+  style={
+    activeSection === 'assessments'
+      ? dashboardNavButtonActiveStyle
+      : dashboardNavButtonStyle
+  }
+    >
+    Avaliações
+    </button>
 </div>
 
           <div style={dashboardSidebarFooterStyle}>
@@ -3009,6 +3025,24 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
       )}
     </div>
   </section>
+)}
+{activeSection === 'assessments' && (
+  <AssessmentsSection
+  isAdmin={isAdmin}
+  isManager={isManager}
+  isTeacher={userRole === 'professor'}
+  schoolId={schoolId}
+  currentUserId={currentUserId}
+  classes={classes}
+  schoolName={schoolName}
+  students={students.map((student) => ({
+  id: student.id,
+  name: student.full_name || student.name || 'Aluno sem nome',
+  full_name: student.full_name || student.name || 'Aluno sem nome',
+  qr_code_token: student.qr_code_token || null,
+  class_name: student.class_name || null,
+}))}
+/>
 )}
         </section>
       </div>
