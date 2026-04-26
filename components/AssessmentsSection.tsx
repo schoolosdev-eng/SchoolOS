@@ -198,6 +198,9 @@ const [linesCount, setLinesCount] = useState('5')
 const [previewData, setPreviewData] = useState<any[]>([])
 const [generatedVersions, setGeneratedVersions] = useState<any[]>([])
 const [correctionVersion, setCorrectionVersion] = useState('')
+const [capturedImage, setCapturedImage] = useState<string | null>(null)
+const [detectedAnswers, setDetectedAnswers] = useState<Record<number, string>>({})
+const [detectedStudentToken, setDetectedStudentToken] = useState('')
 const [studentAnswers, setStudentAnswers] = useState<Record<number, string>>({})
 const [correctionResult, setCorrectionResult] = useState<{
   correct: number
@@ -813,6 +816,153 @@ const newCorrect = correctOptionItem
   setPrintVersions([])
   setActiveTab('preview')
   setLocalMessage('Prova carregada. Agora você pode imprimir novamente.')
+}
+
+function analyzeImage(imageDataUrl: string) {
+  const img = new Image()
+  img.src = imageDataUrl
+
+  img.onload = () => {
+    const canvas = document.createElement('canvas')
+    canvas.width = img.width
+    canvas.height = img.height
+
+    const ctx = canvas.getContext('2d')
+    ctx?.drawImage(img, 0, 0)
+
+    const data = ctx?.getImageData(0, 0, canvas.width, canvas.height)
+
+    if (!data) return
+
+    // EXEMPLO: analisar ponto
+    const x = 200
+    const y = 300
+
+    const index = (y * canvas.width + x) * 4
+
+    const r = data.data[index]
+    const g = data.data[index + 1]
+    const b = data.data[index + 2]
+
+    const brightness = (r + g + b) / 3
+
+    if (brightness < 100) {
+      console.log('Marcado')
+    } else {
+      console.log('Vazio')
+    }
+  }
+}
+
+function getBrightness(data: Uint8ClampedArray, width: number, x: number, y: number) {
+  const index = (Math.floor(y) * width + Math.floor(x)) * 4
+
+  const r = data[index]
+  const g = data[index + 1]
+  const b = data[index + 2]
+
+  return (r + g + b) / 3
+}
+
+function analyzeAnswerCard(imageDataUrl: string) {
+  const img = new Image()
+  img.src = imageDataUrl
+
+  img.onload = () => {
+    const canvas = document.createElement('canvas')
+    canvas.width = img.width
+    canvas.height = img.height
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    ctx.drawImage(img, 0, 0)
+
+    const image = ctx.getImageData(0, 0, canvas.width, canvas.height)
+    const data = image.data
+
+    const totalQuestions =
+      generatedVersions[0]?.questions?.filter(
+        (q: any) => q.question_type === 'objective'
+      ).length || 10
+
+    const answers: Record<number, string> = {}
+
+    /**
+     * IMPORTANTE:
+     * Esses valores são proporcionais à imagem.
+     * Vamos começar com uma leitura baseada no cartão centralizado.
+     */
+    const startX = canvas.width * 0.17
+    const startY = canvas.height * 0.38
+
+    const colGap = canvas.width * 0.21
+    const rowGap = canvas.height * 0.045
+
+    const optionGap = canvas.width * 0.035
+
+    const rows = 3
+    const columns = 4
+
+    const letters = ['A', 'B', 'C', 'D', 'E']
+
+    for (let col = 0; col < columns; col++) {
+      for (let row = 0; row < rows; row++) {
+        const questionNumber = col * rows + row + 1
+
+        if (questionNumber > totalQuestions) continue
+
+        const baseX = startX + col * colGap
+        const baseY = startY + row * rowGap
+
+        let darkestLetter = ''
+        let darkestValue = 255
+
+        letters.forEach((letter, optionIndex) => {
+          const x = baseX + optionIndex * optionGap
+          const y = baseY
+
+          const brightness = getBrightness(data, canvas.width, x, y)
+
+          if (brightness < darkestValue) {
+            darkestValue = brightness
+            darkestLetter = letter
+          }
+        })
+
+        if (darkestValue < 120) {
+          answers[questionNumber] = darkestLetter
+        }
+      }
+    }
+
+    setDetectedAnswers(answers)
+    setStudentAnswers(answers)
+    setLocalMessage('Leitura do cartão concluída.')
+  }
+}
+
+function handleCaptureAnswerCard() {
+  const video = document.querySelector('#qr-reader video') as HTMLVideoElement
+
+  if (!video) {
+    setLocalMessage('Câmera não encontrada.')
+    return
+  }
+
+  const canvas = document.createElement('canvas')
+  canvas.width = video.videoWidth
+  canvas.height = video.videoHeight
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+  const image = canvas.toDataURL('image/png')
+
+  setCapturedImage(image)
+  analyzeAnswerCard(image)
 }
 
   return (
@@ -1574,6 +1724,12 @@ const newCorrect = correctOptionItem
   >
     Correção por câmera
   </button>
+{capturedImage && (
+  <img
+    src={capturedImage}
+    style={{ width: '100%', marginTop: 16 }}
+  />
+)}
 </div>
       </div>
     </div>
@@ -1686,30 +1842,87 @@ const newCorrect = correctOptionItem
 {correctionMode === 'camera' && (
   <div style={{ marginTop: 24 }}>
     <div style={messageStyle}>
-      Área de correção automática por câmera.
+      Aponte a câmera para o cartão-resposta. O cartão precisa estar bem alinhado
+      e visível dentro da área da câmera.
     </div>
 
-<button
-  onClick={() => setCameraActive(true)}
-  style={{
-    ...primaryButtonStyle,
-    marginTop: 16,
-    background: '#16a34a',
-  }}
->
-  Iniciar leitura da prova
-</button>
-{cameraActive && (
-  <div style={{ marginTop: 20 }}>
-    <div
-      id="qr-reader"
+    <button
+      onClick={() => setCameraActive(true)}
       style={{
-        width: 300,
-        margin: '0 auto',
+        ...primaryButtonStyle,
+        marginTop: 16,
+        background: '#16a34a',
       }}
-    />
-  </div>
-)}
+    >
+      Iniciar leitura da prova
+    </button>
+
+    {cameraActive && (
+      <div style={{ marginTop: 20 }}>
+        <div
+          id="qr-reader"
+          style={{
+            width: '100%',
+            maxWidth: 420,
+            borderRadius: 18,
+            overflow: 'hidden',
+            border: '2px solid #0f172a',
+          }}
+        />
+
+        <button
+          onClick={handleCaptureAnswerCard}
+          style={{
+            ...primaryButtonStyle,
+            marginTop: 16,
+            background: '#0f172a',
+          }}
+        >
+          Capturar e ler cartão
+        </button>
+      </div>
+    )}
+
+    {capturedImage && (
+      <div style={{ marginTop: 20 }}>
+        <h3 style={titleStyle}>Imagem capturada</h3>
+
+        <img
+          src={capturedImage}
+          alt="Cartão capturado"
+          style={{
+            width: '100%',
+            maxWidth: 420,
+            borderRadius: 16,
+            border: '1px solid #cbd5e1',
+            marginTop: 12,
+          }}
+        />
+      </div>
+    )}
+
+    {Object.keys(detectedAnswers).length > 0 && (
+      <div style={messageStyle}>
+        <strong>Respostas detectadas:</strong>
+        <br />
+        {Object.entries(detectedAnswers)
+          .map(([question, answer]) => `${question}: ${answer}`)
+          .join(' | ')}
+      </div>
+    )}
+
+    {Object.keys(detectedAnswers).length > 0 && (
+      <button
+        onClick={handleCorrectManual}
+        style={{
+          ...primaryButtonStyle,
+          marginTop: 16,
+          background: '#16a34a',
+        }}
+      >
+        Corrigir automaticamente
+      </button>
+    )}
   </div>
 )}
   </>
