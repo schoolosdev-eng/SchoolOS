@@ -529,7 +529,7 @@ async function handleGenerateVersions() {
 
   const generated = versions.map((type) => {
     const shuffledQuestions = shuffleArray(data || []).map((q: any) => {
-      const shuffledOptions = shuffleArray(q.assessment_options || [])
+    const shuffledOptions = shuffleArray<any>(q.assessment_options || [])
 
 const newCorrect = shuffledOptions.find(
   (opt: any) => opt.is_correct
