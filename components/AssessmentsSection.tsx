@@ -459,10 +459,12 @@ useEffect(() => {
       setLocalMessage('Erro ao iniciar leitura de QR Code.')
     })
 
-  return () => {
-    scanner.stop().catch(() => {})
-    scanner.clear().catch(() => {})
-  }
+return () => {
+  scanner
+    .stop()
+    .then(() => scanner.clear())
+    .catch(() => {})
+}
 }, [cameraActive])
 
 async function handleFinishAssessment() {
