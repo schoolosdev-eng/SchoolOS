@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import QRCode from 'qrcode'
 import { useEffect, useRef } from 'react'
 import { Html5Qrcode } from 'html5-qrcode'
+import cv from '@techstark/opencv-js'
 
 async function handleExportPDF() {
   const element = document.getElementById('print-area')
@@ -36,10 +37,47 @@ async function handleExportPDF() {
   #print-area {
     width: 100%;
   }
+.answer-card-opencv {
+  position: relative !important;
+  border: 2px solid #0f172a !important;
+  border-radius: 10px !important;
+  padding: 42px 22px 36px !important;
+  margin-top: 0 !important;
+  margin-bottom: 32px !important;
+  overflow: hidden !important;
+}
+
+.marker {
+  position: absolute !important;
+  width: 14px !important;
+  height: 14px !important;
+  background: #000000 !important;
+}
+
+.marker-top-left {
+  top: 12px !important;
+  left: 12px !important;
+}
+
+.marker-top-right {
+  top: 12px !important;
+  right: 12px !important;
+}
+
+.marker-bottom-left {
+  bottom: 12px !important;
+  left: 12px !important;
+}
+
+.marker-bottom-right {
+  bottom: 12px !important;
+  right: 12px !important;
+}  
 
 .answer-grid {
   display: grid !important;
-  grid-template-columns: repeat(4, 1fr) !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 2px !important;
   width: 100% !important;
   max-width: 100% !important;
   overflow: hidden !important;
@@ -47,7 +85,7 @@ async function handleExportPDF() {
 }
 
 .answer-col {
-  border-right: 1px solid #cbd5e1 !important;
+  padding-right: 2px !important;
 }
 
 .answer-col:last-child {
@@ -57,11 +95,12 @@ async function handleExportPDF() {
 .answer-cell {
   height: 34px !important;
   display: grid !important;
-  grid-template-columns: 24px repeat(5, 22px) !important;
+  grid-template-columns: 26px repeat(5, 20px) !important;
   align-items: center !important;
-  gap: 3px !important;
-  padding: 3px 4px !important;
+  gap: 2px !important;
+  padding: 2px 3px !important;
   border-bottom: 1px solid #cbd5e1 !important;
+  font-size: 10px !important;
 }
 
 .answer-cell:last-child {
@@ -69,18 +108,17 @@ async function handleExportPDF() {
 }
 
 .answer-option {
-  display: inline-flex !important;
+  display: flex !important;
   align-items: center !important;
   gap: 2px !important;
-  font-size: 10px !important;
-  font-weight: 700 !important;
+  font-size: 9px !important;
 }
 
 .answer-ball {
-  width: 10px !important;
-  height: 10px !important;
+  width: 9px !important;
+  height: 9px !important;
   border-radius: 50% !important;
-  border: 2px solid #0f172a !important;
+  border: 1.5px solid #0f172a !important;
   display: inline-block !important;
 }
 
@@ -886,88 +924,228 @@ function getBrightness(data: Uint8ClampedArray, width: number, x: number, y: num
   return (r + g + b) / 3
 }
 
+function orderMarkerCenters(points: { x: number; y: number }[]) {
+  const sortedByY = [...points].sort((a, b) => a.y - b.y)
+
+  const top = sortedByY.slice(0, 2).sort((a, b) => a.x - b.x)
+  const bottom = sortedByY.slice(2, 4).sort((a, b) => a.x - b.x)
+
+  return {
+    topLeft: top[0],
+    topRight: top[1],
+    bottomLeft: bottom[0],
+    bottomRight: bottom[1],
+  }
+}
+
 function analyzeAnswerCard(imageDataUrl: string) {
   const img = new Image()
   img.src = imageDataUrl
 
   img.onload = () => {
-    const canvas = document.createElement('canvas')
-    canvas.width = img.width
-    canvas.height = img.height
+    const cvAny = cv as any
 
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
+    const originalCanvas = document.createElement('canvas')
+    originalCanvas.width = img.width
+    originalCanvas.height = img.height
 
-    ctx.drawImage(img, 0, 0)
+    const originalCtx = originalCanvas.getContext('2d')
+    if (!originalCtx) return
 
-    const image = ctx.getImageData(0, 0, canvas.width, canvas.height)
-    const data = image.data
+    originalCtx.drawImage(img, 0, 0)
 
-    const totalQuestions =
-      generatedVersions[0]?.questions?.filter(
-        (q: any) => q.question_type === 'objective'
-      ).length || 10
+    const src = cvAny.imread(originalCanvas)
+    const gray = new cvAny.Mat()
+    const binary = new cvAny.Mat()
+    const contours = new cvAny.MatVector()
+    const hierarchy = new cvAny.Mat()
 
-    const answers: Record<number, string> = {}
+    try {
+      cvAny.cvtColor(src, gray, cvAny.COLOR_RGBA2GRAY)
 
-    /**
-     * IMPORTANTE:
-     * Esses valores são proporcionais à imagem.
-     * Vamos começar com uma leitura baseada no cartão centralizado.
-     */
-    const startX = canvas.width * 0.17
-    const startY = canvas.height * 0.38
+      cvAny.threshold(
+        gray,
+        binary,
+        80,
+        255,
+        cvAny.THRESH_BINARY_INV
+      )
 
-    const colGap = canvas.width * 0.21
-    const rowGap = canvas.height * 0.045
+      cvAny.findContours(
+        binary,
+        contours,
+        hierarchy,
+        cvAny.RETR_EXTERNAL,
+        cvAny.CHAIN_APPROX_SIMPLE
+      )
 
-    const optionGap = canvas.width * 0.035
+      const markerCenters: { x: number; y: number }[] = []
 
-    const rows = 3
-    const columns = 4
+      for (let i = 0; i < contours.size(); i++) {
+        const contour = contours.get(i)
+        const rect = cvAny.boundingRect(contour)
 
-const letters = ['A', 'B', 'C', 'D', 'E']
-const points: { x: number; y: number; label: string }[] = []
+        const area = rect.width * rect.height
+        const ratio = rect.width / rect.height
 
-for (let col = 0; col < columns; col++) {
-      for (let row = 0; row < rows; row++) {
-        const questionNumber = col * rows + row + 1
+        const minArea = originalCanvas.width * originalCanvas.height * 0.00008
+        const maxArea = originalCanvas.width * originalCanvas.height * 0.004
 
-        if (questionNumber > totalQuestions) continue
+        const isSquare =
+          ratio > 0.65 &&
+          ratio < 1.45 &&
+          area > minArea &&
+          area < maxArea
 
-        const baseX = startX + col * colGap
-        const baseY = startY + row * rowGap
+        if (isSquare) {
+          markerCenters.push({
+            x: rect.x + rect.width / 2,
+            y: rect.y + rect.height / 2,
+          })
+        }
 
-        let darkestLetter = ''
-        let darkestValue = 255
+        contour.delete()
+      }
 
-        letters.forEach((letter, optionIndex) => {
-          const x = baseX + optionIndex * optionGap
-          const y = baseY
-          points.push({
-  x,
-  y,
-  label: `${questionNumber}${letter}`,
-})
+      if (markerCenters.length < 4) {
+        setLocalMessage(
+          `Não encontrei os 4 marcadores do cartão. Detectados: ${markerCenters.length}. Aproxime e alinhe melhor.`
+        )
+        return
+      }
 
-          const brightness = getBrightness(data, canvas.width, x, y)
+      const selectedMarkers = markerCenters
+        .sort((a, b) => a.y - b.y)
+        .slice(0, 20)
 
-          if (brightness < darkestValue) {
-            darkestValue = brightness
-            darkestLetter = letter
+      const corners = orderMarkerCenters(selectedMarkers.slice(0, 4))
+
+      const CARD_WIDTH = 1000
+      const CARD_HEIGHT = 330
+
+      const srcTri = cvAny.matFromArray(4, 1, cvAny.CV_32FC2, [
+        corners.topLeft.x,
+        corners.topLeft.y,
+        corners.topRight.x,
+        corners.topRight.y,
+        corners.bottomRight.x,
+        corners.bottomRight.y,
+        corners.bottomLeft.x,
+        corners.bottomLeft.y,
+      ])
+
+      const dstTri = cvAny.matFromArray(4, 1, cvAny.CV_32FC2, [
+        0,
+        0,
+        CARD_WIDTH,
+        0,
+        CARD_WIDTH,
+        CARD_HEIGHT,
+        0,
+        CARD_HEIGHT,
+      ])
+
+      const transform = cvAny.getPerspectiveTransform(srcTri, dstTri)
+      const warped = new cvAny.Mat()
+
+      cvAny.warpPerspective(
+        src,
+        warped,
+        transform,
+        new cvAny.Size(CARD_WIDTH, CARD_HEIGHT)
+      )
+
+      const warpedCanvas = document.createElement('canvas')
+      cvAny.imshow(warpedCanvas, warped)
+
+      const warpedImageUrl = warpedCanvas.toDataURL('image/png')
+      setCapturedImage(warpedImageUrl)
+
+      const warpedGray = new cvAny.Mat()
+      cvAny.cvtColor(warped, warpedGray, cvAny.COLOR_RGBA2GRAY)
+
+      const image = new ImageData(
+        new Uint8ClampedArray(warpedGray.data),
+        CARD_WIDTH,
+        CARD_HEIGHT
+      )
+
+      const totalQuestions =
+        generatedVersions[0]?.questions?.filter(
+          (q: any) => q.question_type === 'objective'
+        ).length || 10
+
+      const answers: Record<number, string> = {}
+      const points: { x: number; y: number; label: string }[] = []
+
+      const letters = ['A', 'B', 'C', 'D', 'E']
+
+      const columns = 4
+      const rows = Math.ceil(totalQuestions / columns)
+
+      const gridStartX = 38
+      const gridStartY = 126
+      const colGap = 235
+      const rowGap = 46
+      const optionStartOffset = 54
+      const optionGap = 34
+
+      for (let col = 0; col < columns; col++) {
+        for (let row = 0; row < rows; row++) {
+          const questionNumber = col * rows + row + 1
+
+          if (questionNumber > totalQuestions) continue
+
+          const baseX = gridStartX + col * colGap
+          const baseY = gridStartY + row * rowGap
+
+          let darkestLetter = ''
+          let darkestValue = 255
+
+          letters.forEach((letter, optionIndex) => {
+            const x = baseX + optionStartOffset + optionIndex * optionGap
+            const y = baseY
+
+            points.push({
+              x: (x / CARD_WIDTH) * 1000,
+              y: (y / CARD_HEIGHT) * 1000,
+              label: `${questionNumber}${letter}`,
+            })
+
+            const brightness = getBrightness(
+              image.data,
+              CARD_WIDTH,
+              x,
+              y
+            )
+
+            if (brightness < darkestValue) {
+              darkestValue = brightness
+              darkestLetter = letter
+            }
+          })
+
+          if (darkestValue < 145) {
+            answers[questionNumber] = darkestLetter
           }
-        })
-
-        if (darkestValue < 120) {
-          answers[questionNumber] = darkestLetter
         }
       }
-    }
 
-    setDetectedAnswers(answers)
-    setDebugPoints(points)
-    setStudentAnswers(answers)
-    setLocalMessage('Leitura do cartão concluída.')
+      setDetectedAnswers(answers)
+      setDebugPoints(points)
+      setStudentAnswers(answers)
+
+      setLocalMessage('Cartão lido com OpenCV. Confira as respostas detectadas.')
+    } catch (error) {
+      console.error(error)
+      setLocalMessage('Erro ao processar cartão com OpenCV.')
+    } finally {
+      src.delete()
+      gray.delete()
+      binary.delete()
+      contours.delete()
+      hierarchy.delete()
+    }
   }
 }
 
@@ -1468,61 +1646,79 @@ async function handleQrScan(decodedText: string) {
           </div>
         </div>
 
-        <div
+<div style={{ marginTop: 16, marginBottom: 26 }}>
+<div className="answer-card-opencv">
+  <div className="marker marker-top-left" />
+  <div className="marker marker-top-right" />
+  <div className="marker marker-bottom-left" />
+  <div className="marker marker-bottom-right" />
+
+<h3
   style={{
-    marginTop: 20,
-    border: '2px solid #0f172a',
-    padding: 16,
-    borderRadius: 8,
+    margin: '0 0 18px',
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: 900,
   }}
-    >
-<h3 style={{ marginBottom: 12 }}>Cartão-resposta</h3>
+>
+  Cartão-resposta
+</h3>
 
-<div className="answer-grid">
-  {(() => {
-    const total = exam.version.questions.filter(
-      (q: any) => q.question_type === 'objective'
-    ).length
+  <div className="answer-grid">
+    {(() => {
+      const total = exam.version.questions.filter(
+        (q: any) => q.question_type === 'objective'
+      ).length
 
-    const columns = 4
-    const rows = Math.ceil(total / columns)
+      const columns = 4
+      const rows = Math.ceil(total / columns)
 
-    return Array.from({ length: columns }).map((_, col) => (
-      <div key={col} className="answer-col">
-        {Array.from({ length: rows }).map((_, row) => {
-          const questionIndex = col * rows + row
+      return Array.from({ length: columns }).map((_, col) => (
+        <div key={col} className="answer-col">
+          {Array.from({ length: rows }).map((_, row) => {
+            const questionIndex = col * rows + row
 
-          if (questionIndex >= total) {
+            if (questionIndex >= total) {
+              return (
+                <div
+                  key={`empty-${col}-${row}`}
+                  className="answer-cell"
+                />
+              )
+            }
+
             return (
-              <div
-                key={`empty-${col}-${row}`}
-                className="answer-cell"
-              />
+              <div key={questionIndex} className="answer-cell">
+                <strong style={{ fontSize: 11 }}>
+                  {String(questionIndex + 1).padStart(2, '0')}
+                </strong>
+
+                {['A', 'B', 'C', 'D', 'E'].map((letter) => (
+                  <span key={letter} className="answer-option">
+                    <span className="answer-ball" />
+                    {letter}
+                  </span>
+                ))}
+              </div>
             )
-          }
-
-          return (
-            <div key={questionIndex} className="answer-cell">
-              <strong style={{ fontSize: 11 }}>
-                {String(questionIndex + 1).padStart(2, '0')}
-              </strong>
-
-              {['A', 'B', 'C', 'D', 'E'].map((letter) => (
-<span key={letter} className="answer-option">
-  <span className="answer-ball" />
-  {letter}
-</span>
-              ))}
-            </div>
-          )
-        })}
-      </div>
-    ))
-  })()}
+          })}
+        </div>
+      ))
+    })()}
+  </div>
 </div>
     </div>
 
-        <div style={{ marginTop: 28, columnCount: 2, columnGap: 32, columnRule: '1px solid #cbd5e1', fontSize: 12, lineHeight: 1.45 }}>
+  <div
+  style={{
+    marginTop: 34,
+    columnCount: 2,
+    columnGap: 34,
+    columnRule: '1px solid #cbd5e1',
+    fontSize: 11,
+    lineHeight: 1.35,
+  }}
+>
           {exam.version.questions.map((q: any, index: number) => (
             <div key={q.id} style={{ breakInside: 'avoid', marginBottom: 14 }}>
               <strong>Questão {index + 1}</strong>
@@ -1530,9 +1726,29 @@ async function handleQrScan(decodedText: string) {
 
               {q.question_type === 'objective' &&
                 q.options?.map((opt: any) => (
-                  <p key={opt.id} style={{ margin: '4px 0' }}>
-                    {opt.option_letter}) {opt.option_text}
-                  </p>
+<p
+  key={opt.id}
+  style={{
+    margin: '4px 0',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  }}
+>
+  <span
+    style={{
+      width: 10,
+      height: 10,
+      borderRadius: '50%',
+      border: '1.5px solid #0f172a',
+      display: 'inline-block',
+      flexShrink: 0,
+    }}
+  />
+  <span>
+    {opt.option_letter}) {opt.option_text}
+  </span>
+</p>
                 ))}
 
               {q.question_type === 'discursive' &&
@@ -1993,8 +2209,8 @@ async function handleQrScan(decodedText: string) {
       title={point.label}
       style={{
         position: 'absolute',
-        left: `${(point.x / 1000) * 100}%`,
-        top: `${(point.y / 1000) * 100}%`,
+        left: `${point.x / 10}%`,
+        top: `${point.y / 10}%`,
         width: 8,
         height: 8,
         borderRadius: '50%',
