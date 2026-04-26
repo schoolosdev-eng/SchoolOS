@@ -1904,6 +1904,11 @@ async function handleQrScan(decodedText: string) {
       Aponte a câmera para o cartão-resposta. O cartão precisa estar bem alinhado
       e visível dentro da área da câmera.
     </div>
+    {localMessage && (
+  <div style={messageStyle}>
+    {localMessage}
+  </div>
+)}
 
     <button
       onClick={() => setCameraActive(true)}
