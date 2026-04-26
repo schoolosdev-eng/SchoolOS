@@ -784,11 +784,17 @@ async function handleOpenAssessmentForPrint(assessment: any) {
 
   const generated = versions.map((type) => {
     const shuffledQuestions = shuffleArray(data || []).map((q: any) => {
-      const shuffledOptions = shuffleArray(q.assessment_options || [])
+const shuffledOptions = shuffleArray<any>(
+  (q.assessment_options || []) as any[]
+)
 
-      const newCorrect = shuffledOptions.find(
-        (opt: any) => opt.is_correct
-      )?.option_letter
+const correctOptionItem = shuffledOptions.find(
+  (opt: any) => opt.is_correct
+)
+
+const newCorrect = correctOptionItem
+  ? correctOptionItem.option_letter
+  : null
 
       return {
         ...q,
