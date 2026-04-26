@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import QRCode from 'qrcode'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Html5Qrcode } from 'html5-qrcode'
 
 async function handleExportPDF() {
@@ -201,8 +201,10 @@ const [correctionVersion, setCorrectionVersion] = useState('')
 const [capturedImage, setCapturedImage] = useState<string | null>(null)
 const [detectedAnswers, setDetectedAnswers] = useState<Record<number, string>>({})
 const [detectedStudentToken, setDetectedStudentToken] = useState('')
+const qrReadRef = useRef(false)
 const [studentAnswers, setStudentAnswers] = useState<Record<number, string>>({})
 const [debugPoints, setDebugPoints] = useState<{ x: number; y: number; label: string }[]>([])
+const [detectedStudent, setDetectedStudent] = useState<any | null>(null)
 const [correctionResult, setCorrectionResult] = useState<{
   correct: number
   total: number
@@ -432,6 +434,8 @@ async function handleSaveQuestion() {
 useEffect(() => {
   if (!cameraActive) return
 
+  qrReadRef.current = false
+
   const scanner = new Html5Qrcode('qr-reader')
 
   scanner
@@ -441,27 +445,23 @@ useEffect(() => {
         fps: 10,
         qrbox: 250,
       },
-      (decodedText) => {
-        console.log('QR lido:', decodedText)
+      async (decodedText) => {
+        if (qrReadRef.current) return
 
         if (decodedText.startsWith('schoolos:student:')) {
-          const token = decodedText.replace('schoolos:student:', '')
-
-          alert('Aluno identificado! Token: ' + token)
-
-          scanner.stop()
+          qrReadRef.current = true
+          await handleQrScan(decodedText)
         }
       },
-      (error) => {
-        // ignorar erros de leitura contínua
-      }
+      () => {}
     )
     .catch(() => {
-      alert('Erro ao iniciar leitura de QR Code.')
+      setLocalMessage('Erro ao iniciar leitura de QR Code.')
     })
 
   return () => {
     scanner.stop().catch(() => {})
+    scanner.clear().catch(() => {})
   }
 }, [cameraActive])
 
@@ -968,6 +968,11 @@ for (let col = 0; col < columns; col++) {
 }
 
 function handleCaptureAnswerCard() {
+  if (!detectedStudent) {
+    setLocalMessage('Leia primeiro o QR Code do aluno.')
+    return
+  }
+
   const video = document.querySelector('#qr-reader video') as HTMLVideoElement
 
   if (!video) {
@@ -988,6 +993,33 @@ function handleCaptureAnswerCard() {
 
   setCapturedImage(image)
   analyzeAnswerCard(image)
+}
+
+async function handleQrScan(decodedText: string) {
+  try {
+    if (!decodedText.startsWith('schoolos:student:')) return
+
+    const token = decodedText.replace('schoolos:student:', '').trim()
+
+    const { data, error } = await supabase
+      .from('students')
+      .select('*')
+      .eq('qr_code_token', token)
+      .single()
+
+    if (error || !data) {
+      setLocalMessage('Aluno não encontrado pelo QR Code.')
+      return
+    }
+
+    setDetectedStudent(data)
+    setDetectedStudentToken(token)
+    setSelectedStudentId(data.id)
+
+    setLocalMessage(`Aluno identificado: ${data.full_name || data.name}`)
+  } catch {
+    setLocalMessage('Erro ao ler QR Code do aluno.')
+  }
 }
 
   return (
