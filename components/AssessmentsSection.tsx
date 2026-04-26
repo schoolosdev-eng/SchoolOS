@@ -945,6 +945,11 @@ function getBrightness(data: Uint8ClampedArray, width: number, x: number, y: num
   return (r + g + b) / 3
 }
 
+function getGrayBrightness(data: Uint8Array, width: number, x: number, y: number) {
+  const index = Math.floor(y) * width + Math.floor(x)
+  return data[index]
+}
+
 function orderMarkerCenters(points: { x: number; y: number }[]) {
   const sortedByY = [...points].sort((a, b) => a.y - b.y)
 
@@ -985,6 +990,11 @@ if (!cvAny) {
     const binary = new cvAny.Mat()
     const contours = new cvAny.MatVector()
     const hierarchy = new cvAny.Mat()
+    let srcTri: any = null
+let dstTri: any = null
+let transform: any = null
+let warped: any = null
+let warpedGray: any = null
 
     try {
       cvAny.cvtColor(src, gray, cvAny.COLOR_RGBA2GRAY)
@@ -1049,7 +1059,7 @@ if (!cvAny) {
       const CARD_WIDTH = 1000
       const CARD_HEIGHT = 330
 
-      const srcTri = cvAny.matFromArray(4, 1, cvAny.CV_32FC2, [
+        srcTri = cvAny.matFromArray(4, 1, cvAny.CV_32FC2, [
         corners.topLeft.x,
         corners.topLeft.y,
         corners.topRight.x,
@@ -1060,7 +1070,7 @@ if (!cvAny) {
         corners.bottomLeft.y,
       ])
 
-      const dstTri = cvAny.matFromArray(4, 1, cvAny.CV_32FC2, [
+        dstTri = cvAny.matFromArray(4, 1, cvAny.CV_32FC2, [
         0,
         0,
         CARD_WIDTH,
@@ -1071,8 +1081,8 @@ if (!cvAny) {
         CARD_HEIGHT,
       ])
 
-      const transform = cvAny.getPerspectiveTransform(srcTri, dstTri)
-      const warped = new cvAny.Mat()
+      transform = cvAny.getPerspectiveTransform(srcTri, dstTri)
+      warped = new cvAny.Mat()
 
       cvAny.warpPerspective(
         src,
@@ -1087,14 +1097,7 @@ if (!cvAny) {
       const warpedImageUrl = warpedCanvas.toDataURL('image/png')
       setCapturedImage(warpedImageUrl)
 
-      const warpedGray = new cvAny.Mat()
-      cvAny.cvtColor(warped, warpedGray, cvAny.COLOR_RGBA2GRAY)
-
-      const image = new ImageData(
-        new Uint8ClampedArray(warpedGray.data),
-        CARD_WIDTH,
-        CARD_HEIGHT
-      )
+      warpedGray = new cvAny.Mat()
 
       const totalQuestions =
         generatedVersions[0]?.questions?.filter(
@@ -1138,12 +1141,12 @@ if (!cvAny) {
               label: `${questionNumber}${letter}`,
             })
 
-            const brightness = getBrightness(
-              image.data,
-              CARD_WIDTH,
-              x,
-              y
-            )
+const brightness = getGrayBrightness(
+  warpedGray.data,
+  CARD_WIDTH,
+  x,
+  y
+)
 
             if (brightness < darkestValue) {
               darkestValue = brightness
@@ -1166,12 +1169,18 @@ if (!cvAny) {
       console.error(error)
       setLocalMessage('Erro ao processar cartão com OpenCV.')
     } finally {
-      src.delete()
-      gray.delete()
-      binary.delete()
-      contours.delete()
-      hierarchy.delete()
-    }
+  try { src.delete() } catch {}
+  try { gray.delete() } catch {}
+  try { binary.delete() } catch {}
+  try { contours.delete() } catch {}
+  try { hierarchy.delete() } catch {}
+
+  try { srcTri?.delete?.() } catch {}
+  try { dstTri?.delete?.() } catch {}
+  try { transform?.delete?.() } catch {}
+  try { warped?.delete?.() } catch {}
+  try { warpedGray?.delete?.() } catch {}
+}
   }
 }
 
