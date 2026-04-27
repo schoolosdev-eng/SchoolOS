@@ -1050,11 +1050,28 @@ let warpedGray: any = null
         return
       }
 
-      const selectedMarkers = markerCenters
-        .sort((a, b) => a.y - b.y)
-        .slice(0, 20)
+const topLeft = markerCenters.reduce((best, point) =>
+  point.x + point.y < best.x + best.y ? point : best
+)
 
-      const corners = orderMarkerCenters(selectedMarkers.slice(0, 4))
+const topRight = markerCenters.reduce((best, point) =>
+  point.x - point.y > best.x - best.y ? point : best
+)
+
+const bottomRight = markerCenters.reduce((best, point) =>
+  point.x + point.y > best.x + best.y ? point : best
+)
+
+const bottomLeft = markerCenters.reduce((best, point) =>
+  point.y - point.x > best.y - best.x ? point : best
+)
+
+const corners = {
+  topLeft,
+  topRight,
+  bottomRight,
+  bottomLeft,
+}
 
       const CARD_WIDTH = 1000
       const CARD_HEIGHT = 330
@@ -1091,13 +1108,17 @@ let warpedGray: any = null
         new cvAny.Size(CARD_WIDTH, CARD_HEIGHT)
       )
 
-      const warpedCanvas = document.createElement('canvas')
-      cvAny.imshow(warpedCanvas, warped)
+const warpedCanvas = document.createElement('canvas')
+warpedCanvas.width = CARD_WIDTH
+warpedCanvas.height = CARD_HEIGHT
 
-      const warpedImageUrl = warpedCanvas.toDataURL('image/png')
-      setCapturedImage(warpedImageUrl)
+cvAny.imshow(warpedCanvas, warped)
 
-      warpedGray = new cvAny.Mat()
+const warpedImageUrl = warpedCanvas.toDataURL('image/png')
+setCapturedImage(warpedImageUrl)
+
+warpedGray = new cvAny.Mat()
+cvAny.cvtColor(warped, warpedGray, cvAny.COLOR_RGBA2GRAY)
 
       const totalQuestions =
         generatedVersions[0]?.questions?.filter(
@@ -1135,11 +1156,11 @@ let warpedGray: any = null
             const x = baseX + optionStartOffset + optionIndex * optionGap
             const y = baseY
 
-            points.push({
-              x: (x / CARD_WIDTH) * 1000,
-              y: (y / CARD_HEIGHT) * 1000,
-              label: `${questionNumber}${letter}`,
-            })
+points.push({
+  x: (x / CARD_WIDTH) * 100,
+  y: (y / CARD_HEIGHT) * 100,
+  label: `${questionNumber}${letter}`,
+})
 
 const brightness = getGrayBrightness(
   warpedGray.data,
@@ -2244,8 +2265,8 @@ async function handleQrScan(decodedText: string) {
       title={point.label}
       style={{
         position: 'absolute',
-        left: `${point.x / 10}%`,
-        top: `${point.y / 10}%`,
+        left: `${point.x}%`,
+        top: `${point.y}%`,
         width: 8,
         height: 8,
         borderRadius: '50%',
