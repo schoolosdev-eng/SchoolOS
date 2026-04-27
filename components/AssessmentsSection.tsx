@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import QRCode from 'qrcode'
 import { useEffect, useRef } from 'react'
 import { Html5Qrcode } from 'html5-qrcode'
+import AppButton from '@/components/AppButton'
 
 async function handleExportPDF() {
   const element = document.getElementById('print-area')
@@ -226,6 +227,8 @@ const [optionD, setOptionD] = useState('')
 const [optionE, setOptionE] = useState('')
 const [correctOption, setCorrectOption] = useState('')
 const [correctionMode, setCorrectionMode] = useState<'manual' | 'camera'>('manual')
+const [showAssessments, setShowAssessments] = useState(false)
+const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
 const [assessmentResults, setAssessmentResults] = useState<any[]>([])
 const [resultsLoading, setResultsLoading] = useState(false)
 const [assessments, setAssessments] = useState<any[]>([])
@@ -245,6 +248,10 @@ const qrReadRef = useRef(false)
 const [studentAnswers, setStudentAnswers] = useState<Record<number, string>>({})
 const [debugPoints, setDebugPoints] = useState<{ x: number; y: number; label: string }[]>([])
 const [detectedStudent, setDetectedStudent] = useState<any | null>(null)
+const [assessmentSearch, setAssessmentSearch] = useState('')
+const [assessmentSubjectFilter, setAssessmentSubjectFilter] = useState('')
+const [selectedResultAssessmentId, setSelectedResultAssessmentId] = useState('')
+const [assessmentClassFilter, setAssessmentClassFilter] = useState('')
 const [correctionResult, setCorrectionResult] = useState<{
   correct: number
   total: number
@@ -693,9 +700,12 @@ await supabase.from('assessment_results').insert({
   setLocalMessage('Correção realizada com sucesso.')
 }
 
-async function handleLoadResults() {
-  if (!createdAssessmentId) {
-    setLocalMessage('Avaliação não identificada.')
+async function handleLoadResults(assessmentId?: string) {
+  const targetAssessmentId =
+    assessmentId || selectedResultAssessmentId || createdAssessmentId
+
+  if (!targetAssessmentId) {
+    setLocalMessage('Selecione uma avaliação para ver os resultados.')
     return
   }
 
@@ -704,7 +714,7 @@ async function handleLoadResults() {
   const { data, error } = await supabase
     .from('assessment_results')
     .select('*')
-    .eq('assessment_id', createdAssessmentId)
+    .eq('assessment_id', targetAssessmentId)
     .order('created_at', { ascending: false })
 
   setResultsLoading(false)
@@ -715,17 +725,17 @@ async function handleLoadResults() {
   }
 
   setAssessmentResults(data || [])
-calculateStats(data || [])
-const sorted = [...(data || [])].sort((a, b) => {
-  const scoreDiff = Number(b.score) - Number(a.score)
+  calculateStats(data || [])
 
-  if (scoreDiff !== 0) return scoreDiff
+  const sorted = [...(data || [])].sort((a, b) => {
+    const scoreDiff = Number(b.score) - Number(a.score)
 
-  // desempate por data (quem fez primeiro ganha posição)
-  return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-})
+    if (scoreDiff !== 0) return scoreDiff
 
-setRanking(sorted)
+    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  })
+
+  setRanking(sorted)
 }
 
 function calculateStats(results: any[]) {
@@ -1293,6 +1303,42 @@ async function handleQrScan(decodedText: string) {
   )
 }
 
+const filteredAssessments = assessments.filter((assessment) => {
+  const search = assessmentSearch.trim().toLowerCase()
+
+  const matchesSearch =
+    !search ||
+    assessment.title?.toLowerCase().includes(search) ||
+    assessment.subject_name?.toLowerCase().includes(search)
+
+  const matchesSubject =
+    !assessmentSubjectFilter ||
+    assessment.subject_name === assessmentSubjectFilter
+
+  const matchesClass =
+    !assessmentClassFilter ||
+    assessment.class_name === assessmentClassFilter
+
+  return matchesSearch && matchesSubject && matchesClass
+})
+
+const sortedAssessments = [...filteredAssessments].sort((a, b) => {
+  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+})
+
+const assessmentSubjects = Array.from(
+  new Set(assessments.map((item) => item.subject_name).filter(Boolean))
+)
+
+const assessmentClasses = Array.from(
+  new Set(assessments.map((item) => item.class_name).filter(Boolean))
+)
+
+const hasAssessmentFilter =
+  assessmentSearch.trim() ||
+  assessmentSubjectFilter ||
+  assessmentClassFilter
+
   return (
   <section style={cardStyle}>
     {activeTab === 'menu' && (
@@ -1346,10 +1392,14 @@ async function handleQrScan(decodedText: string) {
             </p>
           </button>
           <button
-  onClick={() => {
-    setActiveTab('results')
-    handleLoadResults()
-  }}
+onClick={() => {
+  setActiveTab('results')
+  handleLoadAssessments()
+  setSelectedResultAssessmentId('')
+  setAssessmentResults([])
+  setStats(null)
+  setRanking([])
+}}
   style={{
     ...primaryButtonStyle,
     marginTop: 12,
@@ -1577,7 +1627,10 @@ async function handleQrScan(decodedText: string) {
         <h2 style={titleStyle}>Estrutura da prova</h2>
         <div style={{ marginBottom: 18 }}>
   <button
-    onClick={handleLoadAssessments}
+    onClick={() => {
+  handleLoadAssessments()
+  setShowAssessments(true)
+}}
     style={{
       ...primaryButtonStyle,
       background: '#0f172a',
@@ -1587,9 +1640,67 @@ async function handleQrScan(decodedText: string) {
   </button>
 </div>
 
-{assessments.length > 0 && (
-  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
-    {assessments.map((assessment) => (
+{showAssessments && assessments.length > 0 && (
+  <>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        gap: 12,
+        marginBottom: 20,
+      }}
+    >
+      <input
+        type="text"
+        placeholder="Buscar por título ou disciplina"
+        value={assessmentSearch}
+        onChange={(e) => setAssessmentSearch(e.target.value)}
+        style={inputStyle}
+      />
+
+      <select
+        value={assessmentSubjectFilter}
+        onChange={(e) => setAssessmentSubjectFilter(e.target.value)}
+        style={inputStyle}
+      >
+        <option value="">Todas as disciplinas</option>
+        {assessmentSubjects.map((subject) => (
+          <option key={subject} value={subject}>
+            {subject}
+          </option>
+        ))}
+      </select>
+
+      <select
+        value={assessmentClassFilter}
+        onChange={(e) => setAssessmentClassFilter(e.target.value)}
+        style={inputStyle}
+      >
+        <option value="">Todas as turmas</option>
+        {assessmentClasses.map((className) => (
+          <option key={className} value={className}>
+            {className}
+          </option>
+        ))}
+      </select>
+      <button
+  onClick={() => {
+    setAssessmentSearch('')
+    setAssessmentSubjectFilter('')
+    setAssessmentClassFilter('')
+  }}
+  style={{
+    ...primaryButtonStyle,
+    background: '#64748b',
+  }}
+>
+  Limpar filtros
+</button>
+    </div>
+
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
+      {hasAssessmentFilter &&
+  sortedAssessments.map((assessment) => (
       <div key={assessment.id} style={messageStyle}>
         <strong>{assessment.title}</strong>
         <br />
@@ -1604,8 +1715,9 @@ async function handleQrScan(decodedText: string) {
           </button>
         </div>
       </div>
-    ))}
-  </div>
+      ))}
+    </div>
+  </>
 )}
         <p style={textStyle}>
           Aqui será exibido o modelo da prova antes da geração final.
@@ -1614,33 +1726,33 @@ async function handleQrScan(decodedText: string) {
     </div>
 
     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-  <button
+    <button
     onClick={handleLoadPreview}
     style={primaryButtonStyle}
-  >
+   >
     Carregar prova
-  </button>
+    </button>
 
-  <button
+      <button
     onClick={handleGenerateVersions}
     style={{
       ...primaryButtonStyle,
       background: '#7c3aed',
     }}
-  >
+    >
     Gerar versões (A/B/C/D)
-  </button>
-  <button
-  onClick={handleExportPDF}
-  style={{
+      </button>
+      <button
+    onClick={handleExportPDF}
+    style={{
     ...primaryButtonStyle,
     marginTop: 12,
     background: '#0ea5e9',
   }}
->
+  >
   Exportar PDF
-</button>
-{generatedVersions.length > 0 && (
+  </button>
+  {generatedVersions.length > 0 && (
   <div style={{ marginTop: 20, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
     <select
       value={printMode}
@@ -1812,7 +1924,10 @@ const rows = QUESTIONS_PER_COLUMN
   }}
 >
           {exam.version.questions.map((q: any, index: number) => (
-            <div key={q.id} style={{ breakInside: 'avoid', marginBottom: 14 }}>
+  <div
+    key={q.id}
+    id={`question-${index}`}
+    style={{ breakInside: 'avoid', marginBottom: 14 }}>
               <strong>Questão {index + 1}</strong>
               <p>{q.statement}</p>
 
@@ -1879,32 +1994,41 @@ const rows = QUESTIONS_PER_COLUMN
       </div>
     </div>
 
-    <button
-      onClick={handleLoadResults}
-      style={primaryButtonStyle}
-      disabled={resultsLoading}
-    >
-      {resultsLoading ? 'Carregando...' : 'Atualizar resultados'}
-    </button>
-    <button onClick={handleLoadAssessments} style={primaryButtonStyle}>
-  Carregar avaliações salvas
-</button>
-{assessments.map((assessment) => (
-  <div key={assessment.id} style={messageStyle}>
-    <strong>{assessment.title}</strong>
-    <br />
-    {assessment.subject_name} — {assessment.class_name}
+<div
+  style={{
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: 12,
+    marginTop: 16,
+  }}
+>
+  <select
+    value={selectedResultAssessmentId}
+    onChange={(e) => {
+      setSelectedResultAssessmentId(e.target.value)
+      setAssessmentResults([])
+      setStats(null)
+      setRanking([])
+    }}
+    style={inputStyle}
+  >
+    <option value="">Selecione uma avaliação</option>
+    {assessments.map((assessment) => (
+      <option key={assessment.id} value={assessment.id}>
+        {assessment.title} — {assessment.subject_name} —{' '}
+        {assessment.class_name || 'Turma não informada'}
+      </option>
+    ))}
+  </select>
 
-    <div style={{ marginTop: 10 }}>
-      <button
-        onClick={() => handleOpenAssessment(assessment.id)}
-        style={primaryButtonStyle}
-      >
-        Abrir avaliação
-      </button>
-    </div>
-  </div>
-))}
+  <button
+    onClick={() => handleLoadResults(selectedResultAssessmentId)}
+    style={primaryButtonStyle}
+    disabled={resultsLoading || !selectedResultAssessmentId}
+  >
+    {resultsLoading ? 'Carregando...' : 'Buscar resultados'}
+  </button>
+</div>
 
     <div style={{ marginTop: 18 }}>
       {assessmentResults.length === 0 ? (
@@ -2136,38 +2260,82 @@ const rows = QUESTIONS_PER_COLUMN
               .find((item) => item.type === correctionVersion)
               ?.questions.filter((q: any) => q.question_type === 'objective')
               .map((q: any, index: number) => (
-                <div
-                  key={q.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    marginBottom: 12,
-                    padding: 14,
-                    borderRadius: 14,
-                    border: '1px solid #e2e8f0',
-                    background: '#ffffff',
-                  }}
-                >
-                  <strong>Questão {index + 1}</strong>
+<div
+  key={q.id}
+  style={{
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+    padding: 14,
+    borderRadius: 14,
+    border:
+      index === currentQuestionIndex
+        ? '2px solid #2563eb'
+        : '1px solid #e2e8f0',
+    background:
+      studentAnswers[index + 1]
+        ? '#f0fdf4'
+        : '#ffffff',
+  }}
+>
+<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+  <strong>Questão {index + 1}</strong>
 
-                  <select
-                    value={studentAnswers[index + 1] || ''}
-                    onChange={(e) =>
-                      setStudentAnswers((prev) => ({
-                        ...prev,
-                        [index + 1]: e.target.value,
-                      }))
-                    }
-                    style={inputStyle}
-                  >
-                    <option value="">Resposta</option>
-                    <option value="A">A</option>
-                    <option value="B">B</option>
-                    <option value="C">C</option>
-                    <option value="D">D</option>
-                    <option value="E">E</option>
-                  </select>
+  {studentAnswers[index + 1] && (
+    <span
+      style={{
+        fontWeight: 900,
+        color:
+          studentAnswers[index + 1] === q.correct
+            ? '#16a34a'
+            : '#dc2626',
+      }}
+    >
+      {studentAnswers[index + 1] === q.correct ? '✔' : '✖'}
+    </span>
+  )}
+</div>
+
+<div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+  {['A', 'B', 'C', 'D', 'E'].map((letter) => {
+    const selected = studentAnswers[index + 1] === letter
+
+    return (
+      <button
+        key={letter}
+        type="button"
+onClick={() => {
+  setStudentAnswers((prev) => ({
+    ...prev,
+    [index + 1]: letter,
+  }))
+
+  setCurrentQuestionIndex(index + 1)
+    setTimeout(() => {
+    const next = document.getElementById(`question-${index + 1}`)
+    next?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    })
+  }, 100)
+}}
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 12,
+          border: selected ? '2px solid #2563eb' : '1px solid #cbd5e1',
+          background: selected ? '#dbeafe' : '#ffffff',
+          color: '#0f172a',
+          fontWeight: 900,
+          cursor: 'pointer',
+        }}
+      >
+        {letter}
+      </button>
+    )
+  })}
+</div>
                 </div>
               ))}
           </div>

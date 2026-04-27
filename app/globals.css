@@ -47,4 +47,46 @@ input:focus {
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2); /* efeito suave */
 }
 
+button {
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    filter 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  filter: brightness(1.04);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
+  filter: brightness(0.96);
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.12);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  filter: brightness(1.04);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
+}
 

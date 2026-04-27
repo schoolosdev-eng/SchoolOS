@@ -16,6 +16,7 @@ import AttendanceReportsSection from '@/components/AttendanceReportsSection'
 import ClassesAreaSection from '@/components/ClassesAreaSection'
 import OccurrenceReportsSection from '@/components/OccurrenceReportsSection'
 import AssessmentsSection from '@/components/AssessmentsSection'
+import { offlineAttendanceDb } from '@/lib/offlineAttendanceDb'
 
 type Student = {
   id: string
