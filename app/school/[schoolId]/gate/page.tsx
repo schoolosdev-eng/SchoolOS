@@ -29,6 +29,7 @@ export default function GatePage() {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
   const [manualQrCode, setManualQrCode] = useState('')
   const [manualMode, setManualMode] = useState(false)
+  const audioContextRef = useRef<AudioContext | null>(null)
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [resultAnimationKey, setResultAnimationKey] = useState(0)
@@ -325,17 +326,16 @@ const pendingRecords = await offlineAttendanceDb.attendance
   })
 }
 
-  function playScanSound(status: 'success' | 'duplicate' | 'error') {
+function playScanSound(status: 'success' | 'duplicate' | 'error') {
   try {
-    const AudioContextClass =
-      window.AudioContext || (window as any).webkitAudioContext
+    const ctx = audioContextRef.current
+    if (!ctx) return
 
-    const audioContext = new AudioContextClass()
-    const oscillator = audioContext.createOscillator()
-    const gainNode = audioContext.createGain()
+    const oscillator = ctx.createOscillator()
+    const gainNode = ctx.createGain()
 
     oscillator.connect(gainNode)
-    gainNode.connect(audioContext.destination)
+    gainNode.connect(ctx.destination)
 
     oscillator.type = 'sine'
 
@@ -347,16 +347,16 @@ const pendingRecords = await offlineAttendanceDb.attendance
       oscillator.frequency.value = 220
     }
 
-    gainNode.gain.setValueAtTime(0.12, audioContext.currentTime)
+    gainNode.gain.setValueAtTime(0.12, ctx.currentTime)
     gainNode.gain.exponentialRampToValueAtTime(
       0.001,
-      audioContext.currentTime + 0.18
+      ctx.currentTime + 0.18
     )
 
     oscillator.start()
-    oscillator.stop(audioContext.currentTime + 0.18)
+    oscillator.stop(ctx.currentTime + 0.18)
   } catch {
-    // Se o navegador bloquear áudio, apenas ignora.
+    // ignora
   }
 }
 function ResponsiveStyles() {
@@ -605,14 +605,28 @@ function ResponsiveStyles() {
     return true
   }
 
-  async function handleStartReading() {
-    const initialized = await initializeAttendanceForToday()
+async function handleStartReading() {
+  const initialized = await initializeAttendanceForToday()
+  if (!initialized) return
 
-    if (!initialized) return
+  // 👇 LIBERA O ÁUDIO AQUI
+  if (!audioContextRef.current) {
+    const AudioContextClass =
+      window.AudioContext || (window as any).webkitAudioContext
 
-    setManualMode(false)
-    setIsScannerActive(true)
+    const ctx = new AudioContextClass()
+
+    // ESSENCIAL no mobile
+    if (ctx.state === 'suspended') {
+      await ctx.resume()
+    }
+
+    audioContextRef.current = ctx
   }
+
+  setManualMode(false)
+  setIsScannerActive(true)
+}
 
   function handleStopReading() {
     setIsScannerActive(false)
