@@ -563,6 +563,105 @@ function getSituationRiskStyle(situation: string) {
   }
 }
 
+function ResponsiveStyles() {
+  return (
+    <style jsx global>{`
+      * {
+        box-sizing: border-box;
+      }
+
+      .classes-section {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
+      }
+
+      .classes-content-grid {
+        width: 100%;
+      }
+
+      .student-row-responsive {
+        min-width: 0;
+      }
+
+      .student-info-responsive strong {
+        word-break: break-word;
+      }
+
+      @media (max-width: 1024px) {
+        .classes-content-grid {
+          grid-template-columns: 1fr !important;
+        }
+
+        .classes-grid-responsive {
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .classes-section {
+          gap: 14px !important;
+        }
+
+        .classes-header-responsive,
+        .class-header-responsive,
+        .classes-card-responsive {
+          border-radius: 20px !important;
+          padding: 16px !important;
+        }
+
+        .classes-grid-responsive {
+          grid-template-columns: 1fr !important;
+        }
+
+        .class-card-responsive {
+          min-height: 130px !important;
+          border-radius: 20px !important;
+          padding: 18px !important;
+        }
+
+        .class-title-responsive {
+          font-size: 24px !important;
+        }
+
+        .student-row-responsive {
+          flex-direction: column !important;
+          align-items: stretch !important;
+        }
+
+        .student-info-responsive {
+          width: 100% !important;
+        }
+
+        .student-row-responsive button {
+          width: 100% !important;
+        }
+
+        .modal-actions-responsive {
+          flex-direction: column !important;
+        }
+
+        .modal-actions-responsive button {
+          width: 100% !important;
+        }
+
+        .download-button-responsive,
+        .primary-button-responsive {
+          width: 100% !important;
+          text-align: center !important;
+        }
+
+        input,
+        textarea,
+        select,
+        button {
+          max-width: 100%;
+        }
+      }
+    `}</style>
+  )
+}
+
 const sortedSituationOptions = useMemo(() => {
   return [...situationOptions].sort((a, b) => {
     const riskA = getSituationRiskStyle(a).level
@@ -573,8 +672,9 @@ const sortedSituationOptions = useMemo(() => {
 }, [])
 
   return (
-    <section style={sectionStyle}>
-      <div style={headerStyle}>
+    <section style={sectionStyle} className="classes-section">
+  <ResponsiveStyles />
+      <div style={headerStyle} className="classes-header-responsive">
         <div>
           <div style={eyebrowStyle}>Área pedagógica</div>
           <h2 style={titleStyle}>Turmas</h2>
@@ -586,7 +686,7 @@ const sortedSituationOptions = useMemo(() => {
 
 
       {!selectedClassId && (
-        <div style={classesGridStyle}>
+        <div style={classesGridStyle} className="classes-grid-responsive">
           {visibleClasses.length === 0 ? (
             <p style={textStyle}>Nenhuma turma encontrada.</p>
           ) : (
@@ -595,6 +695,7 @@ const sortedSituationOptions = useMemo(() => {
                 key={schoolClass.id}
                 onClick={() => openClass(schoolClass.id)}
                 style={classCardStyle}
+className="class-card-responsive"
               >
                 <span style={classIconStyle}>🏫</span>
                 <strong style={classNameStyle}>{schoolClass.name}</strong>
@@ -611,7 +712,7 @@ const sortedSituationOptions = useMemo(() => {
             ← Voltar para turmas
           </button>
 
-          <div style={classHeaderStyle}>
+          <div style={classHeaderStyle} className="class-header-responsive">
             <div>
               <div style={eyebrowStyle}>Turma selecionada</div>
               <h2 style={titleStyle}>{selectedClass.name}</h2>
@@ -621,10 +722,10 @@ const sortedSituationOptions = useMemo(() => {
             </div>
           </div>
 
-          <div style={contentGridStyle}>
+          <div style={contentGridStyle} className="classes-content-grid">
             <div style={leftColumnStyle}>
               {canManage && (
-                <div style={cardStyle}>
+                <div style={cardStyle} className="classes-card-responsive">
                   <h3 style={cardTitleStyle}>Anexar atividade</h3>
 
                   <div style={formGridStyle}>
@@ -656,14 +757,18 @@ const sortedSituationOptions = useMemo(() => {
                       style={inputStyle}
                     />
 
-                    <button onClick={handleUploadActivity} style={primaryButtonStyle}>
+                    <button
+  onClick={handleUploadActivity}
+  style={primaryButtonStyle}
+  className="primary-button-responsive"
+>
                       Anexar atividade
                     </button>
                   </div>
                 </div>
               )}
 
-              <div style={cardStyle}>
+              <div style={cardStyle} className="classes-card-responsive">
                 <h3 style={cardTitleStyle}>Atividades da turma</h3>
 
                 {activities.length === 0 ? (
@@ -704,6 +809,7 @@ const sortedSituationOptions = useMemo(() => {
         target="_blank"
         rel="noreferrer"
         style={downloadButtonStyle}
+className="download-button-responsive"
       >
         Baixar atividade
       </a>
@@ -737,6 +843,7 @@ const sortedSituationOptions = useMemo(() => {
                 target="_blank"
                 rel="noreferrer"
                 style={downloadButtonStyle}
+className="download-button-responsive"
               >
                 Ver minha resposta
               </a>
@@ -823,6 +930,7 @@ const sortedSituationOptions = useMemo(() => {
                       target="_blank"
                       rel="noreferrer"
                       style={downloadButtonStyle}
+className="download-button-responsive"
                     >
                       Baixar resposta
                     </a>
@@ -841,7 +949,7 @@ const sortedSituationOptions = useMemo(() => {
               </div>
             </div>
 
-            <div style={cardStyle}>
+            <div style={cardStyle} className="classes-card-responsive">
               <h3 style={cardTitleStyle}>Alunos da turma</h3>
 
               {studentsFromSelectedClass.length === 0 ? (
@@ -852,8 +960,12 @@ const sortedSituationOptions = useMemo(() => {
                     const photoUrl = getPhotoUrl(student.profile_photo_path)
 
                     return (
-                      <div key={student.id} style={studentRowStyle}>
-                        <div style={studentInfoStyle}>
+                      <div
+  key={student.id}
+  style={studentRowStyle}
+  className="student-row-responsive"
+>
+                        <div style={studentInfoStyle} className="student-info-responsive">
                           {photoUrl ? (
                             <img src={photoUrl} alt="Aluno" style={studentPhotoStyle} />
                           ) : (
@@ -933,7 +1045,7 @@ const sortedSituationOptions = useMemo(() => {
               />
             )}
 
-            <div style={modalActionsStyle}>
+            <div style={modalActionsStyle} className="modal-actions-responsive">
               <button
                 onClick={() => {
                   setSelectedStudent(null)
@@ -975,7 +1087,7 @@ const sortedSituationOptions = useMemo(() => {
         style={inputStyle}
       />
 
-      <div style={modalActionsStyle}>
+      <div style={modalActionsStyle} className="modal-actions-responsive">
         <button
           onClick={() => {
             setSelectedActivityForSubmission(null)
