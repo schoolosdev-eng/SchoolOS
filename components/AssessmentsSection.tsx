@@ -75,8 +75,8 @@ async function handleExportPDF() {
 
 .answer-grid {
   display: grid !important;
-    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-  gap: 2px !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 6px !important;
   width: 100% !important;
   max-width: 100% !important;
   overflow: hidden !important;
@@ -92,12 +92,12 @@ async function handleExportPDF() {
 }
 
 .answer-cell {
-  height: 34px !important;
+  min-height: 58px !important;
   display: grid !important;
-  grid-template-columns: 26px repeat(5, 20px) !important;
+  grid-template-columns: 28px repeat(5, 28px) !important;
   align-items: center !important;
-  gap: 2px !important;
-  padding: 2px 3px !important;
+  gap: 3px !important;
+  padding: 5px 4px !important;
   border-bottom: 1px solid #cbd5e1 !important;
   font-size: 10px !important;
 }
@@ -108,16 +108,19 @@ async function handleExportPDF() {
 
 .answer-option {
   display: flex !important;
+  flex-direction: column !important;
   align-items: center !important;
+  justify-content: center !important;
   gap: 2px !important;
   font-size: 9px !important;
+  font-weight: 700 !important;
 }
 
 .answer-ball {
-  width: 9px !important;
-  height: 9px !important;
+  width: 16px !important;
+  height: 16px !important;
   border-radius: 50% !important;
-  border: 1.5px solid #0f172a !important;
+  border: 2px solid #000000 !important;
   display: inline-block !important;
 }
 
@@ -935,6 +938,36 @@ function analyzeImage(imageDataUrl: string) {
   }
 }
 
+function getAverageGrayBrightness(
+  data: Uint8Array,
+  width: number,
+  x: number,
+  y: number,
+  radius: number
+) {
+  let total = 0
+  let count = 0
+
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      const px = Math.floor(x + dx)
+      const py = Math.floor(y + dy)
+
+      if (px < 0 || py < 0) continue
+
+      const index = py * width + px
+      const value = data[index]
+
+      if (value === undefined) continue
+
+      total += value
+      count++
+    }
+  }
+
+  return count > 0 ? total / count : 255
+}
+
 function getBrightness(data: Uint8ClampedArray, width: number, x: number, y: number) {
   const index = (Math.floor(y) * width + Math.floor(x)) * 4
 
@@ -1073,8 +1106,8 @@ const corners = {
   bottomLeft,
 }
 
-      const CARD_WIDTH = 1000
-      const CARD_HEIGHT = 330
+const CARD_WIDTH = 1000
+const CARD_HEIGHT = 520
 
         srcTri = cvAny.matFromArray(4, 1, cvAny.CV_32FC2, [
         corners.topLeft.x,
@@ -1130,19 +1163,20 @@ cvAny.cvtColor(warped, warpedGray, cvAny.COLOR_RGBA2GRAY)
 
       const letters = ['A', 'B', 'C', 'D', 'E']
 
-      const columns = 4
-      const rows = Math.ceil(totalQuestions / columns)
+const columns = 3
+const QUESTIONS_PER_COLUMN = 4
+const rows = QUESTIONS_PER_COLUMN
 
-      const gridStartX = 38
-      const gridStartY = 126
-      const colGap = 235
-      const rowGap = 46
-      const optionStartOffset = 54
-      const optionGap = 34
+const gridStartX = 58
+const gridStartY = 190
+const colGap = 315
+const rowGap = 74
+const optionStartOffset = 62
+const optionGap = 47
 
       for (let col = 0; col < columns; col++) {
         for (let row = 0; row < rows; row++) {
-          const questionNumber = col * rows + row + 1
+          const questionNumber = col * QUESTIONS_PER_COLUMN + row + 1
 
           if (questionNumber > totalQuestions) continue
 
@@ -1162,11 +1196,12 @@ points.push({
   label: `${questionNumber}${letter}`,
 })
 
-const brightness = getGrayBrightness(
+const brightness = getAverageGrayBrightness(
   warpedGray.data,
   CARD_WIDTH,
   x,
-  y
+  y,
+  8
 )
 
             if (brightness < darkestValue) {
@@ -1175,7 +1210,7 @@ const brightness = getGrayBrightness(
             }
           })
 
-          if (darkestValue < 145) {
+          if (darkestValue < 210) {
             answers[questionNumber] = darkestLetter
           }
         }
@@ -1726,13 +1761,14 @@ async function handleQrScan(decodedText: string) {
         (q: any) => q.question_type === 'objective'
       ).length
 
-      const columns = 4
-      const rows = Math.ceil(total / columns)
+const columns = 3
+const QUESTIONS_PER_COLUMN = 4
+const rows = QUESTIONS_PER_COLUMN
 
       return Array.from({ length: columns }).map((_, col) => (
         <div key={col} className="answer-col">
           {Array.from({ length: rows }).map((_, row) => {
-            const questionIndex = col * rows + row
+            const questionIndex = col * QUESTIONS_PER_COLUMN + row
 
             if (questionIndex >= total) {
               return (
@@ -1749,12 +1785,12 @@ async function handleQrScan(decodedText: string) {
                   {String(questionIndex + 1).padStart(2, '0')}
                 </strong>
 
-                {['A', 'B', 'C', 'D', 'E'].map((letter) => (
-                  <span key={letter} className="answer-option">
-                    <span className="answer-ball" />
-                    {letter}
-                  </span>
-                ))}
+{['A', 'B', 'C', 'D', 'E'].map((letter) => (
+  <span key={letter} className="answer-option">
+    <span>{letter}</span>
+    <span className="answer-ball" />
+  </span>
+))}
               </div>
             )
           })}
@@ -1780,32 +1816,23 @@ async function handleQrScan(decodedText: string) {
               <strong>Questão {index + 1}</strong>
               <p>{q.statement}</p>
 
-              {q.question_type === 'objective' &&
-                q.options?.map((opt: any) => (
-<p
-  key={opt.id}
-  style={{
-    margin: '4px 0',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-  }}
->
-  <span
-    style={{
-      width: 10,
-      height: 10,
-      borderRadius: '50%',
-      border: '1.5px solid #0f172a',
-      display: 'inline-block',
-      flexShrink: 0,
-    }}
-  />
-  <span>
-    {opt.option_letter}) {opt.option_text}
-  </span>
-</p>
-                ))}
+{q.question_type === 'objective' &&
+  [...(q.options || [])]
+  .sort((a: any, b: any) =>
+    a.option_letter.localeCompare(b.option_letter)
+  )
+  .map((opt: any) => (
+    <div
+      key={opt.id}
+      style={{
+        margin: '4px 0',
+        fontSize: 12,
+        lineHeight: 1.35,
+      }}
+    >
+      {opt.option_letter}) {opt.option_text}
+    </div>
+  ))}
 
               {q.question_type === 'discursive' &&
                 Array.from({ length: q.lines_count || 5 }).map((_, i) => (
