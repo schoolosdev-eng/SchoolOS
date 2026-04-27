@@ -12,6 +12,7 @@ export default function HomePage() {
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
   const [windowWidth, setWindowWidth] = useState(1200)
+  const [logoSize, setLogoSize] = useState(40)
 
 useEffect(() => {
   function handleResize() {
@@ -223,35 +224,32 @@ const isTablet = windowWidth >= 768 && windowWidth < 1024
           }}
         >
           <div style={{ marginBottom: 28 }}>
-            <div
+<div
   style={{
     marginBottom: 18,
     display: 'flex',
-    alignItems: 'center',
-    gap: 12,
+    alignItems: 'center',    // 👈 centraliza horizontal
+    justifyContent: 'center',
+    textAlign: 'center',     // 👈 centraliza texto
+    gap: 6,
   }}
 >
-  <img
-    src="/logoteste.png"
-    alt="SchoolOS"
-    style={{
-      width: 56,
-      height: 56,
-      objectFit: 'contain',
-      borderRadius: 14,
-      boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-    }}
-  />
+<img
+  src="/logoteste.png"
+  alt="Logo"
+  style={{
+    width: logoSize + 20,
+    height: logoSize + 20,
+    objectFit: 'contain',
+    display: 'block',
+    filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))',
+  }}
+/>
 
-  <span
-    style={{
-      fontSize: 20,
-      fontWeight: 800,
-      color: '#0f172a',
-    }}
-  >
-    SchoolOS
-  </span>
+<div style={{ display: 'flex', alignItems: 'baseline', gap: 2 }}>
+  <span style={schoolTextStyle}>School</span>
+  <span style={osTextStyle}>OS</span>
+</div>
 </div>
 
             <h2
@@ -435,4 +433,22 @@ const isTablet = windowWidth >= 768 && windowWidth < 1024
       </section>
     </main>
   )
+}
+
+const schoolTextStyle: React.CSSProperties = {
+  color: '#0f2a5c', // azul escuro mais elegante
+  fontWeight: 900,
+  letterSpacing: 0.5,
+  fontSize: 'clamp(22px, 3vw, 32px)',
+  textShadow: '0 2px 6px rgba(0,0,0,0.08)',
+}
+
+const osTextStyle: React.CSSProperties = {
+  fontWeight: 900,
+  letterSpacing: 0.5,
+  fontSize: 'clamp(22px, 3vw, 32px)',
+  background: 'linear-gradient(135deg, #facc15, #eab308, #d97706)',
+  WebkitBackgroundClip: 'text',
+  WebkitTextFillColor: 'transparent',
+  textShadow: '0 2px 6px rgba(0,0,0,0.08)',
 }

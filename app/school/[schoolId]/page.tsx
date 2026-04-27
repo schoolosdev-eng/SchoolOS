@@ -1812,7 +1812,7 @@ const dashboardSidebarStyle: React.CSSProperties = {
 const dashboardBrandStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 14,
+  gap: 4,
   marginBottom: 28,
 }
 
@@ -2335,22 +2335,25 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
 )}
           <div style={dashboardBrandStyle}>
             
-  <div style={{ width: '8vw', maxWidth: 40, minWidth: 28 }}>
+<div>
   <img
     src="/logoteste.png"
     alt="Logo"
-    style={{
-      width: logoSize,
-      height: logoSize,
-      objectFit: 'contain',
-      display: 'block',
-    }}
+style={{
+  width: logoSize + 20,
+  height: logoSize + 20,
+  objectFit: 'contain',
+  display: 'block',
+  filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))',
+}}
   />
 </div>
 
             <div>
-              <div style={dashboardBrandTitleStyle}>Painel Escolar</div>
-              <div style={dashboardBrandSubtitleStyle}>{school?.name || 'SchoolOS'}</div>
+              <div style={dashboardBrandTitleStyle}>
+  <span style={schoolTextStyle}>School</span>
+  <span style={osTextStyle}>OS</span>
+</div>
             </div>
           </div>
 
@@ -3100,4 +3103,20 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
 )}
     </main>
   )
+}
+
+const schoolTextStyle: React.CSSProperties = {
+  color: '#0f2a5c', // azul escuro mais elegante
+  fontWeight: 900,
+  letterSpacing: 0.5,
+  textShadow: '0 2px 6px rgba(0,0,0,0.08)',
+}
+
+const osTextStyle: React.CSSProperties = {
+  fontWeight: 900,
+  letterSpacing: 0.5,
+  background: 'linear-gradient(135deg, #facc15, #eab308, #d97706)',
+  WebkitBackgroundClip: 'text',
+  WebkitTextFillColor: 'transparent',
+  textShadow: '0 2px 6px rgba(0,0,0,0.08)',
 }
