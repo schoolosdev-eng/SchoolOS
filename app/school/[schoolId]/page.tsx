@@ -2285,8 +2285,35 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
     )
   }
 
+  function handleChangeSection(
+  section:
+    | 'overview'
+    | 'registrations'
+    | 'classes'
+    | 'attendance'
+    | 'reports'
+    | 'assessments'
+) {
+  setActiveSection(section)
+
+  if (isMobile) {
+    setSidebarOpen(false)
+  }
+}
+
   return (
     <main style={dashboardPageStyle}>
+      {isMobile && sidebarOpen && (
+  <div
+    onClick={() => setSidebarOpen(false)}
+    style={{
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(15, 23, 42, 0.45)',
+      zIndex: 90,
+    }}
+  />
+)}
       <div style={dashboardShellStyle}>
         <aside style={dashboardSidebarStyle}>
           {isMobile && (
@@ -2331,7 +2358,7 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
 
           <div style={dashboardNavListStyle}>
   <button
-    onClick={() => setActiveSection('overview')}
+    onClick={() => handleChangeSection('overview')}
     style={
       activeSection === 'overview'
         ? dashboardNavButtonActiveStyle
@@ -2342,7 +2369,7 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
   </button>
 
   <button
-    onClick={() => setActiveSection('registrations')}
+    onClick={() => handleChangeSection('registrations')}
     style={
       activeSection === 'registrations'
         ? dashboardNavButtonActiveStyle
@@ -2352,7 +2379,7 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
     Cadastros
   </button>
   <button
-  onClick={() => setActiveSection('classes')}
+  onClick={() => handleChangeSection('classes')}
   style={
     activeSection === 'classes'
       ? dashboardNavButtonActiveStyle
@@ -2363,7 +2390,7 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
     </button>
 
   <button
-    onClick={() => setActiveSection('attendance')}
+    onClick={() => handleChangeSection('attendance')}
     style={
       activeSection === 'attendance'
         ? dashboardNavButtonActiveStyle
@@ -2374,7 +2401,7 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
   </button>
 
   <button
-    onClick={() => setActiveSection('reports')}
+    onClick={() => handleChangeSection('reports')}
     style={
       activeSection === 'reports'
         ? dashboardNavButtonActiveStyle
@@ -2384,7 +2411,7 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
     Relatórios
   </button>
   <button
-  onClick={() => setActiveSection('assessments')}
+  onClick={() => handleChangeSection('assessments')}
   style={
     activeSection === 'assessments'
       ? dashboardNavButtonActiveStyle

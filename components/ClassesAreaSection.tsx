@@ -131,6 +131,7 @@ const [studentLoggedRecord, setStudentLoggedRecord] = useState<Student | null>(n
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
   const [selectedSituation, setSelectedSituation] = useState('')
   const [occurrenceDescription, setOccurrenceDescription] = useState('')
+  const [studentPhotoUrls, setStudentPhotoUrls] = useState<Record<string, string | null>>({})
 
   const [submissions, setSubmissions] = useState<ActivitySubmission[]>([])
 const [submissionFile, setSubmissionFile] = useState<File | null>(null)
@@ -226,6 +227,14 @@ const visibleClasses = useMemo(() => {
     setMessage(text)
   }
 }
+
+useEffect(() => {
+  studentsFromSelectedClass.forEach((student) => {
+    if (studentPhotoUrls[student.id] !== undefined) return
+
+    loadStudentPhoto(student.id, student.profile_photo_path)
+  })
+}, [studentsFromSelectedClass])
 
   async function openClass(classId: string) {
     setSelectedClassId(classId)
@@ -461,14 +470,42 @@ async function handleSubmitActivityAnswer() {
     return student.full_name || student.name || 'Aluno sem nome'
   }
 
-  function getPhotoUrl(path?: string | null) {
-    if (!path) return null
-
-    if (path.startsWith('http')) return path
-
-    const { data } = supabase.storage.from('student-photos').getPublicUrl(path)
-    return data.publicUrl
+async function loadStudentPhoto(studentId: string, path?: string | null) {
+  if (!path) {
+    setStudentPhotoUrls((prev) => ({
+      ...prev,
+      [studentId]: null,
+    }))
+    return
   }
+
+  if (path.startsWith('http')) {
+    setStudentPhotoUrls((prev) => ({
+      ...prev,
+      [studentId]: path,
+    }))
+    return
+  }
+
+  const { data, error } = await supabase.storage
+    .from('student-profile-photos')
+    .createSignedUrl(path, 3600)
+
+  if (error) {
+    console.log('Erro ao carregar foto:', error.message, path)
+
+    setStudentPhotoUrls((prev) => ({
+      ...prev,
+      [studentId]: null,
+    }))
+    return
+  }
+
+  setStudentPhotoUrls((prev) => ({
+    ...prev,
+    [studentId]: data.signedUrl,
+  }))
+}
 
   function getStudentSubmission(activityId: string) {
   if (!loggedStudent) return null
@@ -957,7 +994,7 @@ className="download-button-responsive"
               ) : (
                 <div style={studentListStyle}>
                   {studentsFromSelectedClass.map((student) => {
-                    const photoUrl = getPhotoUrl(student.profile_photo_path)
+                    const photoUrl = studentPhotoUrls[student.id]
 
                     return (
                       <div
