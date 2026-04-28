@@ -42,6 +42,22 @@ const isTablet = windowWidth >= 768 && windowWidth < 1024
     checkSession()
   }, [router])
 
+  function getErrorMessage(errorMessage: string) {
+  if (errorMessage.includes('missing email or phone')) {
+    return 'Informe seu e-mail e senha para continuar.'
+  }
+
+  if (errorMessage.includes('Invalid login credentials')) {
+    return 'E-mail ou senha inválidos.'
+  }
+
+  if (errorMessage.includes('Email not confirmed')) {
+    return 'Confirme seu e-mail antes de entrar.'
+  }
+
+  return 'Erro ao fazer login. Tente novamente.'
+}
+
   async function handleLogin() {
     setLoading(true)
     setMessage('Entrando...')
@@ -52,7 +68,7 @@ const isTablet = windowWidth >= 768 && windowWidth < 1024
     })
 
     if (error) {
-      setMessage(`Erro: ${error.message}`)
+      setMessage(`Erro: ${getErrorMessage(error.message)}`)
       setLoading(false)
       return
     }
@@ -73,7 +89,7 @@ const isTablet = windowWidth >= 768 && windowWidth < 1024
   })
 
   if (error) {
-    setMessage(`Erro: ${error.message}`)
+    setMessage(`Erro: ${getErrorMessage(error.message)}`)
     setLoading(false)
   }
 }
@@ -228,9 +244,9 @@ const isTablet = windowWidth >= 768 && windowWidth < 1024
   style={{
     marginBottom: 18,
     display: 'flex',
-    alignItems: 'center',    // 👈 centraliza horizontal
+    alignItems: 'center',
     justifyContent: 'center',
-    textAlign: 'center',     // 👈 centraliza texto
+    textAlign: 'center',
     gap: 6,
   }}
 >
@@ -360,8 +376,16 @@ const isTablet = windowWidth >= 768 && windowWidth < 1024
   gap: 10,
 }}
 >
-  <>
-  <span>🔵</span>
+<>
+  <img
+    src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+    alt="Google"
+    style={{
+      width: 18,
+      height: 18,
+      objectFit: 'contain',
+    }}
+  />
   Entrar com Google
 </>
 </button>

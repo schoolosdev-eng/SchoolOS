@@ -1427,7 +1427,7 @@ async function fetchSchoolName(currentSchoolId?: string | null) {
     })
 
     if (error) {
-      setMessage(`Erro ao cadastrar ano letivo: ${error.message}`)
+      showMessage(`Erro ao cadastrar ano letivo: ${error.message}`)
       return
     }
 
@@ -1466,7 +1466,7 @@ async function fetchSchoolName(currentSchoolId?: string | null) {
     setClassName('')
     setSelectedYearId('')
     await fetchClasses()
-    setMessage('Turma cadastrada com sucesso.')
+    showMessage('Turma cadastrada com sucesso.')
   }
 
   async function handleCreateTeacher() {
