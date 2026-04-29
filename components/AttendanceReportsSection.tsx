@@ -185,7 +185,7 @@ const tdStyle: React.CSSProperties = {
         { label: 'Data final', value: endDate, onChange: setEndDate, type: 'date' },
       ].map((item, i) => (
         <div key={i}>
-          <label style={{ fontWeight: 700, marginBottom: 6, display: 'block' }}>
+          <label style={labelStyle}>
             {item.label}
           </label>
           <input
@@ -377,18 +377,24 @@ const inputStyle: React.CSSProperties = {
   border: '1px solid #cbd5e1',
   outline: 'none',
   fontSize: 14,
+  color: '#0f172a',
+  background: '#ffffff',
+  fontWeight: 600,
 }
 
 const labelStyle: React.CSSProperties = {
-  fontWeight: 700,
+  fontWeight: 800,
   marginBottom: 6,
   display: 'block',
+  color: '#334155',
+  fontSize: 14,
 }
 
 const emptyStyle: React.CSSProperties = {
   padding: 20,
   textAlign: 'center',
-  color: '#64748b',
+  color: '#475569',
+  fontWeight: 700,
 }
 
 function translateSource(source: AttendanceRecord['source']) {

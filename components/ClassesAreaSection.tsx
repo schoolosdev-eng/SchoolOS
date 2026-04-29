@@ -210,15 +210,22 @@ const visibleClasses = useMemo(() => {
 
   const selectedClass = classes.find((c) => c.id === selectedClassId)
 
-  const studentsFromSelectedClass = useMemo(() => {
-    if (!selectedClassId) return []
+const studentsFromSelectedClass = useMemo(() => {
+  if (!selectedClassId) return []
 
-    const studentIds = enrollments
-      .filter((e) => e.class_id === selectedClassId)
-      .map((e) => e.student_id)
+  const studentIds = enrollments
+    .filter((e) => e.class_id === selectedClassId)
+    .map((e) => e.student_id)
 
-    return students.filter((student) => studentIds.includes(student.id))
-  }, [selectedClassId, enrollments, students])
+  return students
+    .filter((student) => studentIds.includes(student.id))
+    .sort((a, b) => {
+      const nameA = getStudentName(a).toLowerCase()
+      const nameB = getStudentName(b).toLowerCase()
+
+      return nameA.localeCompare(nameB, 'pt-BR')
+    })
+}, [selectedClassId, enrollments, students])
 
   function notify(text: string) {
   if (showMessage) {
@@ -606,6 +613,11 @@ function ResponsiveStyles() {
       * {
         box-sizing: border-box;
       }
+        input::placeholder,
+textarea::placeholder {
+  color: #64748b;
+  opacity: 1;
+}
 
       .classes-section {
         width: 100%;
@@ -752,7 +764,7 @@ className="class-card-responsive"
           <div style={classHeaderStyle} className="class-header-responsive">
             <div>
               <div style={eyebrowStyle}>Turma selecionada</div>
-              <h2 style={titleStyle}>{selectedClass.name}</h2>
+              <h2 style={selectedClassTitleStyle}>{selectedClass.name}</h2>
               <p style={textStyle}>
                 {studentsFromSelectedClass.length} aluno(s) matriculado(s)
               </p>
@@ -1011,7 +1023,9 @@ className="download-button-responsive"
                             </div>
                           )}
 
-                          <strong>{getStudentName(student)}</strong>
+                          <strong style={studentNameStyle}>
+  {getStudentName(student)}
+</strong>
                         </div>
 
                         {canManage && (
@@ -1294,6 +1308,7 @@ const inputStyle: React.CSSProperties = {
   borderRadius: 14,
   border: '1px solid #cbd5e1',
   fontSize: 14,
+  color: '#0f172a', // 👈 ESSENCIAL
 }
 
 const textareaStyle: React.CSSProperties = {
@@ -1464,4 +1479,20 @@ const confirmButtonStyle: React.CSSProperties = {
   padding: '11px 14px',
   fontWeight: 800,
   cursor: 'pointer',
+}
+
+const selectedClassTitleStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: 32,
+  color: '#ffffff',
+  fontWeight: 900,
+  letterSpacing: '-0.5px',
+  fontFamily: 'Inter, Arial, sans-serif',
+}
+
+const studentNameStyle: React.CSSProperties = {
+  color: '#0f172a',
+  fontWeight: 800,
+  fontSize: 15,
+  letterSpacing: '0.2px',
 }

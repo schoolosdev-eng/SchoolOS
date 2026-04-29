@@ -307,35 +307,44 @@ function getRiskByScore(score: number) {
 
         <div style={filtersGridStyle}>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-  <button onClick={() => {
+<button
+  onClick={() => {
     const today = new Date().toISOString().split('T')[0]
     setStartDate(today)
     setEndDate(today)
-  }}>
-    Hoje
-  </button>
+  }}
+  style={quickDateButtonStyle}
+>
+  Hoje
+</button>
 
-  <button onClick={() => {
+<button
+  onClick={() => {
     const today = new Date()
     const past7 = new Date()
     past7.setDate(today.getDate() - 6)
 
     setStartDate(past7.toISOString().split('T')[0])
     setEndDate(today.toISOString().split('T')[0])
-  }}>
-    7 dias
-  </button>
+  }}
+  style={quickDateButtonStyle}
+>
+  7 dias
+</button>
 
-  <button onClick={() => {
+<button
+  onClick={() => {
     const today = new Date()
     const past30 = new Date()
     past30.setDate(today.getDate() - 29)
 
     setStartDate(past30.toISOString().split('T')[0])
     setEndDate(today.toISOString().split('T')[0])
-  }}>
-    30 dias
-  </button>
+  }}
+  style={quickDateButtonStyle}
+>
+  30 dias
+</button>
 </div>
           <div>
             <label style={labelStyle}>Data inicial</label>
@@ -413,14 +422,15 @@ function getRiskByScore(score: number) {
     setStartDate('')
     setEndDate('')
   }}
-  style={{
-    padding: '10px 14px',
-    borderRadius: 12,
-    border: '1px solid #cbd5e1',
-    background: '#ffffff',
-    fontWeight: 800,
-    cursor: 'pointer',
-  }}
+style={{
+  padding: '10px 14px',
+  borderRadius: 12,
+  border: '1px solid #cbd5e1',
+  background: '#ffffff',
+  color: '#0f172a',
+  fontWeight: 800,
+  cursor: 'pointer',
+}}
 >
   Limpar filtros
 </button>
@@ -654,6 +664,8 @@ const inputStyle: React.CSSProperties = {
   border: '1px solid #cbd5e1',
   fontSize: 14,
   background: '#ffffff',
+  color: '#0f172a',
+  outline: 'none',
 }
 
 const primaryButtonStyle: React.CSSProperties = {
@@ -679,7 +691,7 @@ const emptyStyle: React.CSSProperties = {
   background: '#f8fafc',
   borderRadius: 16,
   padding: 18,
-  color: '#64748b',
+  color: '#475569',
   fontWeight: 700,
 }
 
@@ -709,7 +721,7 @@ const studentNameStyle: React.CSSProperties = {
 }
 
 const metaStyle: React.CSSProperties = {
-  color: '#64748b',
+  color: '#475569',
   fontSize: 14,
   fontWeight: 700,
   marginBottom: 8,
@@ -774,7 +786,7 @@ const summaryCardStyle: React.CSSProperties = {
 
 const summaryLabelStyle: React.CSSProperties = {
   fontSize: 13,
-  color: '#64748b',
+  color: '#475569',
   fontWeight: 800,
   marginBottom: 8,
 }
@@ -856,4 +868,15 @@ const riskRankRowStyle: React.CSSProperties = {
   marginBottom: 10,
   fontSize: 14,
   fontWeight: 800,
+}
+
+const quickDateButtonStyle: React.CSSProperties = {
+  padding: '8px 12px',
+  borderRadius: 10,
+  border: '1px solid #e2e8f0',
+  background: '#ffffff',
+  color: '#334155',
+  fontWeight: 700,
+  fontSize: 13,
+  cursor: 'pointer',
 }

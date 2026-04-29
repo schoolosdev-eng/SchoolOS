@@ -375,9 +375,11 @@ const formGridStyle: React.CSSProperties = {
 }
 
 const labelStyle: React.CSSProperties = {
-  fontWeight: 700,
+  fontWeight: 800,
   marginBottom: 6,
   display: 'block',
+  color: '#334155',
+  fontSize: 14,
 }
 
 const inputStyle: React.CSSProperties = {
@@ -386,6 +388,9 @@ const inputStyle: React.CSSProperties = {
   border: '1px solid #cbd5e1',
   fontSize: 14,
   width: '100%',
+  color: '#0f172a',
+  background: '#ffffff',
+  outline: 'none',
 }
 
 const primaryButtonStyle: React.CSSProperties = {
