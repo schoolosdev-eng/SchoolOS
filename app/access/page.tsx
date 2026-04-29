@@ -561,10 +561,13 @@ const sidebarButtonStyle: React.CSSProperties = {
         </section>
 
         <section style={sectionCardStyle}>
-          <h2 style={sectionTitleStyle}>Seu acesso</h2>
-          <div style={statusStyle}>{message}</div>
+<h2 style={sectionTitleStyle}>Seu acesso</h2>
 
-          {memberships.length === 0 ? (
+<div style={{ ...statusStyle, marginBottom: 20 }}>
+  {message}
+</div>
+
+{memberships.length === 0 ? (
             <div style={actionsRowStyle}>
               <button
                 onClick={() => router.push('/school/create')}

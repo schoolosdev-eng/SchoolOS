@@ -124,6 +124,7 @@ export default function SchoolPage() {
   const [selectedStudentId, setSelectedStudentId] = useState('')
   const [selectedClassId, setSelectedClassId] = useState('')
   const [studentEmail, setStudentEmail] = useState('')
+  const [studentsLoading, setStudentsLoading] = useState(true)
 
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [teacherName, setTeacherName] = useState('')
@@ -308,10 +309,12 @@ return true
   setSchoolName(data.name || 'SchoolOS')
 }
 
-  async function fetchStudents(currentSchoolIdParam?: string) {
+async function fetchStudents(currentSchoolIdParam?: string) {
   const currentSchoolId = currentSchoolIdParam || schoolId
 
   if (!currentSchoolId) return
+
+  setStudentsLoading(true)
 
   const { data, error } = await supabase
   .from('students')
@@ -331,6 +334,7 @@ return true
     .order('created_at', { ascending: false })
 
   if (error) {
+    setStudentsLoading(false)
     showMessage(`Erro ao buscar alunos: ${error.message}`)
     return
   }
@@ -372,6 +376,7 @@ return {
   )
 
   setStudents(studentsWithPhotos as Student[])
+  setStudentsLoading(false)
 }
 
   async function fetchTeachers() {
@@ -448,17 +453,18 @@ return {
     setEnrollments((data || []) as Enrollment[])
   }
 
-  async function loadAllData() {
-    await Promise.all([
-      fetchSchool(),
-      fetchStudents(),
-      fetchTeachers(),
-      fetchManagers(),
-      fetchSchoolYears(),
-      fetchClasses(),
-      fetchEnrollments(),
-    ])
-  }
+async function loadAllData() {
+  await Promise.all([
+    fetchSchool(),
+    fetchTeachers(),
+    fetchManagers(),
+    fetchSchoolYears(),
+    fetchClasses(),
+    fetchEnrollments(),
+  ])
+
+  fetchStudents()
+}
 
   async function uploadStudentProfilePhoto(file: File, currentSchoolId: string) {
   const fileExt = file.name.split('.').pop() || 'jpg'
@@ -2520,7 +2526,15 @@ style={{
       <div style={dashboardStatIconBlueStyle}>👨‍🎓</div>
       <div>
         <div style={dashboardStatLabelStyle}>Alunos</div>
-        <div style={dashboardStatValueStyle}>{students.length}</div>
+<div
+  style={{
+    ...dashboardStatValueStyle,
+    fontSize: studentsLoading ? 16 : 34,
+    fontWeight: studentsLoading ? 600 : 900,
+  }}
+>
+  {studentsLoading ? 'Carregando...' : students.length}
+</div>
       </div>
     </div>
 
