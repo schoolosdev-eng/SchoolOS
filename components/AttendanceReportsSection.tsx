@@ -5,6 +5,7 @@ type Student = {
   id: string
   full_name?: string
   name?: string
+  responsible_whatsapp?: string | null
 }
 
 type SchoolClass = {
@@ -86,6 +87,13 @@ const tdStyle: React.CSSProperties = {
   fontSize: isMobile ? 12 : 14,
   whiteSpace: 'nowrap',
 }
+
+const tdNameStyle: React.CSSProperties = {
+  ...tdStyle,
+  whiteSpace: 'normal',
+  wordBreak: 'break-word',
+  maxWidth: isMobile ? 140 : 220,
+}
   const selectedClass = classes.find((item) => item.id === selectedClassId)
 
   const groupedByClass = records.reduce<Record<string, AttendanceRecord[]>>(
@@ -107,6 +115,16 @@ const tdStyle: React.CSSProperties = {
   if (!date) return ''
   const [year, month, day] = date.split('-')
   return `${day}/${month}/${year}`
+}
+
+function sendSingleWhatsapp(studentName: string, phone: string, date: string) {
+  const cleanPhone = phone.replace(/\D/g, '')
+
+  const message = encodeURIComponent(
+    `Olá! Informamos que o(a) aluno(a) ${studentName} esteve ausente no dia ${formatDateBR(date)}.`
+  )
+
+  window.open(`https://wa.me/55${cleanPhone}?text=${message}`, '_blank')
 }
 
 const studentMap = new Map(
@@ -311,6 +329,7 @@ const studentMap = new Map(
                     <th style={thStyle}>Data</th>
                     <th style={thStyle}>Status</th>
                     <th style={thStyle}>Horário</th>
+                    <th style={thStyle}>Aviso</th>
                   </tr>
                 </thead>
 
@@ -330,9 +349,9 @@ const studentMap = new Map(
 
                     return (
                       <tr key={r.id}>
-                        <td style={tdStyle}>
-                          {student?.full_name || student?.name}
-                        </td>
+                        <td style={tdNameStyle}>
+  {student?.full_name || student?.name}
+</td>
 
                         <td style={tdStyle}>
   {formatDateBR(r.attendance_date)}
@@ -360,6 +379,37 @@ const studentMap = new Map(
         minute: '2-digit',
       })
     : ''}
+</td>
+<td style={tdStyle}>
+  {r.status === 'absent' && student?.responsible_whatsapp ? (
+    <button
+      onClick={() =>
+        sendSingleWhatsapp(
+          student.full_name || student.name || 'Aluno',
+          student.responsible_whatsapp || '',
+          r.attendance_date
+        )
+      }
+      style={{
+        padding: '8px 10px',
+        borderRadius: 10,
+        border: 'none',
+        background: '#25D366',
+        color: '#ffffff',
+        fontWeight: 800,
+        cursor: 'pointer',
+        fontSize: 12,
+      }}
+    >
+      WhatsApp
+    </button>
+  ) : r.status === 'absent' ? (
+    <span style={{ color: '#94a3b8', fontWeight: 700 }}>
+      Sem WhatsApp
+    </span>
+  ) : (
+    ''
+  )}
 </td>
                       </tr>
                     )
