@@ -271,17 +271,17 @@ setTimeout(() => {
               </option>
             ))}
           </select>
-        </div>
+          </div>
 
-        {students.length === 0 ? (
-  <div style={emptyStyle}>Nenhum aluno cadastrado.</div>
-) : !hasActiveFilter ? (
-  <div style={emptyStyle}>
-    Use a busca por nome ou selecione uma turma para exibir os alunos.
-  </div>
-) : filteredStudents.length === 0 ? (
-  <div style={emptyStyle}>Nenhum aluno encontrado com esses filtros.</div>
-) : (
+          {students.length === 0 ? (
+          <div style={emptyStyle}>Nenhum aluno cadastrado.</div>
+              ) : !hasActiveFilter ? (
+              <div style={emptyStyle}>
+              Use a busca por nome ou selecione uma turma para exibir os alunos.
+              </div>
+              ) : filteredStudents.length === 0 ? (
+              <div style={emptyStyle}>Nenhum aluno encontrado com esses filtros.</div>
+              ) : (
           <div style={listStyle}>
             {filteredStudents.map((student) => (
               <div key={student.id} style={itemCardStyle}>
@@ -317,21 +317,21 @@ setTimeout(() => {
                   {student.qr_code_token && (
                     <div style={{ textAlign: 'center' }}>
                       <div id={`student-qr-${student.id}`}>
-  <QRCodeCanvas
-    value={`schoolos:student:${student.qr_code_token}`}
-    size={220}
-    level="H"
-    includeMargin
-    style={{
-      width: 92,
-      height: 92,
-    }}
-  />
-</div>
+                    <QRCodeCanvas
+                      value={`schoolos:student:${student.qr_code_token}`}
+                      size={220}
+                      level="H"
+                      includeMargin
+                      style={{
+                        width: 92,
+                        height: 92,
+                                }}
+                          />
+                          </div>
 
                       <div style={{ marginTop: 6, fontSize: 12, color: '#64748b' }}>
-  QR do aluno
-</div>
+                          QR do aluno
+                          </div>
 
 {student.responsible_whatsapp && (
   <button

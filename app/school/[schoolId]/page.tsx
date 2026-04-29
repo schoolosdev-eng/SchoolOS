@@ -17,6 +17,7 @@ import ClassesAreaSection from '@/components/ClassesAreaSection'
 import OccurrenceReportsSection from '@/components/OccurrenceReportsSection'
 import AssessmentsSection from '@/components/AssessmentsSection'
 import { offlineAttendanceDb } from '@/lib/offlineAttendanceDb'
+import StudentsListSection from '@/components/StudentsListSection'
 
 type Student = {
   id: string
@@ -192,9 +193,10 @@ const [reportRecords, setReportRecords] = useState<
   const [guardianEmail, setGuardianEmail] = useState('')
   const [guardianWhatsapp, setGuardianWhatsapp] = useState('')
 
-  const [activeSection, setActiveSection] = useState<
+const [activeSection, setActiveSection] = useState<
   | 'overview'
   | 'registrations'
+  | 'students'
   | 'classes'
   | 'attendance'
   | 'reports'
@@ -857,6 +859,54 @@ async function handleGenerateAttendanceReport() {
 
   setReportRecords((data || []) as typeof reportRecords)
   showMessage('Relatório gerado com sucesso.')
+}
+
+async function handleUpdateStudent(
+  studentId: string,
+  data: {
+    full_name: string
+    email: string
+    responsible_email: string
+    responsible_whatsapp: string
+    photo?: File | null
+  }
+) {
+  if (!schoolId) {
+    showMessage('Escola não identificada.')
+    return
+  }
+
+  let profilePhotoPath: string | undefined
+
+  if (data.photo) {
+    profilePhotoPath = await uploadStudentProfilePhoto(data.photo, schoolId)
+  }
+
+  const updateData: any = {
+    name: data.full_name,
+    full_name: data.full_name,
+    email: data.email || null,
+    responsible_email: data.responsible_email || null,
+    responsible_whatsapp: data.responsible_whatsapp || null,
+  }
+
+  if (profilePhotoPath) {
+    updateData.profile_photo_path = profilePhotoPath
+  }
+
+  const { error } = await supabase
+    .from('students')
+    .update(updateData)
+    .eq('id', studentId)
+    .eq('school_id', schoolId)
+
+  if (error) {
+    showMessage(`Erro ao atualizar aluno: ${error.message}`)
+    return
+  }
+
+  await fetchStudents()
+  showMessage('Aluno atualizado com sucesso.')
 }
 
 function getSituationsByRisk(risk: string) {
@@ -2291,10 +2341,11 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
     )
   }
 
-  function handleChangeSection(
+function handleChangeSection(
   section:
     | 'overview'
     | 'registrations'
+    | 'students'
     | 'classes'
     | 'attendance'
     | 'reports'
@@ -2387,6 +2438,16 @@ style={{
   >
     Cadastros
   </button>
+  <button
+  onClick={() => handleChangeSection('students')}
+  style={
+    activeSection === 'students'
+      ? dashboardNavButtonActiveStyle
+      : dashboardNavButtonStyle
+  }
+>
+  Alunos
+</button>
   <button
   onClick={() => handleChangeSection('classes')}
   style={
@@ -2941,6 +3002,30 @@ style={{
     </div>
   </section>
 )}
+
+{activeSection === 'students' && (
+  <section style={dashboardMainGridStyle}>
+    <div style={dashboardMainColumnStyle}>
+      <section style={dashboardCardStyle}>
+        <div style={dashboardCardHeaderStyle}>
+          <div>
+            <div style={dashboardCardEyebrowStyle}>Alunos</div>
+            <h2 style={dashboardCardTitleStyle}>Alunos cadastrados</h2>
+            <p style={dashboardCardTextStyle}>
+              Consulte, filtre, imprima QR Codes e visualize os dados completos dos alunos.
+            </p>
+          </div>
+        </div>
+
+        <StudentsListSection
+  students={students}
+  onUpdateStudent={handleUpdateStudent}
+/>
+      </section>
+    </div>
+  </section>
+)}
+
 {activeSection === 'classes' && currentUserId && userRole && (
 <ClassesAreaSection
   schoolId={schoolId}
