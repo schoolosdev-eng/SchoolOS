@@ -109,6 +109,10 @@ const tdStyle: React.CSSProperties = {
   return `${day}/${month}/${year}`
 }
 
+const studentMap = new Map(
+  students.map((s) => [s.id, s])
+)
+
   return (
   <section
     style={{
@@ -288,12 +292,14 @@ const tdStyle: React.CSSProperties = {
           return (
             <div key={classId}>
               <div
-                style={{
-                  padding: 16,
-                  fontWeight: 800,
-                  background: '#f8fafc',
-                  borderBottom: '1px solid #e2e8f0',
-                }}
+                  style={{
+    padding: 16,
+    fontWeight: 900,
+    fontSize: 16,
+    color: '#0f172a',
+    background: '#f8fafc',
+    borderBottom: '1px solid #e2e8f0',
+  }}
               >
                 Turma: {schoolClass?.name || '---'}
               </div>
@@ -309,7 +315,17 @@ const tdStyle: React.CSSProperties = {
                 </thead>
 
                 <tbody>
-                  {classRecords.map((r) => {
+                  {classRecords
+  .sort((a, b) => {
+    const studentA = studentMap.get(a.student_id)
+    const studentB = studentMap.get(b.student_id)
+
+    const nameA = (studentA?.full_name || studentA?.name || '').toLowerCase()
+    const nameB = (studentB?.full_name || studentB?.name || '').toLowerCase()
+
+    return nameA.localeCompare(nameB, 'pt-BR')
+  })
+  .map((r) => {
                     const student = students.find((s) => s.id === r.student_id)
 
                     return (
