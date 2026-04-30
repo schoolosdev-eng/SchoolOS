@@ -1443,6 +1443,40 @@ async function handleCreateStudent() {
   }
 }
 
+async function handleDeleteStudent(studentId: string) {
+  if (!schoolId) {
+    showMessage('Escola não identificada.')
+    return
+  }
+
+  const { error: enrollmentError } = await supabase
+    .from('enrollments')
+    .delete()
+    .eq('student_id', studentId)
+    .eq('school_id', schoolId)
+
+  if (enrollmentError) {
+    showMessage(`Erro ao remover matrícula: ${enrollmentError.message}`)
+    return
+  }
+
+  const { error: studentError } = await supabase
+    .from('students')
+    .delete()
+    .eq('id', studentId)
+    .eq('school_id', schoolId)
+
+  if (studentError) {
+    showMessage(`Erro ao deletar aluno: ${studentError.message}`)
+    return
+  }
+
+  await fetchEnrollments()
+  await fetchStudents()
+
+  showMessage('Aluno deletado com sucesso.')
+}
+
 async function fetchSchoolName(currentSchoolId?: string | null) {
   const targetSchoolId = currentSchoolId || schoolId
 
@@ -3017,9 +3051,10 @@ style={{
           </div>
         </div>
 
-        <StudentsListSection
+<StudentsListSection
   students={students}
   onUpdateStudent={handleUpdateStudent}
+  onDeleteStudent={handleDeleteStudent}
 />
       </section>
     </div>

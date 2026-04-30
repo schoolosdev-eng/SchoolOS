@@ -18,6 +18,7 @@ type Student = {
 
 type Props = {
   students: Student[]
+  onDeleteStudent: (studentId: string) => Promise<void>
   onUpdateStudent: (
     studentId: string,
     data: {
@@ -33,6 +34,7 @@ type Props = {
 export default function StudentsListSection({
   students,
   onUpdateStudent,
+  onDeleteStudent,
 }: Props) {
   const [studentSearch, setStudentSearch] = useState('')
   const [selectedClassFilter, setSelectedClassFilter] = useState('')
@@ -43,6 +45,8 @@ const [editEmail, setEditEmail] = useState('')
 const [editResponsibleEmail, setEditResponsibleEmail] = useState('')
 const [editResponsibleWhatsapp, setEditResponsibleWhatsapp] = useState('')
 const [editPhoto, setEditPhoto] = useState<File | null>(null)
+const [studentToDelete, setStudentToDelete] = useState<Student | null>(null)
+const [deletingStudent, setDeletingStudent] = useState(false)
 
   const availableClasses = useMemo(() => {
     const classNames = students
@@ -408,6 +412,13 @@ const filteredStudents = students.filter((student) => {
       Editar
     </button>
 
+<button
+  onClick={() => setStudentToDelete(student)}
+  style={deleteButtonStyle}
+>
+  Deletar
+</button>
+
     {/* 🔥 BOTÃO WHATSAPP (AQUI) */}
 {student.responsible_whatsapp && (
   <button
@@ -447,6 +458,47 @@ const message = encodeURIComponent(
 })}
         </div>
       )}
+      {studentToDelete && (
+  <div style={modalOverlayStyle}>
+    <div style={modalCardStyle}>
+      <h3 style={modalTitleStyle}>Deletar aluno?</h3>
+
+      <p style={modalTextStyle}>
+        Tem certeza que deseja deletar o aluno{' '}
+        <strong>{studentToDelete.full_name || studentToDelete.name || 'Aluno'}</strong>?
+      </p>
+
+      <p style={modalWarningStyle}>
+        Essa ação não poderá ser desfeita.
+      </p>
+
+      <div style={modalActionsStyle}>
+        <button
+          onClick={() => setStudentToDelete(null)}
+          style={cancelButtonStyle}
+          disabled={deletingStudent}
+        >
+          Cancelar
+        </button>
+
+        <button
+          onClick={async () => {
+            setDeletingStudent(true)
+
+            await onDeleteStudent(studentToDelete.id)
+
+            setDeletingStudent(false)
+            setStudentToDelete(null)
+          }}
+          style={deleteButtonStyle}
+          disabled={deletingStudent}
+        >
+          {deletingStudent ? 'Deletando...' : 'Sim, deletar'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   )
 }
@@ -611,4 +663,68 @@ const cancelButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   cursor: 'pointer',
   fontSize: 12,
+}
+
+const deleteButtonStyle: React.CSSProperties = {
+  padding: '8px 10px',
+  borderRadius: 10,
+  border: 'none',
+  background: '#dc2626',
+  color: '#ffffff',
+  fontWeight: 800,
+  cursor: 'pointer',
+  fontSize: 12,
+}
+
+const modalOverlayStyle: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(15, 23, 42, 0.55)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 9999,
+  padding: 20,
+}
+
+const modalCardStyle: React.CSSProperties = {
+  width: '100%',
+  maxWidth: 420,
+  background: '#ffffff',
+  borderRadius: 22,
+  padding: 22,
+  boxShadow: '0 30px 80px rgba(0,0,0,0.35)',
+  border: '1px solid #e2e8f0',
+}
+
+const modalTitleStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: 22,
+  fontWeight: 900,
+  color: '#0f172a',
+}
+
+const modalTextStyle: React.CSSProperties = {
+  margin: '12px 0 0',
+  fontSize: 15,
+  lineHeight: 1.5,
+  color: '#334155',
+}
+
+const modalWarningStyle: React.CSSProperties = {
+  margin: '12px 0 0',
+  padding: 12,
+  borderRadius: 14,
+  background: '#fee2e2',
+  color: '#991b1b',
+  fontWeight: 800,
+  fontSize: 13,
+}
+
+const modalActionsStyle: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'flex-end',
+  gap: 10,
+  marginTop: 18,
+  flexWrap: 'wrap',
 }
