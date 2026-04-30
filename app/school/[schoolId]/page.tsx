@@ -18,6 +18,7 @@ import OccurrenceReportsSection from '@/components/OccurrenceReportsSection'
 import AssessmentsSection from '@/components/AssessmentsSection'
 import { offlineAttendanceDb } from '@/lib/offlineAttendanceDb'
 import StudentsListSection from '@/components/StudentsListSection'
+import ClassMapSection from '@/components/ClassMapSection'
 
 type Student = {
   id: string
@@ -198,6 +199,7 @@ const [activeSection, setActiveSection] = useState<
   | 'registrations'
   | 'students'
   | 'classes'
+  | 'class-map'
   | 'attendance'
   | 'reports'
   | 'assessments'
@@ -829,6 +831,11 @@ async function handleGenerateAttendanceReport() {
     return
   }
 
+  if (studentsLoading) {
+  showMessage('Aguarde o carregamento dos alunos antes de gerar o relatório.')
+  return
+}
+
   setReportLoading(true)
   showMessage('Gerando relatório...')
 
@@ -1218,27 +1225,46 @@ function handlePrintAttendanceReport() {
 }
 
 function sendWhatsappToAllFromReport(records: any[]) {
-  // filtra apenas quem tem whatsapp
-  const valid = records.filter(
-    (r) => r.responsible_whatsapp
-  )
+  const mapped = records
+    .filter((r) => r.status === 'absent')
+    .map((r) => {
+      const student = students.find((s) => s.id === r.student_id)
+
+      return {
+        phone: student?.responsible_whatsapp,
+        name: student?.full_name || student?.name,
+        date: r.attendance_date,
+      }
+    })
+
+  const valid = mapped.filter(
+  (item): item is { phone: string; name: string; date: string } =>
+    !!item.phone
+)
+  const invalid = mapped.filter((item) => !item.phone)
 
   if (valid.length === 0) {
     alert('Nenhum responsável com WhatsApp cadastrado.')
     return
   }
+  console.log('Responsáveis válidos:', valid)
+console.log('Quantidade:', valid.length)
 
   valid.forEach((item, index) => {
     setTimeout(() => {
-      const phone = item.responsible_whatsapp.replace(/\D/g, '')
+      const phone = item.phone.replace(/\D/g, '')
 
       const message = encodeURIComponent(
-        `Olá! Informamos que o aluno ${item.full_name} esteve ausente no dia ${formatDateBR(item.date)}.`
+        `Olá! Informamos que o aluno ${item.name} esteve ausente no dia ${formatDateBR(item.date)}.`
       )
 
       window.open(`https://wa.me/55${phone}?text=${message}`, '_blank')
-    }, index * 800) // intervalo pra não bloquear
+    }, index * 800)
   })
+
+  if (invalid.length > 0) {
+    alert(`${invalid.length} responsáveis não possuem WhatsApp cadastrado.`)
+  }
 }
 
 async function handleGenerateAbsenceAlerts() {
@@ -1389,7 +1415,7 @@ async function handleCopyAlertMessage(alert: AlertStudent) {
   }
 }
 
-async function handleCreateStudent() {
+async function handleCreateStudent(photoOverride?: File | null) {
   if (!studentName.trim() || !studentEmail.trim() || !studentBirthDate) {
     showMessage('Preencha todos os campos do aluno.')
     return
@@ -1406,9 +1432,11 @@ async function handleCreateStudent() {
   try {
     let profilePhotoPath: string | null = null
 
-    if (studentPhoto) {
-      profilePhotoPath = await uploadStudentProfilePhoto(studentPhoto, schoolId)
-    }
+const photoToUpload = photoOverride || studentPhoto
+
+if (photoToUpload) {
+  profilePhotoPath = await uploadStudentProfilePhoto(photoToUpload, schoolId)
+}
 
     const { error } = await supabase.from('students').insert({
   name: studentName,
@@ -2381,6 +2409,7 @@ function handleChangeSection(
     | 'registrations'
     | 'students'
     | 'classes'
+    | 'class-map'
     | 'attendance'
     | 'reports'
     | 'assessments'
@@ -2492,6 +2521,19 @@ style={{
     >
   Turmas
     </button>
+
+    {(isAdmin || isManager) && (
+  <button
+    onClick={() => handleChangeSection('class-map')}
+    style={
+      activeSection === 'class-map'
+        ? dashboardNavButtonActiveStyle
+        : dashboardNavButtonStyle
+    }
+  >
+    Mapa de Turma
+  </button>
+)}
 
   <button
     onClick={() => handleChangeSection('attendance')}
@@ -3037,7 +3079,7 @@ style={{
   </section>
 )}
 
-{activeSection === 'students' && (
+{activeSection === 'students' && (isAdmin || isManager) && (
   <section style={dashboardMainGridStyle}>
     <div style={dashboardMainColumnStyle}>
       <section style={dashboardCardStyle}>
@@ -3073,6 +3115,18 @@ style={{
   showMessage={showMessage}
 />
 )}
+
+{activeSection === 'class-map' && (isAdmin || isManager) && (
+  <ClassMapSection
+    schoolId={schoolId}
+    schoolName={schoolName}
+    classes={classes}
+    students={students}
+    enrollments={enrollments}
+    showMessage={showMessage}
+  />
+)}
+
 {activeSection === 'reports' && (
   <section style={dashboardMainGridStyle}>
     <div style={dashboardMainColumnStyle}>
@@ -3091,10 +3145,11 @@ style={{
           <AttendanceReportsSection
             schoolName={schoolName}
             students={students.map((student) => ({
-            id: student.id,
-            full_name: student.full_name || student.name || 'Aluno sem nome',
-            name: student.name || student.full_name || 'Aluno sem nome',
-              }))}
+  id: student.id,
+  full_name: student.full_name || student.name || 'Aluno sem nome',
+  name: student.name || student.full_name || 'Aluno sem nome',
+  responsible_whatsapp: student.responsible_whatsapp || null,
+}))}
             classes={classes}
             records={reportRecords}
             selectedClassId={reportClassId}
@@ -3106,7 +3161,7 @@ style={{
             endDate={reportEndDate}
             setEndDate={setReportEndDate}
             onGenerate={handleGenerateAttendanceReport}
-            loading={reportLoading}
+            loading={reportLoading || studentsLoading}
           />
 
           <div style={{ marginTop: 14, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -3116,15 +3171,6 @@ style={{
             >
               Imprimir relatório
             </button>
-
-            {reportStatus === 'absent' && reportRecords.length > 0 && (
-              <button
-                onClick={() => sendWhatsappToAllFromReport(reportRecords)}
-                style={dashboardWhatsappButtonStyle}
-              >
-                Enviar avisos no WhatsApp
-              </button>
-            )}
           </div>
         </section>
       )}

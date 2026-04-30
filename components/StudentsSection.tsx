@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
 
 type Student = {
@@ -29,7 +29,7 @@ type StudentsSectionProps = {
   setGuardianEmail: (value: string) => void
   setGuardianWhatsapp: (value: string) => void
   setStudentPhoto: (file: File | null) => void
-  handleCreateStudent: () => void
+  handleCreateStudent: (photoOverride?: File | null) => void
 }
 
 export default function StudentsSection({
@@ -49,6 +49,39 @@ export default function StudentsSection({
 }: StudentsSectionProps) {
   const [studentSearch, setStudentSearch] = useState('')
   const [selectedClassFilter, setSelectedClassFilter] = useState('')
+  const [studentPhotoPreview, setStudentPhotoPreview] = useState<string | null>(null)
+  const [photoPositionX, setPhotoPositionX] = useState(50)
+  const [photoPositionY, setPhotoPositionY] = useState(50)
+  const [photoZoom, setPhotoZoom] = useState(1)
+  const [photoInputKey, setPhotoInputKey] = useState(0)
+
+useEffect(() => {
+  return () => {
+    if (studentPhotoPreview) {
+      URL.revokeObjectURL(studentPhotoPreview)
+    }
+  }
+}, [studentPhotoPreview])
+
+function handleStudentPhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+  const file = e.target.files?.[0] || null
+
+  setStudentPhoto(file)
+  setPhotoPositionX(50)
+  setPhotoPositionY(50)
+  setPhotoZoom(1)
+
+  if (studentPhotoPreview) {
+    URL.revokeObjectURL(studentPhotoPreview)
+  }
+
+  if (!file) {
+    setStudentPhotoPreview(null)
+    return
+  }
+
+  setStudentPhotoPreview(URL.createObjectURL(file))
+}
 
   const availableClasses = useMemo(() => {
     const classNames = students
@@ -78,6 +111,66 @@ const filteredStudents = useMemo(() => {
     return matchesName && matchesClass
   })
 }, [students, studentSearch, selectedClassFilter, hasActiveFilter])
+
+async function createAdjustedStudentPhotoFile() {
+  if (!studentPhotoPreview) return null
+
+  const image = new Image()
+  image.src = studentPhotoPreview
+  await image.decode()
+
+  const size = 512
+
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+
+  const imageWidth = image.naturalWidth
+  const imageHeight = image.naturalHeight
+
+  const baseScale = Math.max(size / imageWidth, size / imageHeight)
+  const scale = baseScale * photoZoom
+
+  const drawWidth = imageWidth * scale
+  const drawHeight = imageHeight * scale
+
+  const x = (size - drawWidth) * (photoPositionX / 100)
+  const y = (size - drawHeight) * (photoPositionY / 100)
+
+  ctx.drawImage(image, x, y, drawWidth, drawHeight)
+
+  return new Promise<File | null>((resolve) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return resolve(null)
+
+        resolve(
+          new File([blob], `foto-aluno-${Date.now()}.jpg`, {
+            type: 'image/jpeg',
+          })
+        )
+      },
+      'image/jpeg',
+      0.92
+    )
+  })
+}
+
+async function handleCreateStudentWithAdjustedPhoto() {
+  const adjustedPhoto = await createAdjustedStudentPhotoFile()
+
+  await handleCreateStudent(adjustedPhoto)
+
+  setStudentPhoto(null)
+  setStudentPhotoPreview(null)
+  setPhotoPositionX(50)
+  setPhotoPositionY(50)
+  setPhotoZoom(1)
+  setPhotoInputKey((prev) => prev + 1)
+}
 
   function handlePrintFilteredQRCodes() {
     if (filteredStudents.length === 0) {
@@ -198,16 +291,86 @@ setTimeout(() => {
           />
         </div>
 
-        <div style={{ marginTop: 12 }}>
-          <label style={labelStyle}>Foto do aluno</label>
+<div style={{ marginTop: 12 }}>
+  <label style={labelStyle}>Foto do aluno</label>
 
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => setStudentPhoto(e.target.files?.[0] || null)}
-            style={inputStyle}
-          />
-        </div>
+  <div style={photoPickerWrapperStyle}>
+    <div style={photoPreviewCircleStyle}>
+      {studentPhotoPreview ? (
+        <img
+          src={studentPhotoPreview}
+          alt="Prévia da foto do aluno"
+style={{
+  ...photoPreviewImageStyle,
+  width: `${photoZoom * 100}%`,
+  height: `${photoZoom * 100}%`,
+  objectFit: 'cover',
+  objectPosition: `${photoPositionX}% ${photoPositionY}%`,
+}}
+        />
+      ) : (
+        <span style={photoPreviewTextStyle}>Prévia</span>
+      )}
+    </div>
+
+    <div>
+      <label style={photoPickerButtonStyle}>
+        Escolher foto
+        <input
+          key={photoInputKey}
+          type="file"
+          accept="image/*"
+          onChange={handleStudentPhotoChange}
+          style={{ display: 'none' }}
+        />
+      </label>
+
+      <p style={photoPickerHintStyle}>
+        Escolha a posição ideal da foto do aluno.
+      </p>
+      {studentPhotoPreview && (
+  <div style={photoAdjustBoxStyle}>
+    <label style={photoAdjustLabelStyle}>
+      Mover horizontalmente
+      <input
+        type="range"
+        min="0"
+        max="100"
+        value={photoPositionX}
+        onChange={(e) => setPhotoPositionX(Number(e.target.value))}
+        style={photoRangeStyle}
+      />
+    </label>
+
+    <label style={photoAdjustLabelStyle}>
+      Mover verticalmente
+      <input
+        type="range"
+        min="0"
+        max="100"
+        value={photoPositionY}
+        onChange={(e) => setPhotoPositionY(Number(e.target.value))}
+        style={photoRangeStyle}
+      />
+    </label>
+
+    <label style={photoAdjustLabelStyle}>
+  Zoom
+  <input
+    type="range"
+    min="1"
+    max="2"
+    step="0.01"
+    value={photoZoom}
+    onChange={(e) => setPhotoZoom(Number(e.target.value))}
+    style={photoRangeStyle}
+  />
+</label>
+  </div>
+)}
+    </div>
+  </div>
+</div>
 
         <div style={sectionTitleStyle}>Responsável</div>
 
@@ -229,9 +392,9 @@ setTimeout(() => {
           />
         </div>
 
-        <button onClick={handleCreateStudent} style={primaryButtonStyle}>
-          Cadastrar aluno
-        </button>
+<button onClick={handleCreateStudentWithAdjustedPhoto} style={primaryButtonStyle}>
+  Cadastrar aluno
+</button>
       </div>
 
       <div style={cardStyle}>
@@ -526,4 +689,73 @@ const whatsappButtonStyle: React.CSSProperties = {
   cursor: 'pointer',
   fontWeight: 800,
   fontSize: 12,
+}
+
+const photoPickerWrapperStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 18,
+  flexWrap: 'wrap',
+}
+
+const photoPreviewCircleStyle: React.CSSProperties = {
+  width: 96,
+  height: 96,
+  borderRadius: '50%',
+  overflow: 'hidden',
+  border: '3px solid #2563eb',
+  background: '#f1f5f9',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  boxShadow: '0 10px 25px rgba(37, 99, 235, 0.18)',
+}
+
+const photoPreviewImageStyle: React.CSSProperties = {
+  width: '100%',
+  height: '100%',
+  objectFit: 'cover',
+}
+
+const photoPreviewTextStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: '#64748b',
+  fontWeight: 800,
+}
+
+const photoPickerButtonStyle: React.CSSProperties = {
+  display: 'inline-block',
+  padding: '12px 18px',
+  borderRadius: 14,
+  background: '#eff6ff',
+  color: '#1d4ed8',
+  border: '1px solid #bfdbfe',
+  fontWeight: 800,
+  cursor: 'pointer',
+}
+
+const photoPickerHintStyle: React.CSSProperties = {
+  margin: '8px 0 0',
+  fontSize: 12,
+  color: '#64748b',
+  fontWeight: 600,
+}
+
+const photoAdjustBoxStyle: React.CSSProperties = {
+  marginTop: 12,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 10,
+  width: 260,
+}
+
+const photoAdjustLabelStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: '#475569',
+  fontWeight: 800,
+}
+
+const photoRangeStyle: React.CSSProperties = {
+  width: '100%',
+  marginTop: 6,
 }
