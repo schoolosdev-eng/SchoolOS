@@ -45,16 +45,13 @@ const [editEmail, setEditEmail] = useState('')
 const [editResponsibleEmail, setEditResponsibleEmail] = useState('')
 const [editResponsibleWhatsapp, setEditResponsibleWhatsapp] = useState('')
 const [editPhoto, setEditPhoto] = useState<File | null>(null)
-<<<<<<< HEAD
 const [studentToDelete, setStudentToDelete] = useState<Student | null>(null)
 const [deletingStudent, setDeletingStudent] = useState(false)
-=======
 const [editPhotoPreview, setEditPhotoPreview] = useState<string | null>(null)
 const [editPhotoPositionX, setEditPhotoPositionX] = useState(50)
 const [editPhotoPositionY, setEditPhotoPositionY] = useState(50)
 const [editPhotoZoom, setEditPhotoZoom] = useState(1)
 const [editPhotoInputKey, setEditPhotoInputKey] = useState(0)
->>>>>>> main
 
   const availableClasses = useMemo(() => {
     const classNames = students
@@ -835,7 +832,6 @@ const cancelButtonStyle: React.CSSProperties = {
   fontSize: 12,
 }
 
-<<<<<<< HEAD
 const deleteButtonStyle: React.CSSProperties = {
   padding: '8px 10px',
   borderRadius: 10,
@@ -898,7 +894,8 @@ const modalActionsStyle: React.CSSProperties = {
   gap: 10,
   marginTop: 18,
   flexWrap: 'wrap',
-=======
+}
+
 const editPhotoBoxStyle: React.CSSProperties = {
   marginTop: 8,
   padding: 12,
@@ -960,5 +957,4 @@ const editPhotoLabelStyle: React.CSSProperties = {
 const editPhotoRangeStyle: React.CSSProperties = {
   width: '100%',
   marginTop: 4,
->>>>>>> main
 }
