@@ -18,6 +18,7 @@ import OccurrenceReportsSection from '@/components/OccurrenceReportsSection'
 import AssessmentsSection from '@/components/AssessmentsSection'
 import { offlineAttendanceDb } from '@/lib/offlineAttendanceDb'
 import StudentsListSection from '@/components/StudentsListSection'
+import ClassMapSection from '@/components/ClassMapSection'
 
 type Student = {
   id: string
@@ -198,6 +199,7 @@ const [activeSection, setActiveSection] = useState<
   | 'registrations'
   | 'students'
   | 'classes'
+  | 'class-map'
   | 'attendance'
   | 'reports'
   | 'assessments'
@@ -1413,7 +1415,7 @@ async function handleCopyAlertMessage(alert: AlertStudent) {
   }
 }
 
-async function handleCreateStudent() {
+async function handleCreateStudent(photoOverride?: File | null) {
   if (!studentName.trim() || !studentEmail.trim() || !studentBirthDate) {
     showMessage('Preencha todos os campos do aluno.')
     return
@@ -1430,9 +1432,11 @@ async function handleCreateStudent() {
   try {
     let profilePhotoPath: string | null = null
 
-    if (studentPhoto) {
-      profilePhotoPath = await uploadStudentProfilePhoto(studentPhoto, schoolId)
-    }
+const photoToUpload = photoOverride || studentPhoto
+
+if (photoToUpload) {
+  profilePhotoPath = await uploadStudentProfilePhoto(photoToUpload, schoolId)
+}
 
     const { error } = await supabase.from('students').insert({
   name: studentName,
@@ -2371,6 +2375,7 @@ function handleChangeSection(
     | 'registrations'
     | 'students'
     | 'classes'
+    | 'class-map'
     | 'attendance'
     | 'reports'
     | 'assessments'
@@ -2482,6 +2487,19 @@ style={{
     >
   Turmas
     </button>
+
+    {(isAdmin || isManager) && (
+  <button
+    onClick={() => handleChangeSection('class-map')}
+    style={
+      activeSection === 'class-map'
+        ? dashboardNavButtonActiveStyle
+        : dashboardNavButtonStyle
+    }
+  >
+    Mapa de Turma
+  </button>
+)}
 
   <button
     onClick={() => handleChangeSection('attendance')}
@@ -3027,7 +3045,7 @@ style={{
   </section>
 )}
 
-{activeSection === 'students' && (
+{activeSection === 'students' && (isAdmin || isManager) && (
   <section style={dashboardMainGridStyle}>
     <div style={dashboardMainColumnStyle}>
       <section style={dashboardCardStyle}>
@@ -3062,6 +3080,18 @@ style={{
   showMessage={showMessage}
 />
 )}
+
+{activeSection === 'class-map' && (isAdmin || isManager) && (
+  <ClassMapSection
+    schoolId={schoolId}
+    schoolName={schoolName}
+    classes={classes}
+    students={students}
+    enrollments={enrollments}
+    showMessage={showMessage}
+  />
+)}
+
 {activeSection === 'reports' && (
   <section style={dashboardMainGridStyle}>
     <div style={dashboardMainColumnStyle}>

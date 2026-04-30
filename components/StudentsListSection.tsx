@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
 
 type Student = {
@@ -43,6 +43,11 @@ const [editEmail, setEditEmail] = useState('')
 const [editResponsibleEmail, setEditResponsibleEmail] = useState('')
 const [editResponsibleWhatsapp, setEditResponsibleWhatsapp] = useState('')
 const [editPhoto, setEditPhoto] = useState<File | null>(null)
+const [editPhotoPreview, setEditPhotoPreview] = useState<string | null>(null)
+const [editPhotoPositionX, setEditPhotoPositionX] = useState(50)
+const [editPhotoPositionY, setEditPhotoPositionY] = useState(50)
+const [editPhotoZoom, setEditPhotoZoom] = useState(1)
+const [editPhotoInputKey, setEditPhotoInputKey] = useState(0)
 
   const availableClasses = useMemo(() => {
     const classNames = students
@@ -174,6 +179,80 @@ const filteredStudents = students.filter((student) => {
   return `${day}/${month}/${year}`
 }
 
+useEffect(() => {
+  return () => {
+    if (editPhotoPreview) {
+      URL.revokeObjectURL(editPhotoPreview)
+    }
+  }
+}, [editPhotoPreview])
+
+function handleEditPhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+  const file = e.target.files?.[0] || null
+
+  setEditPhoto(file)
+  setEditPhotoPositionX(50)
+  setEditPhotoPositionY(50)
+  setEditPhotoZoom(1)
+
+  if (editPhotoPreview) {
+    URL.revokeObjectURL(editPhotoPreview)
+  }
+
+  if (!file) {
+    setEditPhotoPreview(null)
+    return
+  }
+
+  setEditPhotoPreview(URL.createObjectURL(file))
+}
+
+async function createAdjustedEditPhotoFile() {
+  if (!editPhotoPreview) return null
+
+  const image = new Image()
+  image.src = editPhotoPreview
+  await image.decode()
+
+  const size = 512
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+
+  const imageWidth = image.naturalWidth
+  const imageHeight = image.naturalHeight
+
+  const baseScale = Math.max(size / imageWidth, size / imageHeight)
+  const scale = baseScale * editPhotoZoom
+
+  const drawWidth = imageWidth * scale
+  const drawHeight = imageHeight * scale
+
+  const x = (size - drawWidth) * (editPhotoPositionX / 100)
+  const y = (size - drawHeight) * (editPhotoPositionY / 100)
+
+  ctx.drawImage(image, x, y, drawWidth, drawHeight)
+
+  return new Promise<File | null>((resolve) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return resolve(null)
+
+        resolve(
+          new File([blob], `foto-aluno-editada-${Date.now()}.jpg`, {
+            type: 'image/jpeg',
+          })
+        )
+      },
+      'image/jpeg',
+      0.92
+    )
+  })
+}
+
   return (
     <div style={cardStyle}>
       <div style={listHeaderStyle}>
@@ -302,12 +381,82 @@ const filteredStudents = students.filter((student) => {
                   style={inputStyle}
                 />
 
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => setEditPhoto(e.target.files?.[0] || null)}
-                  style={inputStyle}
-                />
+<div style={editPhotoBoxStyle}>
+  <div style={editPhotoPreviewStyle}>
+    {editPhotoPreview ? (
+      <img
+        src={editPhotoPreview}
+        alt="Prévia da nova foto"
+        style={{
+          ...editPhotoPreviewImageStyle,
+          width: `${editPhotoZoom * 100}%`,
+          height: `${editPhotoZoom * 100}%`,
+          objectPosition: `${editPhotoPositionX}% ${editPhotoPositionY}%`,
+        }}
+      />
+    ) : student.profile_photo_url ? (
+      <img
+        src={student.profile_photo_url}
+        alt="Foto atual"
+        style={editPhotoPreviewImageStyle}
+      />
+    ) : (
+      <span style={editPhotoPreviewTextStyle}>Prévia</span>
+    )}
+  </div>
+
+  <label style={editPhotoButtonStyle}>
+    Alterar foto
+    <input
+      key={editPhotoInputKey}
+      type="file"
+      accept="image/*"
+      onChange={handleEditPhotoChange}
+      style={{ display: 'none' }}
+    />
+  </label>
+
+  {editPhotoPreview && (
+    <div style={editPhotoControlsStyle}>
+      <label style={editPhotoLabelStyle}>
+        Horizontal
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={editPhotoPositionX}
+          onChange={(e) => setEditPhotoPositionX(Number(e.target.value))}
+          style={editPhotoRangeStyle}
+        />
+      </label>
+
+      <label style={editPhotoLabelStyle}>
+        Vertical
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={editPhotoPositionY}
+          onChange={(e) => setEditPhotoPositionY(Number(e.target.value))}
+          style={editPhotoRangeStyle}
+        />
+      </label>
+
+      <label style={editPhotoLabelStyle}>
+        Zoom
+        <input
+          type="range"
+          min="1"
+          max="2"
+          step="0.01"
+          value={editPhotoZoom}
+          onChange={(e) => setEditPhotoZoom(Number(e.target.value))}
+          style={editPhotoRangeStyle}
+        />
+      </label>
+    </div>
+  )}
+</div>
               </div>
             ) : (
               <>
@@ -364,18 +513,25 @@ const filteredStudents = students.filter((student) => {
 {isEditing ? (
   <>
     <button
-      onClick={async () => {
-        await onUpdateStudent(student.id, {
-          full_name: editName,
-          email: editEmail,
-          responsible_email: editResponsibleEmail,
-          responsible_whatsapp: editResponsibleWhatsapp,
-          photo: editPhoto,
-        })
+onClick={async () => {
+  const adjustedPhoto = await createAdjustedEditPhotoFile()
 
-        setEditingStudentId(null)
-        setEditPhoto(null)
-      }}
+  await onUpdateStudent(student.id, {
+    full_name: editName,
+    email: editEmail,
+    responsible_email: editResponsibleEmail,
+    responsible_whatsapp: editResponsibleWhatsapp,
+    photo: adjustedPhoto || editPhoto,
+  })
+
+  setEditingStudentId(null)
+  setEditPhoto(null)
+  setEditPhotoPreview(null)
+  setEditPhotoPositionX(50)
+  setEditPhotoPositionY(50)
+  setEditPhotoZoom(1)
+  setEditPhotoInputKey((prev) => prev + 1)
+}}
       style={saveButtonStyle}
     >
       Salvar
@@ -385,6 +541,12 @@ const filteredStudents = students.filter((student) => {
       onClick={() => {
         setEditingStudentId(null)
         setEditPhoto(null)
+        setEditPhoto(null)
+setEditPhotoPreview(null)
+setEditPhotoPositionX(50)
+setEditPhotoPositionY(50)
+setEditPhotoZoom(1)
+setEditPhotoInputKey((prev) => prev + 1)
       }}
       style={cancelButtonStyle}
     >
@@ -402,6 +564,11 @@ const filteredStudents = students.filter((student) => {
         setEditResponsibleEmail(student.responsible_email || '')
         setEditResponsibleWhatsapp(student.responsible_whatsapp || '')
         setEditPhoto(null)
+        setEditPhotoPreview(null)
+setEditPhotoPositionX(50)
+setEditPhotoPositionY(50)
+setEditPhotoZoom(1)
+setEditPhotoInputKey((prev) => prev + 1)
       }}
       style={secondaryButtonStyle}
     >
@@ -611,4 +778,67 @@ const cancelButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   cursor: 'pointer',
   fontSize: 12,
+}
+
+const editPhotoBoxStyle: React.CSSProperties = {
+  marginTop: 8,
+  padding: 12,
+  borderRadius: 16,
+  border: '1px solid #dbeafe',
+  background: '#ffffff',
+}
+
+const editPhotoPreviewStyle: React.CSSProperties = {
+  width: 96,
+  height: 96,
+  borderRadius: 16,
+  overflow: 'hidden',
+  background: '#f1f5f9',
+  border: '2px solid #cbd5e1',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+}
+
+const editPhotoPreviewImageStyle: React.CSSProperties = {
+  width: '100%',
+  height: '100%',
+  objectFit: 'cover',
+}
+
+const editPhotoPreviewTextStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: '#64748b',
+  fontWeight: 800,
+}
+
+const editPhotoButtonStyle: React.CSSProperties = {
+  display: 'inline-block',
+  marginTop: 10,
+  padding: '10px 14px',
+  borderRadius: 12,
+  border: '1px solid #bfdbfe',
+  background: '#eff6ff',
+  color: '#1d4ed8',
+  fontWeight: 800,
+  cursor: 'pointer',
+  fontSize: 13,
+}
+
+const editPhotoControlsStyle: React.CSSProperties = {
+  marginTop: 12,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+}
+
+const editPhotoLabelStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: '#475569',
+  fontWeight: 800,
+}
+
+const editPhotoRangeStyle: React.CSSProperties = {
+  width: '100%',
+  marginTop: 4,
 }
