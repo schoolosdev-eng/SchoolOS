@@ -153,7 +153,9 @@ export default function ManagersSection({
         <div style={emptyStyle}>Nenhum gestor cadastrado.</div>
       ) : (
         <div style={listStyle}>
-          {managers.map((manager) => (
+          {[...managers]
+  .sort((a, b) => a.full_name.localeCompare(b.full_name, 'pt-BR'))
+  .map((manager) => (
             <div key={manager.id} style={itemCardStyle}>
               <div>
                 <div style={itemTitleStyle}>{manager.full_name}</div>

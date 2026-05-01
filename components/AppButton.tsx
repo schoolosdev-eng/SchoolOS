@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 
 type AppButtonVariant =
   | 'primary'
@@ -20,6 +20,9 @@ export default function AppButton({
   style,
   ...props
 }: AppButtonProps) {
+  const [isHovered, setIsHovered] = useState(false)
+  const [isPressed, setIsPressed] = useState(false)
+
   const baseStyle: React.CSSProperties = {
     padding: '14px 18px',
     borderRadius: 14,
@@ -30,7 +33,13 @@ export default function AppButton({
     fontSize: 15,
     width: fullWidth ? '100%' : undefined,
     transition:
-      'transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease',
+      'transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease',
+    transform: isPressed ? 'scale(0.96)' : isHovered ? 'scale(1.03)' : 'scale(1)',
+    filter: isHovered ? 'brightness(1.05)' : 'brightness(1)',
+    boxShadow: isHovered
+      ? '0 10px 25px rgba(0,0,0,0.15)'
+      : '0 6px 16px rgba(0,0,0,0.08)',
+    opacity: props.disabled ? 0.6 : 1,
   }
 
   const variants: Record<AppButtonVariant, React.CSSProperties> = {
@@ -59,6 +68,13 @@ export default function AppButton({
   return (
     <button
       {...props}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => {
+        setIsHovered(false)
+        setIsPressed(false)
+      }}
+      onMouseDown={() => setIsPressed(true)}
+      onMouseUp={() => setIsPressed(false)}
       style={{
         ...baseStyle,
         ...variants[variant],

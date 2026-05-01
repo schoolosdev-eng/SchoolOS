@@ -103,17 +103,14 @@ export default function OccurrenceReportsSection({
   setSelectedSituation,
   onGenerate,
 }: Props) {
-  const filteredStudents = useMemo(() => {
-  if (!selectedClassId) return students
+const filteredStudents = useMemo(() => {
+  return [...students].sort((a, b) => {
+    const nameA = a.full_name || a.name || ''
+    const nameB = b.full_name || b.name || ''
 
-  const studentIdsFromClass = occurrences
-    .filter((occurrence) => occurrence.class_id === selectedClassId)
-    .map((occurrence) => occurrence.student_id)
-
-  return students.filter((student) =>
-    studentIdsFromClass.includes(student.id)
-  )
-}, [students, occurrences, selectedClassId])
+    return nameA.localeCompare(nameB, 'pt-BR')
+  })
+}, [students])
 
 const totalOccurrences = occurrences.length
 

@@ -28,17 +28,21 @@ export default function QRScanner({ onScan, onNoCamera, isActive }: Props) {
     onScanRef.current = onScan
   }, [onScan])
 
-  async function stopScanner() {
-    if (scannerRef.current && isRunningRef.current) {
-      try {
-        await scannerRef.current.stop()
-      } catch (error) {
-        console.error('Erro ao parar scanner:', error)
-      }
+async function stopScanner() {
+  if (!scannerRef.current) return
+
+  try {
+    if (isRunningRef.current) {
+      await scannerRef.current.stop()
     }
 
-    isRunningRef.current = false
+    scannerRef.current.clear()
+  } catch (error) {
+    console.error('Erro ao parar scanner:', error)
   }
+
+  isRunningRef.current = false
+}
 
   async function startScanner(cameraId?: string | null) {
     if (!isActive || isSwitchingRef.current) return

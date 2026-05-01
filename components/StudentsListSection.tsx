@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
+import { supabase } from '@/lib/supabase'
 
 type Student = {
   id: string
@@ -52,6 +53,7 @@ const [editPhotoPositionX, setEditPhotoPositionX] = useState(50)
 const [editPhotoPositionY, setEditPhotoPositionY] = useState(50)
 const [editPhotoZoom, setEditPhotoZoom] = useState(1)
 const [editPhotoInputKey, setEditPhotoInputKey] = useState(0)
+const [photoUrls, setPhotoUrls] = useState<Record<string, string | null>>({})
 
   const availableClasses = useMemo(() => {
     const classNames = students
@@ -66,23 +68,30 @@ const hasActiveFilter =
   selectedClassFilter !== '' ||
   onlyWithoutClass
 
-const filteredStudents = students.filter((student) => {
-  const matchesName =
-    !studentSearch ||
-    student.full_name?.toLowerCase().includes(studentSearch.toLowerCase())
+const filteredStudents = students
+  .filter((student) => {
+    const matchesName =
+      !studentSearch ||
+      student.full_name?.toLowerCase().includes(studentSearch.toLowerCase())
 
-  const matchesClass =
-    !selectedClassFilter ||
-    selectedClassFilter === 'all' ||
-    student.class_name === selectedClassFilter
+    const matchesClass =
+      !selectedClassFilter ||
+      selectedClassFilter === 'all' ||
+      student.class_name === selectedClassFilter
 
-  const matchesWithoutClass =
-    !onlyWithoutClass ||
-    !student.class_name ||
-    student.class_name === 'Sem turma'
+    const matchesWithoutClass =
+      !onlyWithoutClass ||
+      !student.class_name ||
+      student.class_name === 'Sem turma'
 
-  return matchesName && matchesClass && matchesWithoutClass
-})
+    return matchesName && matchesClass && matchesWithoutClass
+  })
+  .sort((a, b) => {
+    const nameA = (a.full_name || a.name || '').toLowerCase()
+    const nameB = (b.full_name || b.name || '').toLowerCase()
+
+    return nameA.localeCompare(nameB)
+  })
 
   function handlePrintFilteredQRCodes() {
     if (filteredStudents.length === 0) {
@@ -124,40 +133,50 @@ const filteredStudents = students.filter((student) => {
               padding: 24px;
               color: #0f172a;
             }
-.grid {
-  display: grid;
-  grid-template-columns: repeat(4, 180px);
-  gap: 18px;
-  justify-content: start;
-}
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 28px;
+  }
 
-.qr-card {
-  width: 180px;
-  border: 1px solid #cbd5e1;
-  border-radius: 14px;
-  padding: 12px;
-  text-align: center;
-  break-inside: avoid;
-  box-sizing: border-box;
-}
+  .qr-card {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 16px;
+    padding: 18px;
+    text-align: center;
+    break-inside: avoid;
+    box-sizing: border-box;
+  }
 
-.qr-card img {
-  width: 130px;
-  height: 130px;
-  image-rendering: crisp-edges;
-  image-rendering: pixelated;
-}
+  .qr-card img {
+    width: 220px;   /* AUMENTA o QR */
+    height: 220px;
+    image-rendering: crisp-edges;
+    image-rendering: pixelated;
+  }
 
-            .qr-card h3 {
-              margin: 10px 0 4px;
-              font-size: 15px;
-            }
+  .qr-card h3 {
+    margin: 12px 0 6px;
+    font-size: 18px; /* maior */
+  }
 
-            .qr-card p {
-              margin: 0;
-              font-size: 13px;
-              color: #64748b;
-            }
+  .qr-card p {
+    margin: 0;
+    font-size: 14px;
+    color: #64748b;
+  }
+
+    @media print {
+    body {
+      padding: 10px;
+    }
+
+    .grid {
+      gap: 20px;
+    }
+
+  }
           </style>
         </head>
 
@@ -190,6 +209,31 @@ useEffect(() => {
     }
   }
 }, [editPhotoPreview])
+
+useEffect(() => {
+  students.forEach(async (student) => {
+    if (photoUrls[student.id] !== undefined) return
+
+    const photoPath = (student as any).profile_photo_path
+
+    if (!photoPath) {
+      setPhotoUrls((prev) => ({
+        ...prev,
+        [student.id]: null,
+      }))
+      return
+    }
+
+    const { data } = await supabase.storage
+      .from('student-profile-photos')
+      .createSignedUrl(photoPath, 3600)
+
+    setPhotoUrls((prev) => ({
+      ...prev,
+      [student.id]: data?.signedUrl || null,
+    }))
+  })
+}, [students])
 
 function handleEditPhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
   const file = e.target.files?.[0] || null
@@ -338,9 +382,9 @@ async function createAdjustedEditPhotoFile() {
     <div key={student.id} style={itemCardStyle}>
       <div style={studentRowStyle}>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          {student.profile_photo_url ? (
-            <img
-              src={student.profile_photo_url}
+{photoUrls[student.id] ? (
+  <img
+    src={photoUrls[student.id] || ''}
               alt={student.full_name || 'Aluno'}
               style={photoStyle}
             />
@@ -398,9 +442,9 @@ async function createAdjustedEditPhotoFile() {
           objectPosition: `${editPhotoPositionX}% ${editPhotoPositionY}%`,
         }}
       />
-    ) : student.profile_photo_url ? (
-      <img
-        src={student.profile_photo_url}
+) : photoUrls[student.id] ? (
+  <img
+    src={photoUrls[student.id] || ''}
         alt="Foto atual"
         style={editPhotoPreviewImageStyle}
       />

@@ -137,6 +137,8 @@ export default function SchoolPage() {
   const [managerEmail, setManagerEmail] = useState('')
   const [managerArea, setManagerArea] = useState('')
 
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+
   const [scanResult, setScanResult] = useState<{
   status: 'success' | 'duplicate' | 'error'
   message: string
@@ -277,6 +279,7 @@ function formatDateBR(date: string) {
     }
     setCurrentUserId(user.id)
     setCurrentUserEmail(user.email || null)
+    setAvatarUrl(user.user_metadata?.avatar_url || null)
 
     const { data, error } = await supabase
   .from('school_memberships')
@@ -321,19 +324,19 @@ async function fetchStudents(currentSchoolIdParam?: string) {
   setStudentsLoading(true)
 
   const { data, error } = await supabase
-  .from('students')
-  .select(`
-    id,
-    name,
-    full_name,
-    email,
-    birth_date,
-    school_id,
-    profile_photo_path,
-    qr_code_token,
-    responsible_email,
-    responsible_whatsapp
-  `)
+    .from('students')
+    .select(`
+      id,
+      name,
+      full_name,
+      email,
+      birth_date,
+      school_id,
+      profile_photo_path,
+      qr_code_token,
+      responsible_email,
+      responsible_whatsapp
+    `)
     .eq('school_id', currentSchoolId)
     .order('created_at', { ascending: false })
 
@@ -343,43 +346,14 @@ async function fetchStudents(currentSchoolIdParam?: string) {
     return
   }
 
-  const studentsWithPhotos = await Promise.all(
-    (data || []).map(async (student) => {
-      let profilePhotoUrl: string | null = null
-
-      if (student.profile_photo_path) {
-        const { data: signedData } = await supabase.storage
-          .from('student-profile-photos')
-          .createSignedUrl(student.profile_photo_path, 3600)
-
-        profilePhotoUrl = signedData?.signedUrl || null
-      }
-
-      const { data: enrollment } = await supabase
-        .from('enrollments')
-        .select(`
-          class_id,
-          classes (
-            name
-          )
-        `)
-        .eq('student_id', student.id)
-        .limit(1)
-        .maybeSingle()
-
-      const classData = Array.isArray(enrollment?.classes)
-  ? enrollment?.classes[0]
-  : enrollment?.classes
-
-return {
-  ...student,
-  profile_photo_url: profilePhotoUrl,
-  class_name: classData?.name || 'Sem turma',
-}
-    })
+  setStudents(
+    (data || []).map((student) => ({
+      ...student,
+      profile_photo_url: null,
+      class_name: null,
+    })) as Student[]
   )
 
-  setStudents(studentsWithPhotos as Student[])
   setStudentsLoading(false)
 }
 
@@ -460,14 +434,14 @@ return {
 async function loadAllData() {
   await Promise.all([
     fetchSchool(),
-    fetchTeachers(),
-    fetchManagers(),
     fetchSchoolYears(),
     fetchClasses(),
     fetchEnrollments(),
+    fetchStudents(),
   ])
 
-  fetchStudents()
+  fetchTeachers()
+  fetchManagers()
 }
 
   async function uploadStudentProfilePhoto(file: File, currentSchoolId: string) {
@@ -2035,6 +2009,8 @@ const dashboardUserMiniCardStyle: React.CSSProperties = {
   border: '1px solid #e2e8f0',
   borderRadius: 18,
   padding: 14,
+  appearance: 'none',
+  WebkitAppearance: 'none',
 }
 
 const dashboardUserMiniAvatarStyle: React.CSSProperties = {
@@ -2393,6 +2369,21 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
   fontSize: 14,
 }
 
+const studentClassMap = useMemo(() => {
+  const map: Record<string, { class_id: string; class_name: string | null }> = {}
+
+  enrollments.forEach((enrollment) => {
+    const schoolClass = classes.find((item) => item.id === enrollment.class_id)
+
+    map[enrollment.student_id] = {
+      class_id: enrollment.class_id,
+      class_name: schoolClass?.name || null,
+    }
+  })
+
+  return map
+}, [enrollments, classes])
+
     if (loading) {
     return (
       <main style={dashboardPageStyle}>
@@ -2569,19 +2560,44 @@ style={{
 </div>
 
           <div style={dashboardSidebarFooterStyle}>
-            <div style={dashboardUserMiniCardStyle}>
-              <div style={dashboardUserMiniAvatarStyle}>
-                {(userRole || 'U').slice(0, 1).toUpperCase()}
-              </div>
-              <div>
-                <div style={dashboardUserMiniNameStyle}>
-                  {userRole || 'Usuário'}
-                </div>
-                <div style={dashboardUserMiniRoleStyle}>
-                  {isManager && userArea ? `Área: ${userArea}` : 'Acesso escolar'}
-                </div>
-              </div>
-            </div>
+{(isAdmin || isManager) && (
+  <button
+    onClick={() => router.push(`/school/${schoolId}/perfil`)}
+    style={{
+      ...dashboardUserMiniCardStyle,
+      width: '100%',
+      cursor: 'pointer',
+      textAlign: 'left',
+    }}
+  >
+<div style={dashboardUserMiniAvatarStyle}>
+  {avatarUrl ? (
+    <img
+      src={avatarUrl}
+      alt="Foto"
+      style={{
+        width: '100%',
+        height: '100%',
+        borderRadius: 14,
+        objectFit: 'cover',
+      }}
+    />
+  ) : (
+    (userRole || 'U').slice(0, 1).toUpperCase()
+  )}
+</div>
+
+    <div>
+      <div style={dashboardUserMiniNameStyle}>
+        {userRole || 'Usuário'}
+      </div>
+
+      <div style={dashboardUserMiniRoleStyle}>
+        {isManager && userArea ? `Área: ${userArea}` : 'Acesso escolar'}
+      </div>
+    </div>
+  </button>
+)}
           </div>
         </aside>
 
@@ -2861,8 +2877,11 @@ style={{
             </div>
           </div>
 
-          <StudentsSection
-            students={students}
+<StudentsSection
+  students={students.map((student) => ({
+    ...student,
+    class_name: studentClassMap[student.id]?.class_name || 'Sem turma',
+  }))}
             studentName={studentName}
             studentBirthDate={studentBirthDate}
             studentEmail={studentEmail}
@@ -3094,7 +3113,10 @@ style={{
         </div>
 
 <StudentsListSection
-  students={students}
+  students={students.map((student) => ({
+    ...student,
+    class_name: studentClassMap[student.id]?.class_name || 'Sem turma',
+  }))}
   onUpdateStudent={handleUpdateStudent}
   onDeleteStudent={handleDeleteStudent}
 />
@@ -3246,12 +3268,13 @@ style={{
   currentUserId={currentUserId}
   classes={classes}
   schoolName={schoolName}
-  students={students.map((student) => ({
+students={students.map((student) => ({
   id: student.id,
   name: student.full_name || student.name || 'Aluno sem nome',
   full_name: student.full_name || student.name || 'Aluno sem nome',
   qr_code_token: student.qr_code_token || null,
-  class_name: student.class_name || null,
+  class_id: studentClassMap[student.id]?.class_id || null,
+  class_name: studentClassMap[student.id]?.class_name || null,
 }))}
 />
 )}

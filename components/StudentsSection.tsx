@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
+import { supabase } from '@/lib/supabase'
 
 type Student = {
   id: string
@@ -13,6 +14,7 @@ type Student = {
   qr_code_token?: string | null
   class_name?: string | null
   responsible_whatsapp?: string | null
+  profile_photo_path?: string | null
 }
 
 type StudentsSectionProps = {
@@ -54,6 +56,7 @@ export default function StudentsSection({
   const [photoPositionY, setPhotoPositionY] = useState(50)
   const [photoZoom, setPhotoZoom] = useState(1)
   const [photoInputKey, setPhotoInputKey] = useState(0)
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string | null>>({})
 
 useEffect(() => {
   return () => {
@@ -62,6 +65,29 @@ useEffect(() => {
     }
   }
 }, [studentPhotoPreview])
+
+useEffect(() => {
+  students.forEach(async (student) => {
+    if (photoUrls[student.id] !== undefined) return
+
+    if (!student.profile_photo_path) {
+      setPhotoUrls((prev) => ({
+        ...prev,
+        [student.id]: null,
+      }))
+      return
+    }
+
+    const { data } = await supabase.storage
+      .from('student-profile-photos')
+      .createSignedUrl(student.profile_photo_path, 3600)
+
+    setPhotoUrls((prev) => ({
+      ...prev,
+      [student.id]: data?.signedUrl || null,
+    }))
+  })
+}, [students])
 
 function handleStudentPhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
   const file = e.target.files?.[0] || null
@@ -98,18 +124,25 @@ function handleStudentPhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
 const filteredStudents = useMemo(() => {
   if (!hasActiveFilter) return []
 
-  return students.filter((student) => {
-    const name = (student.full_name || student.name || '').toLowerCase()
+  return students
+    .filter((student) => {
+      const name = (student.full_name || student.name || '').toLowerCase()
 
-    const matchesName = name.includes(studentSearch.trim().toLowerCase())
+      const matchesName = name.includes(studentSearch.trim().toLowerCase())
 
-    const matchesClass =
-      selectedClassFilter === '' || selectedClassFilter === 'all'
-        ? true
-        : student.class_name === selectedClassFilter
+      const matchesClass =
+        selectedClassFilter === '' || selectedClassFilter === 'all'
+          ? true
+          : student.class_name === selectedClassFilter
 
-    return matchesName && matchesClass
-  })
+      return matchesName && matchesClass
+    })
+    .sort((a, b) => {
+      const nameA = a.full_name || a.name || ''
+      const nameB = b.full_name || b.name || ''
+
+      return nameA.localeCompare(nameB, 'pt-BR')
+    })
 }, [students, studentSearch, selectedClassFilter, hasActiveFilter])
 
 async function createAdjustedStudentPhotoFile() {
@@ -213,7 +246,7 @@ printWindow.document.write(`
 
         .grid {
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
+          grid-template-columns: repeat(3, 1fr);
           gap: 18px;
         }
 
@@ -226,8 +259,8 @@ printWindow.document.write(`
         }
 
         .qr-card img {
-          width: 190px;
-          height: 190px;
+          width: 220px;
+          height: 220px;
           image-rendering: crisp-edges;
           image-rendering: pixelated;
         }
@@ -242,6 +275,15 @@ printWindow.document.write(`
           font-size: 13px;
           color: #64748b;
         }
+
+            @media print {
+    body {
+      padding: 10px;
+    }
+
+    .grid {
+      gap: 20px;
+    }
       </style>
     </head>
     <body>
@@ -450,9 +492,9 @@ style={{
               <div key={student.id} style={itemCardStyle}>
                 <div style={studentRowStyle}>
                   <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                    {student.profile_photo_url ? (
-                      <img
-                        src={student.profile_photo_url}
+{photoUrls[student.id] ? (
+  <img
+    src={photoUrls[student.id] || ''}
                         alt={student.full_name || 'Aluno'}
                         style={photoStyle}
                       />

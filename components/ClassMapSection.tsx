@@ -133,7 +133,7 @@ export default function ClassMapSection({
     }))
   }
 
-function generateSeats(rows: number, columns: number, type = layoutType) {
+function generateSeats(rows: number, columns: number, type = layoutType, keepPrevious = true) {
   setSeats((prev) => {
     const newSeats: Seat[] = []
 
@@ -173,32 +173,33 @@ function generateSeats(rows: number, columns: number, type = layoutType) {
   })
 }
 
-  async function openClass(classId: string) {
-    setSelectedClassId(classId)
+async function openClass(classId: string) {
+  setSelectedClassId(classId)
+  setSeats([])
 
-    const { data, error } = await supabase
-      .from('class_maps')
-      .select('*')
-      .eq('school_id', schoolId)
-      .eq('class_id', classId)
-      .maybeSingle()
+  const { data, error } = await supabase
+    .from('class_maps')
+    .select('*')
+    .eq('school_id', schoolId)
+    .eq('class_id', classId)
+    .maybeSingle()
 
-    if (error) {
-      notify(`Erro ao buscar mapa: ${error.message}`)
-      generateSeats(rowsCount, columnsCount)
-      return
-    }
-
-    if (data) {
-      setLayoutType(data.layout_type || 'single')
-      setColumnsCount(data.columns_count || 4)
-      setRowsCount(data.rows_count || 6)
-      setSeats((data.seats || []) as Seat[])
-      return
-    }
-
-    generateSeats(rowsCount, columnsCount)
+  if (error) {
+    notify(`Erro ao buscar mapa: ${error.message}`)
+    generateSeats(rowsCount, columnsCount, layoutType, false)
+    return
   }
+
+  if (data) {
+    setLayoutType(data.layout_type || 'single')
+    setColumnsCount(data.columns_count || 4)
+    setRowsCount(data.rows_count || 6)
+    setSeats((data.seats || []) as Seat[])
+    return
+  }
+
+  generateSeats(rowsCount, columnsCount, layoutType, false)
+}
 
   function handleDropOnSeat(seatId: string) {
     if (!draggedStudentId) return
@@ -299,8 +300,77 @@ body {
 }
 
 .print-header {
-  padding: 4mm 6mm 2mm;
-  margin: 0 0 4mm;
+  margin: 0 0 8mm;
+  padding: 0;
+  border: 1px solid #bfdbfe;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #ffffff 0%, #eff6ff 100%);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+}
+
+.header-main {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 10mm 12mm;
+}
+
+.logo-box {
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px solid #dbeafe;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+  flex-shrink: 0;
+}
+
+.logo-box img {
+  width: 58px !important;
+  height: 58px !important;
+  object-fit: contain !important;
+  border-radius: 0 !important;
+}
+
+.header-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.school-name {
+  font-size: 28px;
+  font-weight: 900;
+  color: #0f172a;
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+  margin-bottom: 6px;
+}
+
+.map-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.map-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #1e3a8a;
+}
+
+.class-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 15px;
+  font-weight: 900;
 }
 
 #class-map-print-area {
@@ -358,10 +428,22 @@ button,
           </style>
         </head>
         <body>
-          <div class="print-header">
-            <div class="school-name">${schoolName}</div>
-            <div class="class-name">Mapa de Turma - ${selectedClass?.name || ''}</div>
-          </div>
+<div class="print-header">
+  <div class="header-main">
+    <div class="logo-box">
+      <img src="/logoteste.png" />
+    </div>
+
+    <div class="header-text">
+      <div class="school-name">${schoolName}</div>
+
+      <div class="map-title-row">
+        <span class="map-title">Mapa de Turma</span>
+        <span class="class-pill">${selectedClass?.name || ''}</span>
+      </div>
+    </div>
+  </div>
+</div>
 
           ${printArea.innerHTML}
         </body>

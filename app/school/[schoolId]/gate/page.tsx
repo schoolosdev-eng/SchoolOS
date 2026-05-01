@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import QRScanner from '@/components/QRScanner'
 import AttendanceSection from '@/components/AttendanceSection'
 import { offlineAttendanceDb } from '@/lib/offlineAttendanceDb'
+import AppButton from '@/components/AppButton'
 
 type ScanResult = {
   status: 'success' | 'duplicate' | 'error'
@@ -30,6 +31,8 @@ export default function GatePage() {
   const [manualQrCode, setManualQrCode] = useState('')
   const [manualMode, setManualMode] = useState(false)
   const audioContextRef = useRef<AudioContext | null>(null)
+  const [loadingOffline, setLoadingOffline] = useState(false)
+const [loadingSync, setLoadingSync] = useState(false)
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [resultAnimationKey, setResultAnimationKey] = useState(0)
@@ -63,73 +66,73 @@ export default function GatePage() {
     ].slice(0, 12))
   }
 
-  async function downloadOfflineData() {
-  const { data, error } = await supabase
-    .from('enrollments')
-    .select(`
-      student_id,
-      class_id,
-      students (
-        id,
-        full_name,
-        school_id,
-        profile_photo_path,
-        qr_code_token
-      ),
-      classes (
-        id,
-        name
-      )
-    `)
-    .eq('school_id', schoolId)
+async function downloadOfflineData() {
+  if (loadingOffline) return
 
-  if (error) {
-    setResultWithTimeout({
-      status: 'error',
-      message: error.message,
-    })
-    return
-  }
+  setLoadingOffline(true)
 
-const offlineStudents = (data || [])
-  .map((item: any) => {
-    const student = Array.isArray(item.students)
-      ? item.students[0]
-      : item.students
+  try {
+    const { data, error } = await supabase
+      .from('enrollments')
+      .select(`
+        student_id,
+        class_id,
+        students (
+          id,
+          full_name,
+          school_id,
+          profile_photo_path,
+          qr_code_token
+        ),
+        classes (
+          id,
+          name
+        )
+      `)
+      .eq('school_id', schoolId)
 
-    const schoolClass = Array.isArray(item.classes)
-      ? item.classes[0]
-      : item.classes
-
-    if (!student?.qr_code_token || !schoolClass?.id) return null
-
-    return {
-      id: student.id,
-      school_id: student.school_id,
-      full_name: student.full_name,
-      qr_code_token: student.qr_code_token,
-      profile_photo_path: student.profile_photo_path || null,
-      class_id: schoolClass.id,
-      class_name: schoolClass.name || 'Sem turma',
+    if (error) {
+      setResultWithTimeout({
+        status: 'error',
+        message: error.message,
+      })
+      return
     }
-  })
-  .filter((student): student is {
-    id: string
-    school_id: string
-    full_name: string
-    qr_code_token: string
-    profile_photo_path: string | null
-    class_id: string
-    class_name: string
-  } => student !== null)
 
-  await offlineAttendanceDb.students.clear()
-  await offlineAttendanceDb.students.bulkPut(offlineStudents)
+    const offlineStudents = (data || [])
+      .map((item: any) => {
+        const student = Array.isArray(item.students)
+          ? item.students[0]
+          : item.students
 
-  setResultWithTimeout({
-    status: 'success',
-    message: `Dados offline atualizados. Alunos salvos: ${offlineStudents.length}`,
-  })
+        const schoolClass = Array.isArray(item.classes)
+          ? item.classes[0]
+          : item.classes
+
+        if (!student?.qr_code_token || !schoolClass?.id) return null
+
+        return {
+          id: student.id,
+          school_id: student.school_id,
+          full_name: student.full_name,
+          qr_code_token: student.qr_code_token,
+          profile_photo_path: student.profile_photo_path || null,
+          class_id: schoolClass.id,
+          class_name: schoolClass.name || 'Sem turma',
+        }
+      })
+      .filter(Boolean)
+
+    await offlineAttendanceDb.students.clear()
+    await offlineAttendanceDb.students.bulkPut(offlineStudents as any[])
+
+    setResultWithTimeout({
+      status: 'success',
+      message: `Dados offline atualizados. Alunos salvos: ${offlineStudents.length}`,
+    })
+  } finally {
+    setLoadingOffline(false)
+  }
 }
 
 async function handleOfflineScan(text: string) {
@@ -175,6 +178,16 @@ async function handleOfflineScan(text: string) {
   const now = new Date()
   const attendanceDate = now.toISOString().split('T')[0]
 
+  let photoUrl: string | null = null
+
+if (navigator.onLine && student.profile_photo_path) {
+  const { data } = await supabase.storage
+    .from('student-profile-photos')
+    .createSignedUrl(student.profile_photo_path, 3600)
+
+  photoUrl = data?.signedUrl || null
+}
+
   const existing = await offlineAttendanceDb.attendance
     .where('[student_id+class_id+attendance_date]' as any)
     .equals([student.id, student.class_id, attendanceDate] as any)
@@ -199,7 +212,7 @@ async function handleOfflineScan(text: string) {
       student: {
         name: student.full_name,
         className: student.class_name,
-        photo: null,
+        photo: photoUrl,
       },
       time: new Date(existing.recorded_at).toLocaleTimeString(),
     })
@@ -228,13 +241,18 @@ async function handleOfflineScan(text: string) {
     student: {
       name: student.full_name,
       className: student.class_name,
-      photo: null,
+      photo: photoUrl,
     },
     time: now.toLocaleTimeString(),
   })
 }
 
 async function syncOfflineAttendance() {
+  if (loadingSync) return
+
+  setLoadingSync(true)
+
+  try {
   if (!navigator.onLine) {
     setResultWithTimeout({
       status: 'error',
@@ -324,7 +342,11 @@ const pendingRecords = await offlineAttendanceDb.attendance
     status: 'success',
     message: `Sincronização concluída. Registros enviados: ${syncedCount}`,
   })
+    } finally {
+    setLoadingSync(false)
+  }
 }
+
 
 function playScanSound(status: 'success' | 'duplicate' | 'error') {
   try {
@@ -637,200 +659,6 @@ async function handleStartReading() {
     setManualMode(true)
   }
 
-  async function handleScan(text: string) {
-    if (!text?.trim()) {
-      setResultWithTimeout({
-        status: 'error',
-        message: 'Código QR inválido.',
-      })
-      return
-    }
-
-    if (!text.startsWith('schoolos:student:')) {
-      setResultWithTimeout({
-        status: 'error',
-        message: 'QR inválido.',
-      })
-      return
-    }
-
-    const token = text.replace('schoolos:student:', '').trim()
-
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      const { data: student, error: studentError } = await supabase
-        .from('students')
-        .select('id, full_name, school_id, profile_photo_path, qr_code_token')
-        .eq('qr_code_token', token)
-        .single()
-
-      if (studentError || !student) {
-        setResultWithTimeout({
-          status: 'error',
-          message: 'Aluno não encontrado.',
-        })
-        return
-      }
-
-      if (student.school_id !== schoolId) {
-        setResultWithTimeout({
-          status: 'error',
-          message: 'Aluno não pertence a esta escola.',
-        })
-        return
-      }
-
-      const { data: enrollment } = await supabase
-        .from('enrollments')
-        .select('class_id, classes ( name )')
-        .eq('student_id', student.id)
-        .eq('school_id', schoolId)
-        .limit(1)
-        .maybeSingle()
-
-      const classId = enrollment?.class_id || null
-      const classData = Array.isArray(enrollment?.classes)
-  ? enrollment?.classes[0]
-  : enrollment?.classes
-
-const className = classData?.name || 'Sem turma'
-
-      if (!classId) {
-        setResultWithTimeout({
-          status: 'error',
-          message: 'Aluno sem turma vinculada.',
-        })
-        return
-      }
-
-      let photoUrl: string | null = null
-
-      if (student.profile_photo_path) {
-        const { data } = await supabase.storage
-          .from('student-profile-photos')
-          .createSignedUrl(student.profile_photo_path, 3600)
-
-        photoUrl = data?.signedUrl || null
-      }
-
-      const now = new Date()
-      const attendanceDate = now.toISOString().split('T')[0]
-
-      const { data: existingAttendance, error: existingAttendanceError } =
-        await supabase
-          .from('attendance_records')
-          .select('id, status, created_at, updated_at')
-          .eq('student_id', student.id)
-          .eq('class_id', classId)
-          .eq('attendance_date', attendanceDate)
-          .maybeSingle()
-
-      if (existingAttendanceError) {
-        setResultWithTimeout({
-          status: 'error',
-          message: existingAttendanceError.message,
-        })
-        return
-      }
-
-      if (existingAttendance?.status === 'present') {
-        setResultWithTimeout({
-          status: 'duplicate',
-          message: 'Presença já registrada hoje.',
-          student: {
-            name: student.full_name,
-            className,
-            photo: photoUrl,
-          },
-          time: new Date(
-            existingAttendance.updated_at || existingAttendance.created_at
-          ).toLocaleTimeString(),
-        })
-        return
-      }
-
-      if (existingAttendance?.status === 'absent') {
-        const { data: updatedRecord, error: updateError } = await supabase
-          .from('attendance_records')
-          .update({
-            status: 'present',
-            source: 'qr',
-            recorded_by_user_id: user?.id || null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existingAttendance.id)
-          .select('updated_at')
-          .single()
-
-        if (updateError) {
-          setResultWithTimeout({
-            status: 'error',
-            message: updateError.message,
-          })
-          return
-        }
-
-        setResultWithTimeout({
-          status: 'success',
-          message: 'Presença confirmada.',
-          student: {
-            name: student.full_name,
-            className,
-            photo: photoUrl,
-          },
-          time: updatedRecord?.updated_at
-            ? new Date(updatedRecord.updated_at).toLocaleTimeString()
-            : now.toLocaleTimeString(),
-        })
-        return
-      }
-
-      const { data: inserted, error: insertError } = await supabase
-        .from('attendance_records')
-        .insert([
-          {
-            school_id: schoolId,
-            student_id: student.id,
-            class_id: classId,
-            attendance_date: attendanceDate,
-            status: 'present',
-            source: 'qr',
-            recorded_by_user_id: user?.id || null,
-          },
-        ])
-        .select('created_at')
-        .single()
-
-      if (insertError) {
-        setResultWithTimeout({
-          status: 'error',
-          message: insertError.message,
-        })
-        return
-      }
-
-      setResultWithTimeout({
-        status: 'success',
-        message: 'Presença confirmada.',
-        student: {
-          name: student.full_name,
-          className,
-          photo: photoUrl,
-        },
-        time: inserted?.created_at
-          ? new Date(inserted.created_at).toLocaleTimeString()
-          : now.toLocaleTimeString(),
-      })
-    } catch {
-      setResultWithTimeout({
-        status: 'error',
-        message: 'Erro inesperado.',
-      })
-    }
-  }
   useEffect(() => {
   function handleOnline() {
     syncOfflineAttendance()
@@ -854,6 +682,14 @@ const className = classData?.name || 'Sem turma'
 
     init()
   }, [schoolId])
+
+  useEffect(() => {
+  return () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+    }
+  }
+}, [])
 
   if (loading) {
     return (
@@ -931,17 +767,28 @@ const className = classData?.name || 'Sem turma'
                   Iniciar leitura
                 </button>
               )}
-              <button
+<button
   onClick={downloadOfflineData}
-  style={secondaryButtonStyle}
+  disabled={loadingOffline}
+  style={{
+    ...secondaryButtonStyle,
+    opacity: loadingOffline ? 0.7 : 1,
+    cursor: loadingOffline ? 'not-allowed' : 'pointer',
+  }}
 >
-  Atualizar dados offline
+  {loadingOffline ? 'Atualizando...' : 'Atualizar dados offline'}
 </button>
+
 <button
   onClick={syncOfflineAttendance}
-  style={secondaryButtonStyle}
+  disabled={loadingSync}
+  style={{
+    ...secondaryButtonStyle,
+    opacity: loadingSync ? 0.7 : 1,
+    cursor: loadingSync ? 'not-allowed' : 'pointer',
+  }}
 >
-  Sincronizar presenças
+  {loadingSync ? 'Sincronizando...' : 'Sincronizar presenças'}
 </button>
 
               {isScannerActive && (
@@ -992,7 +839,7 @@ const className = classData?.name || 'Sem turma'
                   Confirmar presença
                 </button>
 
-                <button
+                <AppButton
                   onClick={() => {
                     setManualMode(false)
                     setManualQrCode('')
@@ -1000,7 +847,7 @@ const className = classData?.name || 'Sem turma'
                   style={secondaryButtonStyle}
                 >
                   Cancelar
-                </button>
+                </AppButton>
               </div>
             </div>
           )}
@@ -1059,12 +906,12 @@ const className = classData?.name || 'Sem turma'
               </div>
 
               <h3 style={bigNameStyle}>
-                {scanResult.student?.name || 'Leitura inválida'}
+                {scanResult.student?.name || 'Aviso do Sistema'}
               </h3>
 
               <p style={bigClassStyle}>
-                {scanResult.student?.className || scanResult.message}
-              </p>
+  {scanResult.student?.className || ''}
+</p>
 
               <div style={bigMessageStyle}>
                 {scanResult.message}
@@ -1260,6 +1107,9 @@ const inputStyle: React.CSSProperties = {
   borderRadius: 16,
   border: '1px solid #cbd5e1',
   fontSize: 16,
+  color: '#0f172a',
+  background: '#ffffff',
+  outline: 'none',
 }
 
 const waitingStyle: React.CSSProperties = {

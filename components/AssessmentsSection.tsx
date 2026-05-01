@@ -178,6 +178,7 @@ type Student = {
   name?: string | null
   full_name?: string | null
   qr_code_token?: string | null
+  class_id?: string | null
   class_name?: string | null
 }
 
@@ -790,10 +791,10 @@ async function handleGenerateStudentExamPDF() {
 
   const selectedClass = classes.find((c) => c.id === selectedClassId)
 
-  const targetStudents =
-    printMode === 'single'
-      ? students.filter((student) => student.id === selectedPrintStudentId)
-      : students
+const targetStudents =
+  printMode === 'single'
+    ? students.filter((student) => student.id === selectedPrintStudentId)
+    : students.filter((student) => student.class_id === selectedClassId)
 
   if (targetStudents.length === 0) {
     setLocalMessage('Selecione um aluno ou escolha imprimir a turma.')
