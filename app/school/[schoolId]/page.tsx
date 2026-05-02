@@ -138,6 +138,8 @@ export default function SchoolPage() {
   const [managerArea, setManagerArea] = useState('')
 
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [selectedNotification, setSelectedNotification] = useState<AlertStudent | null>(null)
+  const [readNotifications, setReadNotifications] = useState<string[]>([])
 
   const [scanResult, setScanResult] = useState<{
   status: 'success' | 'duplicate' | 'error'
@@ -215,6 +217,8 @@ const [activeSection, setActiveSection] = useState<
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [logoSize, setLogoSize] = useState(40)
 
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+
 useEffect(() => {
   function updateSize() {
     const width = window.innerWidth
@@ -242,8 +246,57 @@ useEffect(() => {
   return () => window.removeEventListener('resize', handleResize)
 }, [])
 
+  useEffect(() => {
+  if (!schoolId) return
+  if (!isAdmin && !isManager) return
+  if (loading) return
+  if (studentsLoading) return
+  if (students.length === 0) return
+  if (classes.length === 0) return
+
+  generateAbsenceAlertsSilent()
+}, [
+  schoolId,
+  isAdmin,
+  isManager,
+  loading,
+  studentsLoading,
+  students.length,
+  classes.length,
+  enrollments.length,
+])
+
 const isMobile = windowWidth < 768
 const isTablet = windowWidth >= 768 && windowWidth < 1024
+
+useEffect(() => {
+  const channel = supabase
+    .channel('attendance-changes')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'attendance_records',
+      },
+      () => {
+        generateAbsenceAlertsSilent()
+      }
+    )
+    .subscribe()
+
+  return () => {
+    supabase.removeChannel(channel)
+  }
+}, [])
+
+useEffect(() => {
+  if (!schoolId) return
+  if (!currentUserId) return
+  if (loading) return
+
+  loadReadNotifications()
+}, [schoolId, currentUserId, loading])
 
   function pushRecentScan(data: {
   status: 'success' | 'duplicate' | 'error'
@@ -265,6 +318,10 @@ const isTablet = windowWidth >= 768 && windowWidth < 1024
 function formatDateBR(date: string) {
   const [year, month, day] = date.split('-')
   return `${day}/${month}/${year}`
+}
+
+function getAlertId(alert: AlertStudent) {
+  return `${alert.studentId}-${alert.classId}-${alert.alertType}`
 }
 
   async function ensureAccess() {
@@ -314,6 +371,74 @@ return true
 
   setSchool(data)
   setSchoolName(data.name || 'SchoolOS')
+}
+
+async function markAllNotificationsAsRead() {
+  if (!schoolId || !currentUserId) return
+
+  const unreadAlerts = absenceAlerts.filter(
+    (alert) => !readNotifications.includes(getAlertId(alert))
+  )
+
+  if (unreadAlerts.length === 0) return
+
+  const rows = unreadAlerts.map((alert) => ({
+    user_id: currentUserId,
+    school_id: schoolId,
+    alert_id: getAlertId(alert),
+    read_at: new Date().toISOString(),
+  }))
+
+  setReadNotifications((prev) => [
+    ...prev,
+    ...unreadAlerts.map(getAlertId).filter((id) => !prev.includes(id)),
+  ])
+
+  await supabase
+    .from('notification_reads')
+    .upsert(rows, {
+      onConflict: 'user_id,school_id,alert_id',
+    })
+}
+
+async function loadReadNotifications() {
+  if (!schoolId || !currentUserId) return
+
+  await supabase.rpc('delete_old_notification_reads')
+
+  const { data, error } = await supabase
+    .from('notification_reads')
+    .select('alert_id')
+    .eq('school_id', schoolId)
+    .eq('user_id', currentUserId)
+
+  if (error) return
+
+  setReadNotifications((data || []).map((item) => item.alert_id))
+}
+
+async function markNotificationAsRead(alert: AlertStudent) {
+  if (!schoolId || !currentUserId) return
+
+  const alertId = getAlertId(alert)
+
+  setReadNotifications((prev) =>
+    prev.includes(alertId) ? prev : [...prev, alertId]
+  )
+
+  await supabase
+    .from('notification_reads')
+    .upsert(
+      {
+        user_id: currentUserId,
+        school_id: schoolId,
+        alert_id: alertId,
+        read_at: new Date().toISOString(),
+      },
+      {
+        onConflict: 'user_id,school_id,alert_id',
+      }
+    )
 }
 
 async function fetchStudents(currentSchoolIdParam?: string) {
@@ -1373,7 +1498,129 @@ updated_at?: string
   )
 }
 
-async function handleCopyAlertMessage(alert: AlertStudent) {
+async function generateAbsenceAlertsSilent() {
+  if (!schoolId) return
+
+  const today = new Date()
+  const past15Days = new Date()
+  past15Days.setDate(today.getDate() - 14)
+
+  const startDate = past15Days.toISOString().split('T')[0]
+  const endDate = today.toISOString().split('T')[0]
+
+  const { data: records, error } = await supabase
+    .from('attendance_records')
+    .select('id, student_id, class_id, attendance_date, status, source')
+    .eq('school_id', schoolId)
+    .gte('attendance_date', startDate)
+    .lte('attendance_date', endDate)
+    .order('attendance_date', { ascending: true })
+
+  if (error || !records) return
+
+  const grouped = records.reduce<any>((acc, record) => {
+    const key = `${record.student_id}-${record.class_id}`
+
+    if (!acc[key]) {
+      acc[key] = {
+        student_id: record.student_id,
+        class_id: record.class_id,
+        records: [],
+      }
+    }
+
+    acc[key].records.push(record)
+    return acc
+  }, {})
+
+  const alerts: AlertStudent[] = []
+
+  Object.values(grouped).forEach((group: any) => {
+    const ordered = [...group.records].sort((a, b) =>
+      a.attendance_date.localeCompare(b.attendance_date)
+    )
+
+    const absentDates = ordered
+      .filter((item: any) => item.status === 'absent')
+      .map((item: any) => item.attendance_date)
+
+    if (absentDates.length === 0) return
+
+    const lastAbsenceDate = new Date(
+  absentDates[absentDates.length - 1]
+)
+
+const daysSinceLastAbsence =
+  (Date.now() - lastAbsenceDate.getTime()) / (1000 * 60 * 60 * 24)
+
+// só mostra alertas com até 7 dias da última falta
+if (daysSinceLastAbsence > 7) return
+
+    const student = students.find((s) => s.id === group.student_id)
+    const schoolClass = classes.find((c) => c.id === group.class_id)
+
+    const studentName =
+      student?.full_name || student?.name || 'Aluno não encontrado'
+
+    const className = schoolClass?.name || 'Turma não encontrada'
+
+    let hasThreeConsecutive = false
+    let consecutiveDates: string[] = []
+    let streak: string[] = []
+
+
+    for (const record of ordered) {
+      if (record.status === 'absent') {
+        streak.push(record.attendance_date)
+
+        if (streak.length >= 3) {
+          hasThreeConsecutive = true
+          consecutiveDates = streak.slice(-3)
+        }
+      } else {
+        streak = []
+      }
+    }
+
+    if (hasThreeConsecutive) {
+      alerts.push({
+        studentId: group.student_id,
+        studentName,
+        classId: group.class_id,
+        className,
+        absentDates: consecutiveDates,
+        alertType: 'three_consecutive_absences',
+      })
+      return
+    }
+
+    if (absentDates.length >= 3) {
+      alerts.push({
+        studentId: group.student_id,
+        studentName,
+        classId: group.class_id,
+        className,
+        absentDates,
+        alertType: 'three_absences_in_15_days',
+      })
+    }
+  })
+
+  setAbsenceAlerts(alerts)
+}
+
+function handleSendAlertWhatsapp(alert: AlertStudent) {
+  const student = students.find((s) => s.id === alert.studentId)
+
+  const rawPhone = student?.responsible_whatsapp?.replace(/\D/g, '')
+
+  if (!rawPhone) {
+    showMessage('Esse aluno não possui WhatsApp do responsável cadastrado.')
+    return
+  }
+
+  const phone = rawPhone.startsWith('55') ? rawPhone : `55${rawPhone}`
+
   const datesText = alert.absentDates.map(formatDateBR).join(', ')
 
   const text =
@@ -1381,12 +1628,9 @@ async function handleCopyAlertMessage(alert: AlertStudent) {
       ? `Olá! Informamos que o(a) aluno(a) ${alert.studentName}, da turma ${alert.className}, registrou 3 faltas seguidas nas datas: ${datesText}. Pedimos que a família acompanhe a situação junto à escola.`
       : `Olá! Informamos que o(a) aluno(a) ${alert.studentName}, da turma ${alert.className}, registrou 3 faltas no intervalo recente de 15 dias, nas datas: ${datesText}. Pedimos que a família acompanhe a situação junto à escola.`
 
-  try {
-    await navigator.clipboard.writeText(text)
-    showMessage('Mensagem copiada com sucesso.')
-  } catch {
-    showMessage('Não foi possível copiar a mensagem.')
-  }
+  const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`
+
+  window.open(url, '_blank')
 }
 
 async function handleCreateStudent(photoOverride?: File | null) {
@@ -2056,7 +2300,7 @@ const dashboardHeroTopStyle: React.CSSProperties = {
   justifyContent: 'space-between',
   alignItems: 'flex-start',
   gap: 20,
-  flexWrap: 'wrap',
+  flexWrap: isMobile ? 'wrap' : 'nowrap',
 }
 
 const dashboardBadgeStyle: React.CSSProperties = {
@@ -2114,6 +2358,9 @@ const dashboardHeroActionsStyle: React.CSSProperties = {
   display: 'flex',
   gap: 12,
   flexWrap: 'wrap',
+  alignItems: 'center',
+  justifyContent: isMobile ? 'flex-start' : 'flex-end',
+  marginLeft: 'auto',
 }
 
 const dashboardPrimaryButtonStyle: React.CSSProperties = {
@@ -2368,6 +2615,10 @@ const dashboardAlertButtonStyle: React.CSSProperties = {
   cursor: 'pointer',
   fontSize: 14,
 }
+
+const unreadCount = absenceAlerts.filter(
+  (alert) => !readNotifications.includes(getAlertId(alert))
+).length
 
 const studentClassMap = useMemo(() => {
   const map: Record<string, { class_id: string; class_name: string | null }> = {}
@@ -2648,7 +2899,12 @@ style={{
                 </div>
               </div>
 
-              <div style={dashboardHeroActionsStyle}>
+              <div
+  style={{
+    ...dashboardHeroActionsStyle,
+    alignSelf: isMobile ? 'flex-start' : 'flex-start',
+  }}
+>
                 <button
                   onClick={() => router.push('/access')}
                   style={dashboardSecondaryButtonStyle}
@@ -2668,6 +2924,149 @@ style={{
                 >
                   Sair
                 </button>
+                <div style={{ position: 'relative' }}>
+  <button
+    onClick={() => setNotificationsOpen((prev) => !prev)}
+    style={{
+      position: 'relative',
+      padding: '12px 14px',
+      borderRadius: 14,
+      border: 'none',
+      background: '#ffffff',
+      cursor: 'pointer',
+      fontSize: 18,
+      boxShadow: '0 8px 20px rgba(0,0,0,0.1)',
+    }}
+  >
+    🔔
+
+    {unreadCount > 0 && (
+      <span
+        style={{
+          position: 'absolute',
+          top: -6,
+          right: -6,
+          background: '#ef4444',
+          color: '#fff',
+          borderRadius: '50%',
+          padding: '4px 8px',
+          fontSize: 12,
+          fontWeight: 800,
+        }}
+      >
+        {unreadCount}
+      </span>
+    )}
+  </button>
+</div>
+{notificationsOpen && (
+  <div
+    style={{
+      position: 'absolute',
+      right: 0,
+      top: 50,
+      width: 320,
+      maxHeight: 400,
+      overflowY: 'auto',
+      background: '#fff',
+      borderRadius: 16,
+      boxShadow: '0 20px 50px rgba(0,0,0,0.2)',
+      zIndex: 999,
+    }}
+  >
+    {/* HEADER */}
+<div
+  style={{
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    padding: '12px 14px',
+    borderBottom: '1px solid #e2e8f0',
+  }}
+>
+  <div>
+    <div
+      style={{
+        fontWeight: 800,
+        color: '#0f172a',
+      }}
+    >
+      Notificações
+    </div>
+
+    {unreadCount > 0 && (
+      <button
+        onClick={markAllNotificationsAsRead}
+        style={{
+          marginTop: 4,
+          border: 'none',
+          background: 'transparent',
+          color: '#2563eb',
+          fontWeight: 800,
+          fontSize: 12,
+          cursor: 'pointer',
+          padding: 0,
+        }}
+      >
+        Marcar todas como lidas
+      </button>
+    )}
+  </div>
+
+  <button
+    onClick={() => setNotificationsOpen(false)}
+    style={{
+      border: 'none',
+      background: 'transparent',
+      fontSize: 18,
+      cursor: 'pointer',
+      color: '#64748b',
+      fontWeight: 900,
+    }}
+  >
+    ✕
+  </button>
+</div>
+
+    {/* LISTA */}
+    <div style={{ padding: 10 }}>
+      {absenceAlerts.length === 0 ? (
+        <div style={{ color: '#64748b' }}>
+          Sem notificações
+        </div>
+      ) : (
+absenceAlerts.map((alert) => {
+  const isRead = readNotifications.includes(getAlertId(alert))
+
+  return (
+    <div
+      key={`${alert.studentId}-${alert.classId}-${alert.alertType}`}
+onClick={() => {
+  markNotificationAsRead(alert)
+  setSelectedNotification(alert)
+}}
+      style={{
+        padding: 10,
+        borderBottom: '1px solid #f1f5f9',
+        cursor: 'pointer',
+        opacity: isRead ? 0.5 : 1,
+        background: isRead ? '#f8fafc' : '#ffffff',
+      }}
+    >
+    <div style={{ fontWeight: 800, color: '#0f172a' }}>
+      {alert.studentName}
+    </div>
+
+    <div style={{ fontSize: 13, color: '#475569', marginTop: 2 }}>
+      {alert.className}
+    </div>
+    </div>
+  )
+})
+      )}
+    </div>
+  </div>
+)}
               </div>
             </div>
 
@@ -2850,12 +3249,12 @@ style={{
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => handleCopyAlertMessage(alert)}
-                    style={dashboardAlertButtonStyle}
-                  >
-                    Copiar mensagem
-                  </button>
+<button
+  onClick={() => handleSendAlertWhatsapp(alert)}
+  style={dashboardWhatsappButtonStyle}
+>
+  Enviar WhatsApp
+</button>
                 </div>
               ))
             )}
@@ -3280,6 +3679,123 @@ students={students.map((student) => ({
 )}
         </section>
       </div>
+
+      {selectedNotification && (
+  <div
+    onClick={() => setSelectedNotification(null)}
+    style={{
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(15, 23, 42, 0.45)',
+      zIndex: 9998,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 20,
+    }}
+  >
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        width: '100%',
+        maxWidth: 460,
+        background: '#ffffff',
+        borderRadius: 24,
+        padding: 24,
+        boxShadow: '0 30px 80px rgba(0,0,0,0.3)',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: 12,
+          alignItems: 'flex-start',
+          marginBottom: 18,
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 900,
+              color: '#ef4444',
+              textTransform: 'uppercase',
+              letterSpacing: 0.8,
+              marginBottom: 6,
+            }}
+          >
+            Alerta de faltas
+          </div>
+
+          <h2
+            style={{
+              margin: 0,
+              fontSize: 24,
+              color: '#0f172a',
+              fontWeight: 900,
+              lineHeight: 1.1,
+            }}
+          >
+            {selectedNotification.studentName}
+          </h2>
+        </div>
+
+        <button
+          onClick={() => setSelectedNotification(null)}
+          style={{
+            border: 'none',
+            background: '#f1f5f9',
+            width: 36,
+            height: 36,
+            borderRadius: 12,
+            cursor: 'pointer',
+            fontWeight: 900,
+            color: '#334155',
+          }}
+        >
+          ✕
+        </button>
+      </div>
+
+      <div style={{ color: '#475569', fontWeight: 700, marginBottom: 8 }}>
+        Turma: {selectedNotification.className}
+      </div>
+
+      <div style={{ color: '#475569', fontWeight: 700, marginBottom: 14 }}>
+        Datas: {selectedNotification.absentDates.map(formatDateBR).join(', ')}
+      </div>
+
+      <div
+        style={{
+          display: 'inline-flex',
+          padding: '8px 12px',
+          borderRadius: 999,
+          background: '#fee2e2',
+          color: '#b91c1c',
+          fontWeight: 900,
+          fontSize: 13,
+          marginBottom: 20,
+        }}
+      >
+        {selectedNotification.alertType === 'three_consecutive_absences'
+          ? '3 faltas consecutivas'
+          : '3 faltas em 15 dias'}
+      </div>
+
+      <button
+        onClick={() => handleSendAlertWhatsapp(selectedNotification)}
+        style={{
+          ...dashboardWhatsappButtonStyle,
+          width: '100%',
+        }}
+      >
+        Enviar WhatsApp
+      </button>
+    </div>
+  </div>
+)}
+
       {message && (
   <div
     style={{
