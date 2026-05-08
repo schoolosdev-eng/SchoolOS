@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import * as XLSX from 'xlsx'
 import QRCode from 'qrcode'
@@ -2505,6 +2505,7 @@ function AssessmentCorrection({
   const [scannerActive, setScannerActive] = useState(false)
 const [detectedVersion, setDetectedVersion] = useState('')
 const [detectedStudentName, setDetectedStudentName] = useState('')
+const qrCorrectionReadRef = useRef(false)
 
   const [result, setResult] = useState<{
     correct: number
@@ -2516,8 +2517,10 @@ const [detectedStudentName, setDetectedStudentName] = useState('')
     handleLoadAssessments()
   }, [])
 
-  useEffect(() => {
+useEffect(() => {
   if (!scannerActive) return
+
+  qrCorrectionReadRef.current = false
 
   const scanner = new Html5Qrcode('answer-sheet-qr-reader')
 
@@ -2529,8 +2532,13 @@ const [detectedStudentName, setDetectedStudentName] = useState('')
         qrbox: 250,
       },
       async (decodedText) => {
+        if (qrCorrectionReadRef.current) return
+
+        qrCorrectionReadRef.current = true
+
         if (!decodedText.startsWith('schoolos:answer-sheet:')) {
           setMessage('QR inválido para correção.')
+          qrCorrectionReadRef.current = false
           return
         }
 
@@ -2542,6 +2550,7 @@ const [detectedStudentName, setDetectedStudentName] = useState('')
 
         if (!assessmentId || !studentId || !version) {
           setMessage('QR incompleto.')
+          qrCorrectionReadRef.current = false
           return
         }
 
@@ -2554,13 +2563,9 @@ const [detectedStudentName, setDetectedStudentName] = useState('')
           student?.full_name || student?.name || 'Aluno identificado'
         )
 
-        setScannerActive(false)
-
-        await scanner.stop()
-        await scanner.clear()
-
         await handleLoadQuestionsByAssessment(assessmentId)
 
+        setScannerActive(false)
         setMessage(`Aluno identificado. Versão ${version} carregada.`)
       },
       () => {}
