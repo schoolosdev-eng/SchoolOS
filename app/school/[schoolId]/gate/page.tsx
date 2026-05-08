@@ -993,20 +993,21 @@ const gateGridStyle: React.CSSProperties = {
   maxWidth: 1500,
   margin: '0 auto',
   display: 'grid',
-  gridTemplateColumns: 'minmax(0, 1fr) minmax(320px, 520px)',
-  gap: 24,
+  gridTemplateColumns:
+    typeof window !== 'undefined' && window.innerWidth < 900
+      ? '1fr'
+      : '0.9fr 1.1fr',
+  gap: 20,
   alignItems: 'start',
-  width: '100%',
 }
 
 const scannerCardStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.94)',
+  background: 'rgba(255,255,255,0.96)',
   border: '1px solid #e2e8f0',
   borderRadius: 28,
-  padding: 24,
+  padding: 20,
   boxShadow: '0 20px 50px rgba(15, 23, 42, 0.06)',
-  width: '100%',
-  minWidth: 0,
+  minHeight: 0,
 }
 
 const scannerHeaderStyle: React.CSSProperties = {
@@ -1025,22 +1026,22 @@ const scannerActionsStyle: React.CSSProperties = {
 }
 
 const scannerBoxStyle: React.CSSProperties = {
-  borderRadius: 24,
-  border: '1px solid #93c5fd',
-  overflow: 'hidden',
-  background: '#0f172a',
-  animation: 'scannerPulse 1.8s ease-in-out infinite',
   width: '100%',
+  maxWidth: 420,
+  margin: '0 auto',
+  borderRadius: 22,
+  overflow: 'hidden',
+  background: '#000',
+  aspectRatio: '4 / 3',
 }
 
 const resultCardStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.94)',
+  background: 'rgba(255,255,255,0.96)',
   border: '1px solid #e2e8f0',
   borderRadius: 28,
   padding: 24,
+  minHeight: 620,
   boxShadow: '0 20px 50px rgba(15, 23, 42, 0.06)',
-  width: '100%',
-  minWidth: 0,
 }
 
 const sectionTitleStyle: React.CSSProperties = {
@@ -1133,11 +1134,11 @@ const bigResultStyle: React.CSSProperties = {
 }
 
 const bigPhotoStyle: React.CSSProperties = {
-  width: 150,
-  height: 150,
-  borderRadius: 32,
+  width: 120,
+  height: 120,
+  borderRadius: 24,
   objectFit: 'cover',
-  marginBottom: 12,
+  border: '4px solid white',
 }
 
 const bigPhotoPlaceholderStyle: React.CSSProperties = {

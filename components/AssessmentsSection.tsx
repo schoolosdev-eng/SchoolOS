@@ -166,6 +166,54 @@ export default function AssessmentsSection({
   )
 }
 
+type VersionLetter = 'A' | 'B' | 'C' | 'D'
+
+const versionOffsets: Record<VersionLetter, number> = {
+  A: 0,
+  B: 1,
+  C: 2,
+  D: 3,
+}
+
+function rotateArray<T>(array: T[], offset: number) {
+  if (array.length === 0) return array
+
+  const realOffset = offset % array.length
+
+  return [
+    ...array.slice(realOffset),
+    ...array.slice(0, realOffset),
+  ]
+}
+
+function buildQuestionVersion(question: any, version: string) {
+  const offset = versionOffsets[(version as VersionLetter) || 'A'] ?? 0
+
+  const originalOptions = [...(question.assessment_options || [])].sort(
+    (a: any, b: any) => a.option_letter.localeCompare(b.option_letter)
+  )
+
+  const rotatedOptions = rotateArray(originalOptions, offset)
+
+  const letters = ['A', 'B', 'C', 'D', 'E']
+
+  const versionOptions = rotatedOptions.map((option: any, index: number) => ({
+    ...option,
+    original_letter: option.option_letter,
+    option_letter: letters[index],
+    is_correct: option.is_correct,
+  }))
+
+  const correctOption =
+    versionOptions.find((option: any) => option.is_correct)?.option_letter || 'A'
+
+  return {
+    ...question,
+    assessment_options: versionOptions,
+    correct_option: correctOption,
+  }
+}
+
 function AssessmentBuilder({
   schoolId,
   currentUserId,
@@ -203,6 +251,20 @@ const [showQuestionBank, setShowQuestionBank] = useState(false)
 const [bankLoading, setBankLoading] = useState(false)
 const [questionImage, setQuestionImage] = useState<File | null>(null)
 const [questionImagePreview, setQuestionImagePreview] = useState('')
+
+const [imageCaption, setImageCaption] = useState('')
+
+const [optionAImage, setOptionAImage] = useState<File | null>(null)
+const [optionBImage, setOptionBImage] = useState<File | null>(null)
+const [optionCImage, setOptionCImage] = useState<File | null>(null)
+const [optionDImage, setOptionDImage] = useState<File | null>(null)
+const [optionEImage, setOptionEImage] = useState<File | null>(null)
+
+const [optionAImagePreview, setOptionAImagePreview] = useState('')
+const [optionBImagePreview, setOptionBImagePreview] = useState('')
+const [optionCImagePreview, setOptionCImagePreview] = useState('')
+const [optionDImagePreview, setOptionDImagePreview] = useState('')
+const [optionEImagePreview, setOptionEImagePreview] = useState('')
 
   const total = Number(totalQuestions || 0)
   const isLastQuestion = currentQuestionNumber >= total
@@ -308,8 +370,13 @@ const [questionImagePreview, setQuestionImagePreview] = useState('')
 
     setSaving(true)
     setMessage('Salvando questão...')
-    const imageUrl =
-  await handleUploadQuestionImage()
+    const imageUrl = await uploadAssessmentImage(questionImage)
+
+const optionAImageUrl = await uploadAssessmentImage(optionAImage)
+const optionBImageUrl = await uploadAssessmentImage(optionBImage)
+const optionCImageUrl = await uploadAssessmentImage(optionCImage)
+const optionDImageUrl = await uploadAssessmentImage(optionDImage)
+const optionEImageUrl = await uploadAssessmentImage(optionEImage)
 
     const { data: question, error } = await supabase
       .from('assessment_questions')
@@ -319,6 +386,7 @@ const [questionImagePreview, setQuestionImagePreview] = useState('')
         question_type: 'objective',
         statement: statement.trim(),
         image_url: imageUrl,
+image_caption: imageCaption.trim() || null,
         correct_option: correctOption,
         lines_count: null,
       })
@@ -331,13 +399,13 @@ const [questionImagePreview, setQuestionImagePreview] = useState('')
       return
     }
 
-    const options = [
-      { letter: 'A', text: optionA },
-      { letter: 'B', text: optionB },
-      { letter: 'C', text: optionC },
-      { letter: 'D', text: optionD },
-      { letter: 'E', text: optionE },
-    ]
+const options = [
+  { letter: 'A', text: optionA, imageUrl: optionAImageUrl },
+  { letter: 'B', text: optionB, imageUrl: optionBImageUrl },
+  { letter: 'C', text: optionC, imageUrl: optionCImageUrl },
+  { letter: 'D', text: optionD, imageUrl: optionDImageUrl },
+  { letter: 'E', text: optionE, imageUrl: optionEImageUrl },
+]
 
     const { error: optionsError } = await supabase
       .from('assessment_options')
@@ -346,6 +414,7 @@ const [questionImagePreview, setQuestionImagePreview] = useState('')
           question_id: question.id,
           option_letter: option.letter,
           option_text: option.text.trim(),
+          image_url: option.imageUrl,
           is_correct: option.letter === correctOption,
         }))
       )
@@ -355,6 +424,7 @@ const [questionImagePreview, setQuestionImagePreview] = useState('')
     school_id: schoolId,
     created_by: currentUserId,
     subject_name: subjectName.trim(),
+    image_caption: imageCaption.trim() || null,
     statement: statement.trim(),
 
     option_a: optionA.trim(),
@@ -362,6 +432,11 @@ const [questionImagePreview, setQuestionImagePreview] = useState('')
     option_c: optionC.trim(),
     option_d: optionD.trim(),
     option_e: optionE.trim(),
+    option_a_image_url: optionAImageUrl,
+option_b_image_url: optionBImageUrl,
+option_c_image_url: optionCImageUrl,
+option_d_image_url: optionDImageUrl,
+option_e_image_url: optionEImageUrl,
 
     correct_option: correctOption,
   })
@@ -394,6 +469,19 @@ const [questionImagePreview, setQuestionImagePreview] = useState('')
       setCorrectOption('')
       setQuestionImage(null)
 setQuestionImagePreview('')
+setImageCaption('')
+
+setOptionAImage(null)
+setOptionBImage(null)
+setOptionCImage(null)
+setOptionDImage(null)
+setOptionEImage(null)
+
+setOptionAImagePreview('')
+setOptionBImagePreview('')
+setOptionCImagePreview('')
+setOptionDImagePreview('')
+setOptionEImagePreview('')
 
       setMessage('Avaliação finalizada com sucesso.')
       return
@@ -455,15 +543,15 @@ function handleUseBankQuestion(question: any) {
   )
 }
 
-async function handleUploadQuestionImage() {
-  if (!questionImage) return null
+async function uploadAssessmentImage(file: File | null) {
+  if (!file) return null
 
-  const fileExt = questionImage.name.split('.').pop()
+  const fileExt = file.name.split('.').pop()
   const fileName = `${schoolId}/${Date.now()}-${crypto.randomUUID()}.${fileExt}`
 
   const { error } = await supabase.storage
     .from('assessment-question-images')
-    .upload(fileName, questionImage, {
+    .upload(fileName, file, {
       cacheControl: '3600',
       upsert: false,
     })
@@ -634,6 +722,16 @@ async function handleUploadQuestionImage() {
       }}
     />
   )}
+  <textarea
+  placeholder="Texto complementar abaixo da imagem"
+  value={imageCaption}
+  onChange={(e) => setImageCaption(e.target.value)}
+  style={{
+    ...inputStyle,
+    minHeight: 80,
+    resize: 'vertical',
+  }}
+/>
 </div>
 
             <input
@@ -909,6 +1007,8 @@ const [printLoading, setPrintLoading] = useState(false)
 const [editingAssessment, setEditingAssessment] = useState<any | null>(null)
 const [editingQuestions, setEditingQuestions] = useState<any[]>([])
 const [editingLoading, setEditingLoading] = useState(false)
+const [printingAssessment, setPrintingAssessment] = useState<any | null>(null)
+const [selectedPrintVersion, setSelectedPrintVersion] = useState('A')
 
   async function handleLoadAssessments() {
     setLoading(true)
@@ -963,7 +1063,10 @@ const [editingLoading, setEditingLoading] = useState(false)
   setMessage('')
 }
 
-async function handlePrintAssessment(assessment: any) {
+async function handlePrintAssessment(
+  assessment: any,
+  version: string
+) {
   setPrintLoading(true)
   setMessage('Montando impressão da avaliação...')
 
@@ -978,7 +1081,8 @@ async function handlePrintAssessment(assessment: any) {
   assessment_options (
     id,
     option_letter,
-    option_text
+    option_text,
+    is_correct
   )
 `)
     .eq('assessment_id', assessment.id)
@@ -993,6 +1097,12 @@ async function handlePrintAssessment(assessment: any) {
 
   const questions = data || []
 
+const printVersion = version
+
+const versionedQuestions = questions.map((question: any) =>
+  buildQuestionVersion(question, printVersion)
+)
+
   const printWindow = window.open(
     '',
     '_blank',
@@ -1004,7 +1114,7 @@ async function handlePrintAssessment(assessment: any) {
     return
   }
 
-  const questionsHtml = questions
+  const questionsHtml = versionedQuestions
     .map((question: any, index: number) => {
       const optionsHtml = [...(question.assessment_options || [])]
         .sort((a: any, b: any) =>
@@ -1049,7 +1159,7 @@ ${
     })
     .join('')
 
-    const answerKeyHtml = questions
+    const answerKeyHtml = versionedQuestions
   .map((question: any, index: number) => {
     return `
       <tr>
@@ -1064,6 +1174,11 @@ ${
     <html>
       <head>
         <title>${assessment.title}</title>
+
+        <div>
+  <strong>Versão:</strong>
+  ${printVersion}
+</div>
 
         <style>
           * {
@@ -1260,12 +1375,40 @@ ${
     </html>
   `)
 
-  printWindow.document.close()
+printWindow.document.close()
 
-  setTimeout(() => {
+printWindow.onload = () => {
+  const images = Array.from(printWindow.document.images)
+
+  if (images.length === 0) {
     printWindow.focus()
     printWindow.print()
-  }, 700)
+    return
+  }
+
+  let loadedImages = 0
+
+  const tryPrint = () => {
+    loadedImages += 1
+
+    if (loadedImages >= images.length) {
+      setTimeout(() => {
+        printWindow.focus()
+        printWindow.print()
+      }, 300)
+    }
+  }
+
+  images.forEach((img) => {
+    if (img.complete) {
+      tryPrint()
+      return
+    }
+
+    img.onload = tryPrint
+    img.onerror = tryPrint
+  })
+}
 }
 
 async function handlePrintAnswerSheets(assessment: any) {
@@ -1514,6 +1657,299 @@ const qrPayload = `schoolos:answer-sheet:${assessment.id}:${student.id}:${versio
   `)
 
   printWindow.document.close()
+}
+
+async function handlePrintIndividualizedExams(assessment: any) {
+  const relatedStudents = students.filter(
+    (student) =>
+      !assessment.class_name ||
+      student.class_name === assessment.class_name
+  )
+
+  if (relatedStudents.length === 0) {
+    setMessage('Nenhum aluno encontrado para esta turma.')
+    return
+  }
+
+  setPrintLoading(true)
+  setMessage('Montando provas individualizadas...')
+
+  const { data, error } = await supabase
+    .from('assessment_questions')
+    .select(`
+      id,
+      question_number,
+      statement,
+      image_url,
+      correct_option,
+      assessment_options (
+        id,
+        option_letter,
+        option_text,
+        is_correct
+      )
+    `)
+    .eq('assessment_id', assessment.id)
+    .order('question_number', { ascending: true })
+
+  setPrintLoading(false)
+
+  if (error) {
+    setMessage(`Erro ao gerar provas: ${error.message}`)
+    return
+  }
+
+  const questions = data || []
+  const versions = ['A', 'B', 'C', 'D']
+
+  const examsHtmlArray = await Promise.all(
+    relatedStudents.map(async (student, studentIndex) => {
+      const version = versions[studentIndex % versions.length]
+
+      const versionedQuestions = questions.map((question: any) =>
+        buildQuestionVersion(question, version)
+      )
+
+      const questionsHtml = versionedQuestions
+        .map((question: any, index: number) => {
+          const imageHtml = question.image_url
+            ? `
+              <img
+                src="${question.image_url}"
+                class="question-image"
+              />
+            `
+            : ''
+
+          const optionsHtml = [...(question.assessment_options || [])]
+            .sort((a: any, b: any) =>
+              a.option_letter.localeCompare(b.option_letter)
+            )
+            .map(
+              (option: any) => `
+                <div class="option">
+                  <strong>${option.option_letter})</strong>
+                  ${option.option_text}
+                </div>
+              `
+            )
+            .join('')
+
+          return `
+            <div class="question">
+              <div class="question-number">
+                Questão ${String(index + 1).padStart(2, '0')}
+              </div>
+
+              ${imageHtml}
+
+              <div class="statement">
+                ${question.statement}
+              </div>
+
+              <div class="options">
+                ${optionsHtml}
+              </div>
+            </div>
+          `
+        })
+        .join('')
+
+      return `
+        <div class="exam-page">
+<div class="header">
+  <div class="school">${schoolName}</div>
+
+  <div class="exam-title">${assessment.title}</div>
+
+  <div class="meta-grid">
+    <div><strong>Aluno:</strong> ${student.full_name || student.name || 'Aluno'}</div>
+    <div><strong>Turma:</strong> ${assessment.class_name || '-'}</div>
+    <div><strong>Disciplina:</strong> ${assessment.subject_name}</div>
+    <div><strong>Versão:</strong> ${version}</div>
+  </div>
+
+  <div class="instruction">
+    Leia atentamente as questões e marque as respostas no cartão-resposta correspondente.
+  </div>
+</div>
+
+          <div class="questions">
+            ${questionsHtml}
+          </div>
+        </div>
+      `
+    })
+  )
+
+  const finalExamsHtml = examsHtmlArray.join('')
+
+  const printWindow = window.open('', '_blank', 'width=1000,height=1400')
+
+  if (!printWindow) {
+    setMessage('Não foi possível abrir a janela de impressão.')
+    return
+  }
+
+  printWindow.document.write(`
+    <html>
+      <head>
+        <title>Provas individualizadas</title>
+
+        <style>
+          * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+
+          body {
+            margin: 0;
+            padding: 0;
+            background: #ffffff;
+            color: #111827;
+            font-family: Arial, sans-serif;
+          }
+
+          @page {
+            size: A4;
+            margin: 10mm;
+          }
+
+          .exam-page {
+            page-break-after: always;
+          }
+
+          .header {
+  border: 2px solid #111827;
+  border-radius: 16px;
+  padding: 18px 20px;
+  margin-bottom: 22px;
+  background: #ffffff;
+}
+
+.school {
+  font-size: 25px;
+  font-weight: 900;
+  text-align: center;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.exam-title {
+  font-size: 17px;
+  font-weight: 800;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 18px;
+  font-size: 13px;
+  border-top: 1px solid #cbd5e1;
+  border-bottom: 1px solid #cbd5e1;
+  padding: 12px 0;
+}
+
+.instruction {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #475569;
+  text-align: center;
+  font-style: italic;
+}
+
+.questions {
+  column-count: 2;
+  column-gap: 34px;
+  column-rule: 1px solid #cbd5e1;
+}
+
+          .question {
+            break-inside: avoid;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+          }
+
+          .question-number {
+            font-size: 14px;
+            font-weight: 900;
+            margin-bottom: 8px;
+          }
+
+          .question-image {
+            display: block;
+            width: 100%;
+            max-width: 260px;
+            max-height: 180px;
+            object-fit: contain;
+            margin: 0 auto 10px;
+            border-radius: 10px;
+            border: 1px solid #cbd5e1;
+          }
+
+          .statement {
+            font-size: 13px;
+            line-height: 1.5;
+            margin-bottom: 10px;
+          }
+
+          .options {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+          }
+
+          .option {
+            font-size: 13px;
+            line-height: 1.4;
+          }
+        </style>
+      </head>
+
+      <body>
+        ${finalExamsHtml}
+      </body>
+    </html>
+  `)
+
+  printWindow.document.close()
+
+  printWindow.onload = () => {
+    const images = Array.from(printWindow.document.images)
+
+    if (images.length === 0) {
+      printWindow.focus()
+      printWindow.print()
+      return
+    }
+
+    let loadedImages = 0
+
+    const tryPrint = () => {
+      loadedImages += 1
+
+      if (loadedImages >= images.length) {
+        setTimeout(() => {
+          printWindow.focus()
+          printWindow.print()
+        }, 300)
+      }
+    }
+
+    images.forEach((img) => {
+      if (img.complete) {
+        tryPrint()
+        return
+      }
+
+      img.onload = tryPrint
+      img.onerror = tryPrint
+    })
+  }
 }
 
 async function handleDuplicateAssessment(
@@ -2083,13 +2519,26 @@ async function handleDeleteAssessment(assessment: any) {
 </button>
 
 <button
-  onClick={() => handlePrintAssessment(assessment)}
+  onClick={() => {
+  setPrintingAssessment(assessment)
+  setSelectedPrintVersion('A')
+}}
   style={{
     ...primaryButtonStyle,
     background: '#7c3aed',
   }}
 >
   {printLoading ? 'Gerando...' : 'Imprimir'}
+</button>
+
+<button
+  onClick={() => handlePrintIndividualizedExams(assessment)}
+  style={{
+    ...primaryButtonStyle,
+    background: '#0891b2',
+  }}
+>
+  Provas individualizadas
 </button>
 
 <button
@@ -2341,6 +2790,154 @@ async function handleDeleteAssessment(assessment: any) {
   </div>
 )}
 
+{printingAssessment && (
+  <div
+    style={{
+      position: 'fixed',
+      inset: 0,
+      background:
+        'rgba(15, 23, 42, 0.55)',
+      backdropFilter: 'blur(6px)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 99999,
+      padding: 20,
+    }}
+  >
+    <div
+      style={{
+        width: '100%',
+        maxWidth: 520,
+        borderRadius: 28,
+        background: '#ffffff',
+        padding: 30,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 22,
+        boxShadow:
+          '0 40px 80px rgba(15, 23, 42, 0.28)',
+        animation:
+          'fadeInScale 0.18s ease',
+      }}
+    >
+      <div>
+        <div style={eyebrowStyle}>
+          Impressão
+        </div>
+
+        <h3
+          style={{
+            margin: '8px 0',
+            fontSize: 28,
+            fontWeight: 900,
+            color: '#0f172a',
+          }}
+        >
+          Escolher versão da prova
+        </h3>
+
+        <p style={textStyle}>
+          Selecione a versão que deseja
+          imprimir.
+        </p>
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          gap: 14,
+          flexWrap: 'wrap',
+          justifyContent: 'center',
+        }}
+      >
+        {['A', 'B', 'C', 'D'].map(
+          (version) => {
+            const selected =
+              selectedPrintVersion ===
+              version
+
+            return (
+              <button
+                key={version}
+                type="button"
+                onClick={() =>
+                  setSelectedPrintVersion(
+                    version
+                  )
+                }
+                style={{
+                  width: 82,
+                  height: 82,
+                  borderRadius: 26,
+                  border: selected
+                    ? '3px solid #2563eb'
+                    : '1px solid #cbd5e1',
+                  background: selected
+                    ? '#dbeafe'
+                    : '#ffffff',
+                  fontSize: 30,
+                  fontWeight: 900,
+                  cursor: 'pointer',
+                  color: '#0f172a',
+                  transition:
+                    'all 0.18s ease',
+                  transform: selected
+                    ? 'scale(1.06)'
+                    : 'scale(1)',
+                  boxShadow: selected
+                    ? '0 12px 30px rgba(37, 99, 235, 0.22)'
+                    : 'none',
+                }}
+              >
+                {version}
+              </button>
+            )
+          }
+        )}
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          gap: 12,
+          flexWrap: 'wrap',
+        }}
+      >
+        <button
+          onClick={() => {
+            handlePrintAssessment(
+              printingAssessment,
+              selectedPrintVersion
+            )
+
+            setPrintingAssessment(null)
+          }}
+          style={{
+            ...primaryButtonStyle,
+            flex: 1,
+          }}
+        >
+          Imprimir versão{' '}
+          {selectedPrintVersion}
+        </button>
+
+        <button
+          onClick={() =>
+            setPrintingAssessment(null)
+          }
+          style={{
+            ...primaryButtonStyle,
+            background: '#64748b',
+          }}
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
       {selectedAssessment && (
   <div
     style={{
@@ -2563,7 +3160,7 @@ useEffect(() => {
           student?.full_name || student?.name || 'Aluno identificado'
         )
 
-        await handleLoadQuestionsByAssessment(assessmentId)
+        await handleLoadQuestionsByAssessment(assessmentId, version)
 
         setScannerActive(false)
         setMessage(`Aluno identificado. Versão ${version} carregada.`)
@@ -2604,23 +3201,32 @@ async function handleLoadQuestions() {
     return
   }
 
-  await handleLoadQuestionsByAssessment(selectedAssessmentId)
+  await handleLoadQuestionsByAssessment(selectedAssessmentId, detectedVersion || 'A')
 }
 
-  async function handleLoadQuestionsByAssessment(assessmentId: string) {
+  async function handleLoadQuestionsByAssessment(
+  assessmentId: string,
+  version: string = 'A'
+) {
   setLoading(true)
   setMessage('Carregando questões...')
 
-  const { data, error } = await supabase
-    .from('assessment_questions')
-    .select(`
+const { data, error } = await supabase
+  .from('assessment_questions')
+  .select(`
+    id,
+    question_number,
+    statement,
+    correct_option,
+    assessment_options (
       id,
-      question_number,
-      statement,
-      correct_option
-    `)
-    .eq('assessment_id', assessmentId)
-    .order('question_number', { ascending: true })
+      option_letter,
+      option_text,
+      is_correct
+    )
+  `)
+  .eq('assessment_id', assessmentId)
+  .order('question_number', { ascending: true })
 
   setLoading(false)
 
@@ -2629,7 +3235,11 @@ async function handleLoadQuestions() {
     return
   }
 
-  setQuestions(data || [])
+  const versionedQuestions = (data || []).map((question: any) =>
+  buildQuestionVersion(question, version)
+)
+
+setQuestions(versionedQuestions)
   setAnswers({})
   setResult(null)
 }
