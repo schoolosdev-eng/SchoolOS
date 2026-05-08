@@ -21,6 +21,7 @@ type AttendanceRecord = {
   status: 'present' | 'absent'
   source: 'system_default' | 'qr' | 'facial' | 'manual'
   created_at?: string
+  updated_at?: string
 }
 
 type AttendanceReportsSectionProps = {
@@ -372,9 +373,9 @@ const studentMap = new Map(
                             : 'Faltoso'}
                         </td>
 
-                        <td style={tdStyle}>
-  {r.status === 'present' && r.created_at
-    ? new Date(r.created_at).toLocaleTimeString('pt-BR', {
+<td style={tdStyle}>
+  {r.status === 'present' && (r.updated_at || r.created_at)
+    ? new Date(r.updated_at || r.created_at || '').toLocaleTimeString('pt-BR', {
         hour: '2-digit',
         minute: '2-digit',
       })
