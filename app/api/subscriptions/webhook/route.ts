@@ -21,44 +21,52 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
 
-    if (body.type !== 'payment') {
+    console.log('WEBHOOK RECEBIDO:', JSON.stringify(body))
+
+    const paymentId =
+      body?.data?.id ||
+      body?.id ||
+      body?.resource
+
+    const type =
+      body?.type ||
+      body?.topic
+
+    if (type !== 'payment' || !paymentId) {
       return NextResponse.json({ received: true })
-    }
-
-    const paymentId = body.data?.id
-
-    if (!paymentId) {
-      return NextResponse.json(
-        { error: 'Pagamento inválido.' },
-        { status: 400 }
-      )
     }
 
     const paymentApi = new Payment(mercadoPago)
 
     const payment = await paymentApi.get({
-      id: paymentId,
+      id: String(paymentId),
     })
 
     const paymentData = payment as any
 
-    const status = paymentData.status
+    console.log('PAGAMENTO MP:', JSON.stringify({
+      id: paymentData.id,
+      status: paymentData.status,
+      metadata: paymentData.metadata,
+    }))
 
+    const status = paymentData.status
     const metadata = paymentData.metadata || {}
 
     const schoolId = metadata.school_id
     const planId = metadata.plan_id
-    const internalPaymentId =
-      metadata.internal_payment_id
+    const internalPaymentId = metadata.internal_payment_id
 
     if (!schoolId || !planId || !internalPaymentId) {
+      console.error('METADATA INVÁLIDA:', metadata)
+
       return NextResponse.json(
         { error: 'Metadata inválida.' },
         { status: 400 }
       )
     }
 
-    await supabase
+    const { error: paymentUpdateError } = await supabase
       .from('subscription_payments')
       .update({
         mercado_pago_payment_id: String(paymentId),
@@ -67,8 +75,17 @@ export async function POST(request: Request) {
       })
       .eq('id', internalPaymentId)
 
+    if (paymentUpdateError) {
+      console.error('ERRO AO ATUALIZAR PAGAMENTO:', paymentUpdateError)
+
+      return NextResponse.json(
+        { error: 'Erro ao atualizar pagamento.' },
+        { status: 500 }
+      )
+    }
+
     if (status === 'approved') {
-      await supabase
+      const { error: subscriptionError } = await supabase
         .from('school_subscriptions')
         .upsert(
           {
@@ -81,13 +98,20 @@ export async function POST(request: Request) {
             onConflict: 'school_id',
           }
         )
+
+      if (subscriptionError) {
+        console.error('ERRO AO ATUALIZAR ASSINATURA:', subscriptionError)
+
+        return NextResponse.json(
+          { error: 'Erro ao atualizar assinatura.' },
+          { status: 500 }
+        )
+      }
     }
 
-    return NextResponse.json({
-      success: true,
-    })
+    return NextResponse.json({ success: true })
   } catch (error) {
-    console.error(error)
+    console.error('ERRO NO WEBHOOK:', error)
 
     return NextResponse.json(
       { error: 'Erro no webhook.' },
