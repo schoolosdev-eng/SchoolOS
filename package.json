@@ -15,6 +15,7 @@
     "html2pdf.js": "^0.14.0",
     "html5-qrcode": "^2.3.8",
     "katex": "^0.16.45",
+    "mercadopago": "^2.12.0",
     "next": "16.2.4",
     "qrcode": "^1.5.4",
     "qrcode.react": "^4.2.0",

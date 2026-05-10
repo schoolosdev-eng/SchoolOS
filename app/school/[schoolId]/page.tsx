@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import StudentsSection from '@/components/StudentsSection'
 import SchoolYearsSection from '@/components/SchoolYearsSection'
@@ -19,6 +19,7 @@ import AssessmentsSection from '@/components/AssessmentsSection'
 import { offlineAttendanceDb } from '@/lib/offlineAttendanceDb'
 import StudentsListSection from '@/components/StudentsListSection'
 import ClassMapSection from '@/components/ClassMapSection'
+import PlansSection from '@/components/PlansSection'
 
 type Student = {
   id: string
@@ -99,6 +100,7 @@ type SchoolInfo = {
 export default function SchoolPage() {
   const params = useParams<{ schoolId: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const schoolId = params.schoolId
 
   const [message, setMessage] = useState('')
@@ -136,6 +138,12 @@ export default function SchoolPage() {
   const [managerName, setManagerName] = useState('')
   const [managerEmail, setManagerEmail] = useState('')
   const [managerArea, setManagerArea] = useState('')
+
+  const [subscriptionStatus, setSubscriptionStatus] =
+  useState<string>('active')
+
+const [subscriptionPlanId, setSubscriptionPlanId] =
+  useState<string | null>(null)
 
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [selectedNotification, setSelectedNotification] = useState<AlertStudent | null>(null)
@@ -209,6 +217,7 @@ const [activeSection, setActiveSection] = useState<
   | 'attendance'
   | 'reports'
   | 'assessments'
+  | 'plans'
 >('overview')
 
   const isAdmin = userRole === 'admin'
@@ -268,8 +277,42 @@ useEffect(() => {
   enrollments.length,
 ])
 
+useEffect(() => {
+  const paymentStatus = searchParams.get('payment')
+
+  if (!paymentStatus) return
+
+  if (paymentStatus === 'success') {
+    showMessage('Pagamento aprovado com sucesso.')
+  }
+
+  if (paymentStatus === 'pending') {
+    showMessage(
+      'Pagamento pendente. Aguarde a confirmação.'
+    )
+  }
+
+  if (paymentStatus === 'failure') {
+    showMessage(
+      'Pagamento não aprovado.'
+    )
+  }
+
+  window.history.replaceState(
+    {},
+    '',
+    window.location.pathname
+  )
+}, [searchParams])
+
 const isMobile = windowWidth < 768
 const isTablet = windowWidth >= 768 && windowWidth < 1024
+
+const isSubscriptionActive =
+  subscriptionStatus === 'active'
+
+const isFreePlan =
+  subscriptionPlanId === 'free_monthly'
 
 useEffect(() => {
   const channel = supabase
@@ -443,6 +486,26 @@ async function markNotificationAsRead(alert: AlertStudent) {
     )
 }
 
+async function loadSubscriptionStatus() {
+  if (!schoolId) return
+
+  const { data, error } = await supabase
+    .from('school_subscriptions')
+    .select(`
+      status,
+      plan_id
+    `)
+    .eq('school_id', schoolId)
+    .single()
+
+  if (error || !data) {
+    return
+  }
+
+  setSubscriptionStatus(data.status)
+  setSubscriptionPlanId(data.plan_id)
+}
+
 async function fetchStudents(currentSchoolIdParam?: string) {
   const currentSchoolId = currentSchoolIdParam || schoolId
 
@@ -563,6 +626,7 @@ async function loadAllData() {
     fetchSchool(),
     fetchSchoolYears(),
     fetchClasses(),
+    loadSubscriptionStatus(),
     fetchEnrollments(),
     fetchStudents(),
   ])
@@ -1646,6 +1710,37 @@ async function handleCreateStudent(photoOverride?: File | null) {
     return
   }
 
+  const { data: subscriptionData, error: subscriptionError } = await supabase
+  .from('school_subscriptions')
+  .select(`
+    plan_id,
+    subscription_plans (
+      student_limit
+    )
+  `)
+  .eq('school_id', schoolId)
+  .single()
+
+if (subscriptionError || !subscriptionData) {
+  showMessage('Não foi possível verificar o plano da escola.')
+  return
+}
+
+const subscriptionPlan = Array.isArray(subscriptionData.subscription_plans)
+  ? subscriptionData.subscription_plans[0]
+  : subscriptionData.subscription_plans as unknown as {
+      student_limit: number
+    } | null
+
+const studentLimit = subscriptionPlan?.student_limit || 0
+
+if (students.length >= studentLimit) {
+  showMessage(
+    `Limite do plano atingido (${studentLimit} alunos).`
+  )
+  return
+}
+
   const normalizedEmail = studentEmail.trim().toLowerCase()
   const qrCodeToken = crypto.randomUUID().replace(/-/g, '')
 
@@ -2657,6 +2752,7 @@ function handleChangeSection(
     | 'attendance'
     | 'reports'
     | 'assessments'
+    | 'plans'
 ) {
   setActiveSection(section)
 
@@ -2810,6 +2906,18 @@ style={{
     >
     Avaliações
     </button>
+    {isAdmin && (
+  <button
+    onClick={() => handleChangeSection('plans')}
+    style={
+      activeSection === 'plans'
+        ? dashboardNavButtonActiveStyle
+        : dashboardNavButtonStyle
+    }
+  >
+    Planos
+  </button>
+)}
 </div>
 
           <div style={dashboardSidebarFooterStyle}>
@@ -3660,24 +3768,65 @@ onClick={() => {
     </div>
   </section>
 )}
+
 {activeSection === 'assessments' && (
-  <AssessmentsSection
-  isAdmin={isAdmin}
-  isManager={isManager}
-  isTeacher={userRole === 'professor'}
-  schoolId={schoolId}
-  currentUserId={currentUserId}
-  classes={classes}
-  schoolName={schoolName}
-students={students.map((student) => ({
-  id: student.id,
-  name: student.full_name || student.name || 'Aluno sem nome',
-  full_name: student.full_name || student.name || 'Aluno sem nome',
-  qr_code_token: student.qr_code_token || null,
-  class_id: studentClassMap[student.id]?.class_id || null,
-  class_name: studentClassMap[student.id]?.class_name || null,
-}))}
-/>
+  isSubscriptionActive ? (
+    <AssessmentsSection
+      isAdmin={isAdmin}
+      isManager={isManager}
+      isTeacher={userRole === 'professor'}
+      schoolId={schoolId}
+      currentUserId={currentUserId}
+      classes={classes}
+      schoolName={schoolName}
+      students={students.map((student) => ({
+        id: student.id,
+        name:
+          student.full_name ||
+          student.name ||
+          'Aluno sem nome',
+
+        full_name:
+          student.full_name ||
+          student.name ||
+          'Aluno sem nome',
+
+        qr_code_token:
+          student.qr_code_token || null,
+
+        class_id:
+          studentClassMap[student.id]?.class_id ||
+          null,
+
+        class_name:
+          studentClassMap[student.id]?.class_name ||
+          null,
+      }))}
+    />
+  ) : (
+    <div
+      style={{
+        padding: 28,
+        borderRadius: 28,
+        background: '#fff7ed',
+        border: '1px solid #fed7aa',
+        color: '#9a3412',
+        fontWeight: 700,
+        lineHeight: 1.7,
+      }}
+    >
+      Sua assinatura está inativa.
+      Regularize o pagamento para continuar utilizando
+      o módulo de avaliações.
+    </div>
+  )
+)}
+{activeSection === 'plans' && isAdmin && (
+  <PlansSection
+    schoolId={schoolId}
+    currentStudents={students.length}
+    showMessage={showMessage}
+  />
 )}
         </section>
       </div>
