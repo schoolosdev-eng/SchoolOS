@@ -257,7 +257,7 @@ function AssessmentBuilder({
   currentUserId: string | null
   classes: SchoolClass[]
 }) {
-  const [step, setStep] = useState<'info' | 'questions'>('info')
+  const [step, setStep] = useState<'info' | 'external' | 'questions'>('info')
 
   const [title, setTitle] = useState('')
   const [subjectName, setSubjectName] = useState('')
@@ -276,6 +276,7 @@ function AssessmentBuilder({
   const [optionD, setOptionD] = useState('')
   const [optionE, setOptionE] = useState('')
   const [correctOption, setCorrectOption] = useState('')
+  const [externalAnswers, setExternalAnswers] = useState<Record<number, string>>({})
 
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
@@ -379,6 +380,131 @@ const selectedClassNames = selectedClasses.map((item) => item.name).join(', ')
     setCurrentQuestionNumber(1)
     setMessage('Avaliação criada. Agora cadastre as questões objetivas.')
   }
+
+  async function handleCreateExternalAssessment() {
+  if (!currentUserId) {
+    setMessage('Usuário não identificado.')
+    return
+  }
+
+  if (
+    !title.trim() ||
+    !subjectName.trim() ||
+    selectedClassIds.length === 0 ||
+    !period ||
+    !weight ||
+    !totalQuestions
+  ) {
+    setMessage('Preencha todos os campos da prova externa.')
+    return
+  }
+
+  const total = Number(totalQuestions)
+
+  if (total <= 0) {
+    setMessage('Informe uma quantidade válida de questões.')
+    return
+  }
+
+  for (let i = 1; i <= total; i++) {
+    if (!externalAnswers[i]) {
+      setMessage(`Informe o gabarito da questão ${i}.`)
+      return
+    }
+  }
+
+  const selectedClasses = classes.filter((item) =>
+    selectedClassIds.includes(item.id)
+  )
+
+  const selectedClassNames = selectedClasses.map((item) => item.name).join(', ')
+
+  setSaving(true)
+  setMessage('Criando prova externa...')
+
+  const { data: assessment, error } = await supabase
+    .from('assessments')
+    .insert({
+      school_id: schoolId,
+      teacher_id: currentUserId,
+      title: title.trim(),
+      subject_name: subjectName.trim(),
+      class_name: selectedClassNames || null,
+      period,
+      weight: Number(weight),
+      total_questions: total,
+      objective_questions: total,
+      discursive_questions: 0,
+      status: 'ready',
+      assessment_type: 'external',
+    })
+    .select('id')
+    .single()
+
+  if (error || !assessment) {
+    setSaving(false)
+    setMessage(`Erro ao criar prova externa: ${error?.message || 'Erro desconhecido'}`)
+    return
+  }
+
+  const { error: classError } = await supabase
+    .from('assessment_classes')
+    .insert(
+      selectedClassIds.map((classId) => ({
+        assessment_id: assessment.id,
+        class_id: classId,
+      }))
+    )
+
+  if (classError) {
+    setSaving(false)
+    setMessage(`Prova criada, mas houve erro ao vincular turma: ${classError.message}`)
+    return
+  }
+
+  for (let i = 1; i <= total; i++) {
+    const correct = externalAnswers[i]
+
+    const { data: question, error: questionError } = await supabase
+      .from('assessment_questions')
+      .insert({
+        assessment_id: assessment.id,
+        question_number: i,
+        question_type: 'objective',
+        statement: `Questão ${String(i).padStart(2, '0')}`,
+        correct_option: correct,
+        lines_count: null,
+      })
+      .select('id')
+      .single()
+
+    if (questionError || !question) {
+      setSaving(false)
+      setMessage(`Erro ao criar questão ${i}: ${questionError?.message || 'Erro desconhecido'}`)
+      return
+    }
+
+    const { error: optionsError } = await supabase
+      .from('assessment_options')
+      .insert(
+        ['A', 'B', 'C', 'D', 'E'].map((letter) => ({
+          question_id: question.id,
+          option_letter: letter,
+          option_text: `Alternativa ${letter}`,
+          is_correct: letter === correct,
+        }))
+      )
+
+    if (optionsError) {
+      setSaving(false)
+      setMessage(`Erro ao criar alternativas da questão ${i}: ${optionsError.message}`)
+      return
+    }
+  }
+
+  setSaving(false)
+  setMessage('Prova externa criada com sucesso.')
+}
 
   async function handleSaveQuestion() {
     if (!assessmentId) {
@@ -657,13 +783,26 @@ function handleOptionImageChange(
           </div>
 
           <div style={{ marginTop: 18 }}>
-            <button
-              onClick={handleCreateAssessment}
-              disabled={saving}
-              style={primaryButtonStyle}
-            >
-              {saving ? 'Criando...' : 'Criar avaliação'}
-            </button>
+<div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+  <button
+    onClick={handleCreateAssessment}
+    disabled={saving}
+    style={primaryButtonStyle}
+  >
+    {saving ? 'Criando...' : 'Criar avaliação'}
+  </button>
+
+  <button
+    onClick={() => setStep('external')}
+    disabled={saving}
+    style={{
+      ...primaryButtonStyle,
+      background: '#0f172a',
+    }}
+  >
+    Prova Externa
+  </button>
+</div>
           </div>
         </>
       )}
@@ -983,6 +1122,96 @@ function handleOptionImageChange(
           </div>
         </>
       )}
+
+      {step === 'external' && (
+  <>
+    <div style={headerStyle}>
+      <div>
+        <div style={eyebrowStyle}>Prova Externa</div>
+
+        <h2 style={titleStyle}>Informar gabarito</h2>
+
+        <p style={textStyle}>
+          Use esta opção quando a prova já estiver pronta e impressa.
+          O sistema criará apenas o cartão-resposta, correção e estatísticas.
+        </p>
+      </div>
+    </div>
+
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        gap: 14,
+      }}
+    >
+      {Array.from({ length: Number(totalQuestions || 0) }).map((_, index) => {
+        const questionNumber = index + 1
+
+        return (
+          <div
+            key={questionNumber}
+            style={{
+              border: '1px solid #e2e8f0',
+              borderRadius: 18,
+              padding: 14,
+              background: '#f8fafc',
+            }}
+          >
+            <strong style={{ color: '#0f172a' }}>
+              Questão {String(questionNumber).padStart(2, '0')}
+            </strong>
+
+            <select
+              value={externalAnswers[questionNumber] || ''}
+              onChange={(e) =>
+                setExternalAnswers((prev) => ({
+                  ...prev,
+                  [questionNumber]: e.target.value,
+                }))
+              }
+              style={{
+                ...inputStyle,
+                width: '100%',
+                marginTop: 10,
+              }}
+            >
+              <option value="">Gabarito</option>
+              <option value="A">A</option>
+              <option value="B">B</option>
+              <option value="C">C</option>
+              <option value="D">D</option>
+              <option value="E">E</option>
+            </select>
+          </div>
+        )
+      })}
+    </div>
+
+    <div style={{ marginTop: 18, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      <button
+        onClick={handleCreateExternalAssessment}
+        disabled={saving}
+        style={{
+          ...primaryButtonStyle,
+          background: '#16a34a',
+        }}
+      >
+        {saving ? 'Criando...' : 'Salvar prova externa'}
+      </button>
+
+      <button
+        onClick={() => setStep('info')}
+        style={{
+          ...primaryButtonStyle,
+          background: '#64748b',
+        }}
+      >
+        Voltar
+      </button>
+    </div>
+  </>
+)}
 
 {showClassesModal && (
   <div style={modalOverlayStyle}>
@@ -1571,7 +1800,10 @@ const relatedStudents = students.filter((student) => {
 
   const answerSheetsArray = await Promise.all(
     relatedStudents.map(async (student, studentIndex) => {
-      const version = versions[studentIndex % versions.length]
+      const version =
+  assessment.assessment_type === 'external'
+    ? 'A'
+    : versions[studentIndex % versions.length]
 
 const qrPayload = `schoolos:answer-sheet:${assessment.id}:${student.id}:${version}`
 
@@ -3853,17 +4085,6 @@ const { data: savedResult, error } = await supabase
               >
                 Questão{' '}
                 {String(index + 1).padStart(2, '0')}
-              </div>
-
-              <div
-                style={{
-                  color: '#475569',
-                  marginBottom: 16,
-                  lineHeight: 1.6,
-                  fontWeight: 600,
-                }}
-              >
-                {question.statement}
               </div>
 
               <div
