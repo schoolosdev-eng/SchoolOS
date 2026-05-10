@@ -84,30 +84,38 @@ export async function POST(request: Request) {
       )
     }
 
-    if (status === 'approved') {
-      const { error: subscriptionError } = await supabase
-        .from('school_subscriptions')
-        .upsert(
-          {
-            school_id: schoolId,
-            plan_id: planId,
-            status: 'active',
-            updated_at: new Date().toISOString(),
-          },
-          {
-            onConflict: 'school_id',
-          }
-        )
+if (status === 'approved') {
+  const now = new Date()
 
-      if (subscriptionError) {
-        console.error('ERRO AO ATUALIZAR ASSINATURA:', subscriptionError)
+  const expiresAt = new Date(now)
 
-        return NextResponse.json(
-          { error: 'Erro ao atualizar assinatura.' },
-          { status: 500 }
-        )
+  const isAnnual =
+    planId.includes('yearly') ||
+    planId.includes('annual')
+
+  if (isAnnual) {
+    expiresAt.setFullYear(expiresAt.getFullYear() + 1)
+  } else {
+    expiresAt.setMonth(expiresAt.getMonth() + 1)
+  }
+
+  await supabase
+    .from('school_subscriptions')
+    .upsert(
+      {
+        school_id: schoolId,
+        plan_id: planId,
+        status: 'active',
+        started_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+        billing_cycle: isAnnual ? 'annual' : 'monthly',
+        updated_at: now.toISOString(),
+      },
+      {
+        onConflict: 'school_id',
       }
-    }
+    )
+}
 
     return NextResponse.json({ success: true })
   } catch (error) {
