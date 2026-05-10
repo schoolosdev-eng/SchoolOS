@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase'
 import * as XLSX from 'xlsx'
 import QRCode from 'qrcode'
 import { Html5Qrcode } from 'html5-qrcode'
+import katex from 'katex'
+import 'katex/dist/katex.min.css'
 
 type SchoolClass = {
   id: string
@@ -214,6 +216,38 @@ function buildQuestionVersion(question: any, version: string) {
   }
 }
 
+function renderMathTextToHtml(text?: string | null) {
+  if (!text) return ''
+
+  let rendered = text
+
+  rendered = rendered.replace(/\$\$([\s\S]*?)\$\$/g, (_, expression) => {
+    try {
+      return katex.renderToString(expression.trim(), {
+        throwOnError: false,
+        displayMode: false,
+        output: 'html',
+      })
+    } catch {
+      return expression
+    }
+  })
+
+  rendered = rendered.replace(/\\\(([\s\S]*?)\\\)/g, (_, expression) => {
+    try {
+      return katex.renderToString(expression.trim(), {
+        throwOnError: false,
+        displayMode: false,
+        output: 'html',
+      })
+    } catch {
+      return expression
+    }
+  })
+
+  return rendered
+}
+
 function AssessmentBuilder({
   schoolId,
   currentUserId,
@@ -227,9 +261,9 @@ function AssessmentBuilder({
 
   const [title, setTitle] = useState('')
   const [subjectName, setSubjectName] = useState('')
-  const [selectedClassId, setSelectedClassId] = useState('')
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([])
   const [period, setPeriod] = useState('')
-  const [weight, setWeight] = useState('10')
+  const [weight, setWeight] = useState('')
   const [totalQuestions, setTotalQuestions] = useState('')
 
   const [assessmentId, setAssessmentId] = useState<string | null>(null)
@@ -246,11 +280,10 @@ function AssessmentBuilder({
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
 
-  const [bankQuestions, setBankQuestions] = useState<any[]>([])
-const [showQuestionBank, setShowQuestionBank] = useState(false)
-const [bankLoading, setBankLoading] = useState(false)
 const [questionImage, setQuestionImage] = useState<File | null>(null)
 const [questionImagePreview, setQuestionImagePreview] = useState('')
+const [questionImageSize, setQuestionImageSize] = useState(260)
+const [showClassesModal, setShowClassesModal] = useState(false)
 
 const [imageCaption, setImageCaption] = useState('')
 
@@ -278,7 +311,7 @@ const [optionEImagePreview, setOptionEImagePreview] = useState('')
     if (
       !title.trim() ||
       !subjectName.trim() ||
-      !selectedClassId ||
+      selectedClassIds.length === 0 ||
       !period ||
       !weight ||
       !totalQuestions
@@ -292,7 +325,11 @@ const [optionEImagePreview, setOptionEImagePreview] = useState('')
       return
     }
 
-    const selectedClass = classes.find((item) => item.id === selectedClassId)
+    const selectedClasses = classes.filter((item) =>
+  selectedClassIds.includes(item.id)
+)
+
+const selectedClassNames = selectedClasses.map((item) => item.name).join(', ')
 
     setSaving(true)
     setMessage('Criando avaliação...')
@@ -304,7 +341,7 @@ const [optionEImagePreview, setOptionEImagePreview] = useState('')
         teacher_id: currentUserId,
         title: title.trim(),
         subject_name: subjectName.trim(),
-        class_name: selectedClass?.name || null,
+        class_name: selectedClassNames || null,
         period,
         weight: Number(weight),
         total_questions: Number(totalQuestions),
@@ -323,10 +360,12 @@ const [optionEImagePreview, setOptionEImagePreview] = useState('')
 
     const { error: classError } = await supabase
       .from('assessment_classes')
-      .insert({
-        assessment_id: data.id,
-        class_id: selectedClassId,
-      })
+.insert(
+  selectedClassIds.map((classId) => ({
+    assessment_id: data.id,
+    class_id: classId,
+  }))
+)
 
     setSaving(false)
 
@@ -387,6 +426,7 @@ const optionEImageUrl = await uploadAssessmentImage(optionEImage)
         statement: statement.trim(),
         image_url: imageUrl,
 image_caption: imageCaption.trim() || null,
+image_size: questionImageSize,
         correct_option: correctOption,
         lines_count: null,
       })
@@ -418,28 +458,6 @@ const options = [
           is_correct: option.letter === correctOption,
         }))
       )
-      await supabase
-  .from('question_bank')
-  .insert({
-    school_id: schoolId,
-    created_by: currentUserId,
-    subject_name: subjectName.trim(),
-    image_caption: imageCaption.trim() || null,
-    statement: statement.trim(),
-
-    option_a: optionA.trim(),
-    option_b: optionB.trim(),
-    option_c: optionC.trim(),
-    option_d: optionD.trim(),
-    option_e: optionE.trim(),
-    option_a_image_url: optionAImageUrl,
-option_b_image_url: optionBImageUrl,
-option_c_image_url: optionCImageUrl,
-option_d_image_url: optionDImageUrl,
-option_e_image_url: optionEImageUrl,
-
-    correct_option: correctOption,
-  })
 
     if (optionsError) {
       setSaving(false)
@@ -470,6 +488,7 @@ option_e_image_url: optionEImageUrl,
       setQuestionImage(null)
 setQuestionImagePreview('')
 setImageCaption('')
+setQuestionImageSize(260)
 
 setOptionAImage(null)
 setOptionBImage(null)
@@ -489,59 +508,34 @@ setOptionEImagePreview('')
 
     setSaving(false)
 
-    setStatement('')
-    setOptionA('')
-    setOptionB('')
-    setOptionC('')
-    setOptionD('')
-    setOptionE('')
-    setCorrectOption('')
-    setQuestionImage(null)
+setStatement('')
+setOptionA('')
+setOptionB('')
+setOptionC('')
+setOptionD('')
+setOptionE('')
+setCorrectOption('')
+
+setQuestionImage(null)
 setQuestionImagePreview('')
+setImageCaption('')
+setQuestionImageSize(260)
 
-    setCurrentQuestionNumber((prev) => prev + 1)
-    setMessage('Questão salva com sucesso.')
+setOptionAImage(null)
+setOptionBImage(null)
+setOptionCImage(null)
+setOptionDImage(null)
+setOptionEImage(null)
+
+setOptionAImagePreview('')
+setOptionBImagePreview('')
+setOptionCImagePreview('')
+setOptionDImagePreview('')
+setOptionEImagePreview('')
+
+setCurrentQuestionNumber((prev) => prev + 1)
+setMessage('Questão salva com sucesso.')
   }
-
-  async function handleLoadQuestionBank() {
-  setBankLoading(true)
-
-  const { data, error } = await supabase
-    .from('question_bank')
-    .select('*')
-    .eq('school_id', schoolId)
-    .order('created_at', { ascending: false })
-
-  setBankLoading(false)
-
-  if (error) {
-    setMessage(
-      `Erro ao carregar banco de questões: ${error.message}`
-    )
-    return
-  }
-
-  setBankQuestions(data || [])
-  setShowQuestionBank(true)
-}
-
-function handleUseBankQuestion(question: any) {
-  setStatement(question.statement)
-
-  setOptionA(question.option_a)
-  setOptionB(question.option_b)
-  setOptionC(question.option_c)
-  setOptionD(question.option_d)
-  setOptionE(question.option_e)
-
-  setCorrectOption(question.correct_option)
-
-  setShowQuestionBank(false)
-
-  setMessage(
-    'Questão carregada do banco.'
-  )
-}
 
 async function uploadAssessmentImage(file: File | null) {
   if (!file) return null
@@ -566,6 +560,24 @@ async function uploadAssessmentImage(file: File | null) {
     .getPublicUrl(fileName)
 
   return data.publicUrl
+}
+
+function handleOptionImageChange(
+  file: File | undefined,
+  setFile: (file: File | null) => void,
+  setPreview: (value: string) => void
+) {
+  if (!file) return
+
+  setFile(file)
+
+  const reader = new FileReader()
+
+  reader.onloadend = () => {
+    setPreview(reader.result as string)
+  }
+
+  reader.readAsDataURL(file)
 }
 
   return (
@@ -599,18 +611,15 @@ async function uploadAssessmentImage(file: File | null) {
               style={inputStyle}
             />
 
-            <select
-              value={selectedClassId}
-              onChange={(e) => setSelectedClassId(e.target.value)}
-              style={inputStyle}
-            >
-              <option value="">Selecione a turma</option>
-              {classes.map((schoolClass) => (
-                <option key={schoolClass.id} value={schoolClass.id}>
-                  {schoolClass.name}
-                </option>
-              ))}
-            </select>
+            <button
+  type="button"
+  onClick={() => setShowClassesModal(true)}
+  style={inputStyle}
+>
+  {selectedClassIds.length === 0
+    ? 'Selecionar turmas'
+    : `${selectedClassIds.length} turma(s) selecionada(s)`}
+</button>
 
             <select
               value={period}
@@ -627,13 +636,16 @@ async function uploadAssessmentImage(file: File | null) {
               <option value="3º trimestre">3º trimestre</option>
             </select>
 
-            <input
-              type="number"
-              placeholder="Peso da avaliação"
-              value={weight}
-              onChange={(e) => setWeight(e.target.value)}
-              style={inputStyle}
-            />
+<input
+  type="number"
+  placeholder="Valor da prova"
+  value={weight}
+  onChange={(e) => setWeight(e.target.value)}
+  min="0"
+  max="100"
+  step="0.1"
+  style={inputStyle}
+/>
 
             <input
               type="number"
@@ -722,6 +734,50 @@ async function uploadAssessmentImage(file: File | null) {
       }}
     />
   )}
+
+  <div
+  style={{
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    padding: 14,
+    borderRadius: 16,
+    background: '#f8fafc',
+    border: '1px solid #e2e8f0',
+  }}
+>
+  <strong style={{ color: '#0f172a' }}>
+    Tamanho da imagem na prova: {questionImageSize}px
+  </strong>
+
+  <input
+    type="range"
+    min="120"
+    max="520"
+    step="20"
+    value={questionImageSize}
+    onChange={(e) =>
+      setQuestionImageSize(Number(e.target.value))
+    }
+  />
+
+  {questionImagePreview && (
+    <img
+      src={questionImagePreview}
+      alt="Prévia do tamanho"
+      style={{
+        width: questionImageSize,
+        maxWidth: '100%',
+        maxHeight: 320,
+        objectFit: 'contain',
+        borderRadius: 14,
+        border: '1px solid #cbd5e1',
+        background: '#ffffff',
+        alignSelf: 'center',
+      }}
+    />
+  )}
+</div>
   <textarea
   placeholder="Texto complementar abaixo da imagem"
   value={imageCaption}
@@ -734,40 +790,155 @@ async function uploadAssessmentImage(file: File | null) {
 />
 </div>
 
-            <input
-              placeholder="Alternativa A"
-              value={optionA}
-              onChange={(e) => setOptionA(e.target.value)}
-              style={inputStyle}
-            />
+<div style={alternativeBoxStyle}>
+  <input
+    placeholder="Alternativa A"
+    value={optionA}
+    onChange={(e) => setOptionA(e.target.value)}
+    style={inputStyle}
+  />
 
-            <input
-              placeholder="Alternativa B"
-              value={optionB}
-              onChange={(e) => setOptionB(e.target.value)}
-              style={inputStyle}
-            />
+  <input
+    type="file"
+    accept="image/*"
+    onChange={(e) =>
+      handleOptionImageChange(
+        e.target.files?.[0],
+        setOptionAImage,
+        setOptionAImagePreview
+      )
+    }
+    style={inputStyle}
+  />
 
-            <input
-              placeholder="Alternativa C"
-              value={optionC}
-              onChange={(e) => setOptionC(e.target.value)}
-              style={inputStyle}
-            />
+  {optionAImagePreview && (
+    <img
+      src={optionAImagePreview}
+      alt="Imagem alternativa A"
+      style={alternativeImagePreviewStyle}
+    />
+  )}
+</div>
 
-            <input
-              placeholder="Alternativa D"
-              value={optionD}
-              onChange={(e) => setOptionD(e.target.value)}
-              style={inputStyle}
-            />
+<div style={alternativeBoxStyle}>
+  <input
+    placeholder="Alternativa B"
+    value={optionB}
+    onChange={(e) => setOptionB(e.target.value)}
+    style={inputStyle}
+  />
 
-            <input
-              placeholder="Alternativa E"
-              value={optionE}
-              onChange={(e) => setOptionE(e.target.value)}
-              style={inputStyle}
-            />
+  <input
+    type="file"
+    accept="image/*"
+    onChange={(e) =>
+      handleOptionImageChange(
+        e.target.files?.[0],
+        setOptionBImage,
+        setOptionBImagePreview
+      )
+    }
+    style={inputStyle}
+  />
+
+  {optionBImagePreview && (
+    <img
+      src={optionBImagePreview}
+      alt="Imagem alternativa B"
+      style={alternativeImagePreviewStyle}
+    />
+  )}
+</div>
+
+<div style={alternativeBoxStyle}>
+  <input
+    placeholder="Alternativa C"
+    value={optionC}
+    onChange={(e) => setOptionC(e.target.value)}
+    style={inputStyle}
+  />
+
+  <input
+    type="file"
+    accept="image/*"
+    onChange={(e) =>
+      handleOptionImageChange(
+        e.target.files?.[0],
+        setOptionCImage,
+        setOptionCImagePreview
+      )
+    }
+    style={inputStyle}
+  />
+
+  {optionCImagePreview && (
+    <img
+      src={optionCImagePreview}
+      alt="Imagem alternativa C"
+      style={alternativeImagePreviewStyle}
+    />
+  )}
+</div>
+
+<div style={alternativeBoxStyle}>
+  <input
+    placeholder="Alternativa D"
+    value={optionD}
+    onChange={(e) => setOptionD(e.target.value)}
+    style={inputStyle}
+  />
+
+  <input
+    type="file"
+    accept="image/*"
+    onChange={(e) =>
+      handleOptionImageChange(
+        e.target.files?.[0],
+        setOptionDImage,
+        setOptionDImagePreview
+      )
+    }
+    style={inputStyle}
+  />
+
+  {optionDImagePreview && (
+    <img
+      src={optionDImagePreview}
+      alt="Imagem alternativa D"
+      style={alternativeImagePreviewStyle}
+    />
+  )}
+</div>
+
+<div style={alternativeBoxStyle}>
+  <input
+    placeholder="Alternativa E"
+    value={optionE}
+    onChange={(e) => setOptionE(e.target.value)}
+    style={inputStyle}
+  />
+
+  <input
+    type="file"
+    accept="image/*"
+    onChange={(e) =>
+      handleOptionImageChange(
+        e.target.files?.[0],
+        setOptionEImage,
+        setOptionEImagePreview
+      )
+    }
+    style={inputStyle}
+  />
+
+  {optionEImagePreview && (
+    <img
+      src={optionEImagePreview}
+      alt="Imagem alternativa E"
+      style={alternativeImagePreviewStyle}
+    />
+  )}
+</div>
 
             <select
               value={correctOption}
@@ -790,18 +961,6 @@ async function uploadAssessmentImage(file: File | null) {
     marginTop: 18,
   }}
 >
-  <button
-    type="button"
-    onClick={handleLoadQuestionBank}
-    style={{
-      ...primaryButtonStyle,
-      background: '#0f172a',
-    }}
-  >
-    {bankLoading
-      ? 'Carregando...'
-      : 'Banco de questões'}
-  </button>
 </div>
 
           <div style={{ marginTop: 18 }}>
@@ -825,154 +984,69 @@ async function uploadAssessmentImage(file: File | null) {
         </>
       )}
 
-      {showQuestionBank && (
-  <div
-    style={{
-      marginTop: 24,
-      borderRadius: 24,
-      border: '1px solid #cbd5e1',
-      background: '#ffffff',
-      padding: 22,
-      display: 'flex',
-      flexDirection: 'column',
-      gap: 14,
-      maxHeight: 520,
-      overflowY: 'auto',
-    }}
-  >
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        gap: 12,
-      }}
-    >
-      <div>
-        <div style={eyebrowStyle}>
-          Banco de questões
-        </div>
+{showClassesModal && (
+  <div style={modalOverlayStyle}>
+    <div style={modalBoxStyle}>
+<h3
+  style={{
+    margin: 0,
+    fontSize: 26,
+    fontWeight: 900,
+    color: '#0f172a',
+  }}
+>
+  Selecionar turmas
+</h3>
 
-        <h3
-          style={{
-            margin: '6px 0 0',
-            fontSize: 24,
-            color: '#0f172a',
-            fontWeight: 900,
+<div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+  {classes.map((schoolClass) => {
+    const checked = selectedClassIds.includes(schoolClass.id)
+
+    return (
+      <label
+        key={schoolClass.id}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          fontSize: 16,
+          fontWeight: 800,
+          color: '#0f172a',
+          cursor: 'pointer',
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => {
+            if (e.target.checked) {
+              setSelectedClassIds((prev) => [...prev, schoolClass.id])
+            } else {
+              setSelectedClassIds((prev) =>
+                prev.filter((id) => id !== schoolClass.id)
+              )
+            }
           }}
-        >
-          Questões cadastradas
-        </h3>
-      </div>
+          style={{
+            width: 18,
+            height: 18,
+          }}
+        />
+
+        {schoolClass.name}
+      </label>
+    )
+  })}
+</div>
 
       <button
         type="button"
-        onClick={() =>
-          setShowQuestionBank(false)
-        }
-        style={{
-          ...primaryButtonStyle,
-          background: '#64748b',
-        }}
+        onClick={() => setShowClassesModal(false)}
+        style={primaryButtonStyle}
       >
-        Fechar
+        Confirmar turmas
       </button>
     </div>
-
-    {bankQuestions.length === 0 ? (
-      <div style={emptyStateStyle}>
-        Nenhuma questão encontrada.
-      </div>
-    ) : (
-      bankQuestions.map((question) => (
-        <div
-          key={question.id}
-          style={{
-            border: '1px solid #e2e8f0',
-            borderRadius: 20,
-            padding: 18,
-            background: '#f8fafc',
-          }}
-        >
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 900,
-              color: '#2563eb',
-              marginBottom: 10,
-              textTransform: 'uppercase',
-            }}
-          >
-            {question.subject_name}
-          </div>
-
-          <div
-            style={{
-              color: '#0f172a',
-              lineHeight: 1.6,
-              fontWeight: 700,
-              marginBottom: 14,
-            }}
-          >
-            {question.statement}
-          </div>
-
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 6,
-              marginBottom: 16,
-            }}
-          >
-            {[
-              ['A', question.option_a],
-              ['B', question.option_b],
-              ['C', question.option_c],
-              ['D', question.option_d],
-              ['E', question.option_e],
-            ].map(([letter, text]) => (
-              <div
-                key={letter}
-                style={{
-                  padding: '10px 12px',
-                  borderRadius: 12,
-                  border:
-                    question.correct_option ===
-                    letter
-                      ? '1px solid #86efac'
-                      : '1px solid #e2e8f0',
-                  background:
-                    question.correct_option ===
-                    letter
-                      ? '#dcfce7'
-                      : '#ffffff',
-                  fontWeight:
-                    question.correct_option ===
-                    letter
-                      ? 900
-                      : 600,
-                }}
-              >
-                {letter}) {text}
-              </div>
-            ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={() =>
-              handleUseBankQuestion(
-                question
-              )
-            }
-            style={primaryButtonStyle}
-          >
-            Usar questão
-          </button>
-        </div>
-      ))
-    )}
   </div>
 )}
 
@@ -1077,13 +1151,16 @@ async function handlePrintAssessment(
   question_number,
   statement,
   image_url,
+  image_caption,
+  image_size,
   correct_option,
-  assessment_options (
-    id,
-    option_letter,
-    option_text,
-    is_correct
-  )
+assessment_options (
+  id,
+  option_letter,
+  option_text,
+  image_url,
+  is_correct
+)
 `)
     .eq('assessment_id', assessment.id)
     .order('question_number', { ascending: true })
@@ -1114,48 +1191,70 @@ const versionedQuestions = questions.map((question: any) =>
     return
   }
 
-  const questionsHtml = versionedQuestions
-    .map((question: any, index: number) => {
-      const optionsHtml = [...(question.assessment_options || [])]
+const questionsHtml = versionedQuestions
+  .map((question: any, index: number) => {
+    const imageHtml = question.image_url
+      ? `
+<img
+  src="${question.image_url}"
+  class="question-image"
+  style="max-width: ${question.image_size || 260}px;"
+/>
+      `
+      : ''
+
+    const optionsHtml = [...(question.assessment_options || [])]
         .sort((a: any, b: any) =>
           a.option_letter.localeCompare(b.option_letter)
         )
-        .map(
-          (option: any) => `
-            <div class="option">
-              <strong>${option.option_letter})</strong>
-              ${option.option_text}
-            </div>
+.map(
+  (option: any) => `
+    <div class="option">
+      <strong>${option.option_letter})</strong>
+      ${renderMathTextToHtml(option.option_text)}
+
+      ${
+        option.image_url
+          ? `
+            <img
+              src="${option.image_url}"
+              class="option-image"
+            />
           `
-        )
+          : ''
+      }
+    </div>
+  `
+)
         .join('')
 
-      return `
-        <div class="question">
-          <div class="question-number">
-            Questão ${String(index + 1).padStart(2, '0')}
-          </div>
-
-${
-  question.image_url
-    ? `
-      <img
-        src="${question.image_url}"
-        class="question-image"
-      />
-    `
-    : ''
-}
+return `
+  <div class="question">
+    <div class="question-number">
+      Questão ${String(index + 1).padStart(2, '0')}
+    </div>
 
 <div class="statement">
-  ${question.statement}
+  ${renderMathTextToHtml(question.statement)}
 </div>
 
-          <div class="options">
-            ${optionsHtml}
+    ${imageHtml}
+
+    ${
+      question.image_caption
+        ? `
+          <div class="image-caption">
+            ${renderMathTextToHtml(question.image_caption)}
           </div>
-        </div>
-      `
+        `
+        : ''
+    }
+
+    <div class="options">
+      ${optionsHtml}
+    </div>
+  </div>
+`
     })
     .join('')
 
@@ -1174,6 +1273,11 @@ ${
     <html>
       <head>
         <title>${assessment.title}</title>
+
+        <link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"
+/>
 
         <div>
   <strong>Versão:</strong>
@@ -1248,11 +1352,31 @@ ${
             color: #111827;
           }
 
-          .statement {
-            font-size: 14px;
-            line-height: 1.6;
-            margin-bottom: 12px;
-          }
+.statement {
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 10px;
+  text-align: justify;
+  white-space: pre-line;
+}
+
+          .katex {
+  font-size: 1em;
+  white-space: nowrap;
+}
+
+.katex-html {
+  display: inline-block;
+}
+
+          .image-caption {
+  margin-top: 6px;
+  margin-bottom: 10px;
+  font-size: 11px;
+  color: #475569;
+  font-style: italic;
+  text-align: center;
+}
 
           .options {
             display: flex;
@@ -1268,6 +1392,17 @@ ${
   object-fit: contain;
   margin: 0 auto 12px;
   border-radius: 12px;
+  border: 1px solid #cbd5e1;
+}
+
+.option-image {
+  display: block;
+  width: 100%;
+  max-width: 220px;
+  max-height: 150px;
+  object-fit: contain;
+  margin: 6px 0 10px 22px;
+  border-radius: 8px;
   border: 1px solid #cbd5e1;
 }
 
@@ -1316,8 +1451,8 @@ ${
         <div class="container">
           <div class="header">
             <div class="school">
-              SchoolOS
-            </div>
+  ${schoolName}
+</div>
 
             <div class="meta">
               <div>
@@ -1331,7 +1466,7 @@ ${
               </div>
 
               <div>
-                <strong>Turma:</strong>
+                <strong>Turma(as):</strong>
                 ${assessment.class_name || '-'}
               </div>
 
@@ -1412,11 +1547,19 @@ printWindow.onload = () => {
 }
 
 async function handlePrintAnswerSheets(assessment: any) {
-  const relatedStudents = students.filter(
-    (student) =>
-      !assessment.class_name ||
-      student.class_name === assessment.class_name
+const assessmentClassNames = String(assessment.class_name || '')
+  .split(',')
+  .map((name) => name.trim())
+  .filter(Boolean)
+
+const relatedStudents = students.filter((student) => {
+  const studentClassName = String(student.class_name || '').trim()
+
+  return (
+    assessmentClassNames.length === 0 ||
+    assessmentClassNames.includes(studentClassName)
   )
+})
 
   if (relatedStudents.length === 0) {
     setMessage('Nenhum aluno encontrado para esta turma.')
@@ -1660,11 +1803,19 @@ const qrPayload = `schoolos:answer-sheet:${assessment.id}:${student.id}:${versio
 }
 
 async function handlePrintIndividualizedExams(assessment: any) {
-  const relatedStudents = students.filter(
-    (student) =>
-      !assessment.class_name ||
-      student.class_name === assessment.class_name
+const assessmentClassNames = String(assessment.class_name || '')
+  .split(',')
+  .map((name) => name.trim())
+  .filter(Boolean)
+
+const relatedStudents = students.filter((student) => {
+  const studentClassName = String(student.class_name || '').trim()
+
+  return (
+    assessmentClassNames.length === 0 ||
+    assessmentClassNames.includes(studentClassName)
   )
+})
 
   if (relatedStudents.length === 0) {
     setMessage('Nenhum aluno encontrado para esta turma.')
@@ -1681,13 +1832,16 @@ async function handlePrintIndividualizedExams(assessment: any) {
       question_number,
       statement,
       image_url,
+      image_caption,
+      image_size,
       correct_option,
-      assessment_options (
-        id,
-        option_letter,
-        option_text,
-        is_correct
-      )
+assessment_options (
+  id,
+  option_letter,
+  option_text,
+  image_url,
+  is_correct
+)
     `)
     .eq('assessment_id', assessment.id)
     .order('question_number', { ascending: true })
@@ -1714,10 +1868,11 @@ async function handlePrintIndividualizedExams(assessment: any) {
         .map((question: any, index: number) => {
           const imageHtml = question.image_url
             ? `
-              <img
-                src="${question.image_url}"
-                class="question-image"
-              />
+<img
+  src="${question.image_url}"
+  class="question-image"
+  style="max-width: ${question.image_size || 260}px;"
+/>
             `
             : ''
 
@@ -1725,33 +1880,54 @@ async function handlePrintIndividualizedExams(assessment: any) {
             .sort((a: any, b: any) =>
               a.option_letter.localeCompare(b.option_letter)
             )
-            .map(
-              (option: any) => `
-                <div class="option">
-                  <strong>${option.option_letter})</strong>
-                  ${option.option_text}
-                </div>
-              `
-            )
+.map(
+  (option: any) => `
+    <div class="option">
+      <strong>${option.option_letter})</strong>
+      ${renderMathTextToHtml(option.option_text)}
+
+      ${
+        option.image_url
+          ? `
+            <img
+              src="${option.image_url}"
+              class="option-image"
+            />
+          `
+          : ''
+      }
+    </div>
+  `
+)
             .join('')
 
-          return `
-            <div class="question">
-              <div class="question-number">
-                Questão ${String(index + 1).padStart(2, '0')}
-              </div>
+return `
+  <div class="question">
+    <div class="question-number">
+      Questão ${String(index + 1).padStart(2, '0')}
+    </div>
 
-              ${imageHtml}
+    <div class="statement">
+      ${renderMathTextToHtml(question.statement)}
+    </div>
 
-              <div class="statement">
-                ${question.statement}
-              </div>
+    ${imageHtml}
 
-              <div class="options">
-                ${optionsHtml}
-              </div>
-            </div>
-          `
+    ${
+      question.image_caption
+        ? `
+          <div class="image-caption">
+            ${renderMathTextToHtml(question.image_caption)}
+          </div>
+        `
+        : ''
+    }
+
+    <div class="options">
+      ${optionsHtml}
+    </div>
+  </div>
+`
         })
         .join('')
 
@@ -1794,7 +1970,12 @@ async function handlePrintIndividualizedExams(assessment: any) {
   printWindow.document.write(`
     <html>
       <head>
-        <title>Provas individualizadas</title>
+        <title>Simulado</title>
+
+        <link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"
+/>
 
         <style>
           * {
@@ -1891,11 +2072,42 @@ async function handlePrintIndividualizedExams(assessment: any) {
             border: 1px solid #cbd5e1;
           }
 
-          .statement {
-            font-size: 13px;
-            line-height: 1.5;
-            margin-bottom: 10px;
-          }
+          .option-image {
+  display: block;
+  width: 100%;
+  max-width: 220px;
+  max-height: 150px;
+  object-fit: contain;
+  margin: 6px 0 10px 22px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+}
+
+.statement {
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 10px;
+  text-align: justify;
+  white-space: pre-line;
+}
+
+.katex {
+  font-size: 1em;
+  white-space: nowrap;
+}
+
+.katex-html {
+  display: inline-block;
+}
+
+.image-caption {
+  margin-top: 6px;
+  margin-bottom: 10px;
+  font-size: 11px;
+  color: #0f172a;
+  font-weight: 800;
+  text-align: justify;
+}
 
           .options {
             display: flex;
@@ -2107,15 +2319,42 @@ async function handleOpenAssessment(
             item.option_letter === letter
         )?.option_text || ''
 
-      return {
-        ...question,
+const getOptionRow = (letter: string) =>
+  options.find(
+    (item: any) => item.option_letter === letter
+  )
 
-        optionA: getOption('A'),
-        optionB: getOption('B'),
-        optionC: getOption('C'),
-        optionD: getOption('D'),
-        optionE: getOption('E'),
-      }
+return {
+  ...question,
+
+  imageCaption: question.image_caption || '',
+  imageSize: question.image_size || 260,
+  newQuestionImageFile: null,
+
+  optionA: getOptionRow('A')?.option_text || '',
+  optionB: getOptionRow('B')?.option_text || '',
+  optionC: getOptionRow('C')?.option_text || '',
+  optionD: getOptionRow('D')?.option_text || '',
+  optionE: getOptionRow('E')?.option_text || '',
+
+  optionAId: getOptionRow('A')?.id,
+  optionBId: getOptionRow('B')?.id,
+  optionCId: getOptionRow('C')?.id,
+  optionDId: getOptionRow('D')?.id,
+  optionEId: getOptionRow('E')?.id,
+
+  optionAImageUrl: getOptionRow('A')?.image_url || '',
+  optionBImageUrl: getOptionRow('B')?.image_url || '',
+  optionCImageUrl: getOptionRow('C')?.image_url || '',
+  optionDImageUrl: getOptionRow('D')?.image_url || '',
+  optionEImageUrl: getOptionRow('E')?.image_url || '',
+
+  newOptionAImageFile: null,
+  newOptionBImageFile: null,
+  newOptionCImageFile: null,
+  newOptionDImageFile: null,
+  newOptionEImageFile: null,
+}
     }
   )
 
@@ -2125,6 +2364,31 @@ async function handleOpenAssessment(
   setMessage('')
 }
 
+async function uploadEditedAssessmentImage(file: File | null) {
+  if (!file) return null
+
+  const fileExt = file.name.split('.').pop()
+  const fileName = `${schoolId}/${Date.now()}-${crypto.randomUUID()}.${fileExt}`
+
+  const { error } = await supabase.storage
+    .from('assessment-question-images')
+    .upload(fileName, file, {
+      cacheControl: '3600',
+      upsert: false,
+    })
+
+  if (error) {
+    setMessage(`Erro ao enviar imagem: ${error.message}`)
+    return null
+  }
+
+  const { data } = supabase.storage
+    .from('assessment-question-images')
+    .getPublicUrl(fileName)
+
+  return data.publicUrl
+}
+
 async function handleSaveEditedAssessment() {
   if (!editingAssessment) return
 
@@ -2132,42 +2396,77 @@ async function handleSaveEditedAssessment() {
   setMessage('Salvando alterações...')
 
   for (const question of editingQuestions) {
+    const newQuestionImageUrl = question.newQuestionImageFile
+      ? await await uploadEditedAssessmentImage(question.newQuestionImageFile)
+      : null
+
     await supabase
       .from('assessment_questions')
       .update({
         statement: question.statement,
-        correct_option:
-          question.correct_option,
+        image_caption: question.imageCaption || null,
+        image_size: question.imageSize || 260,
+        image_url: newQuestionImageUrl || question.image_url || null,
+        correct_option: question.correct_option,
       })
       .eq('id', question.id)
 
     const options = [
-      ['A', question.optionA],
-      ['B', question.optionB],
-      ['C', question.optionC],
-      ['D', question.optionD],
-      ['E', question.optionE],
+      {
+        letter: 'A',
+        text: question.optionA,
+        id: question.optionAId,
+        newImageFile: question.newOptionAImageFile,
+        currentImageUrl: question.optionAImageUrl,
+      },
+      {
+        letter: 'B',
+        text: question.optionB,
+        id: question.optionBId,
+        newImageFile: question.newOptionBImageFile,
+        currentImageUrl: question.optionBImageUrl,
+      },
+      {
+        letter: 'C',
+        text: question.optionC,
+        id: question.optionCId,
+        newImageFile: question.newOptionCImageFile,
+        currentImageUrl: question.optionCImageUrl,
+      },
+      {
+        letter: 'D',
+        text: question.optionD,
+        id: question.optionDId,
+        newImageFile: question.newOptionDImageFile,
+        currentImageUrl: question.optionDImageUrl,
+      },
+      {
+        letter: 'E',
+        text: question.optionE,
+        id: question.optionEId,
+        newImageFile: question.newOptionEImageFile,
+        currentImageUrl: question.optionEImageUrl,
+      },
     ]
 
-    for (const [letter, text] of options) {
+    for (const option of options) {
+      const newOptionImageUrl = option.newImageFile
+        ? await await uploadEditedAssessmentImage(option.newImageFile)
+        : null
+
       await supabase
         .from('assessment_options')
         .update({
-          option_text: text,
-          is_correct:
-            letter ===
-            question.correct_option,
+          option_text: option.text,
+          image_url: newOptionImageUrl || option.currentImageUrl || null,
+          is_correct: option.letter === question.correct_option,
         })
-        .eq('question_id', question.id)
-        .eq('option_letter', letter)
+        .eq('id', option.id)
     }
   }
 
   setEditingLoading(false)
-
-  setMessage(
-    'Avaliação atualizada com sucesso.'
-  )
+  setMessage('Avaliação atualizada com sucesso.')
 }
 
 async function handleDeleteAssessment(assessment: any) {
@@ -2462,7 +2761,7 @@ async function handleDeleteAssessment(assessment: any) {
               }}
             >
               <div>
-                <strong>Turma:</strong>{' '}
+                <strong>Turma(as):</strong>{' '}
                 {assessment.class_name || 'Não informada'}
               </div>
 
@@ -2472,7 +2771,7 @@ async function handleDeleteAssessment(assessment: any) {
               </div>
 
               <div>
-                <strong>Peso:</strong>{' '}
+                <strong>Valor da Prova:</strong>{' '}
                 {assessment.weight}
               </div>
 
@@ -2505,7 +2804,7 @@ async function handleDeleteAssessment(assessment: any) {
   }
   style={primaryButtonStyle}
 >
-  Abrir
+  Editar
 </button>
 
 <button
@@ -2636,141 +2935,225 @@ async function handleDeleteAssessment(assessment: any) {
     {editingQuestions.map(
       (question, index) => (
         <div
-          key={question.id}
+  key={question.id}
+  style={{
+    border: '1px solid #dbeafe',
+    borderRadius: 24,
+    padding: 22,
+    background: '#ffffff',
+    boxShadow: '0 12px 28px rgba(15, 23, 42, 0.05)',
+  }}
+>
+  <div style={{ marginBottom: 18 }}>
+    <div style={eyebrowStyle}>Questão {String(index + 1).padStart(2, '0')}</div>
+    <strong style={{ color: '#0f172a', fontSize: 18 }}>
+      Enunciado e imagem
+    </strong>
+  </div>
+
+  <textarea
+    value={question.statement}
+    onChange={(e) => {
+      const value = e.target.value
+      setEditingQuestions((prev) =>
+        prev.map((item) =>
+          item.id === question.id ? { ...item, statement: value } : item
+        )
+      )
+    }}
+    placeholder="Enunciado da questão"
+    style={{
+      ...inputStyle,
+      width: '100%',
+      minHeight: 140,
+      resize: 'vertical',
+      marginBottom: 14,
+    }}
+  />
+
+  <div
+    style={{
+      display: 'grid',
+      gridTemplateColumns: 'minmax(260px, 1fr) minmax(260px, 1fr)',
+      gap: 16,
+      alignItems: 'start',
+      marginBottom: 18,
+    }}
+  >
+    <div
+      style={{
+        border: '1px solid #e2e8f0',
+        borderRadius: 18,
+        padding: 14,
+        background: '#f8fafc',
+      }}
+    >
+      <strong style={{ color: '#334155', fontSize: 13 }}>
+        Imagem atual da questão
+      </strong>
+
+      {question.image_url ? (
+        <img
+          src={question.image_url}
+          alt="Imagem atual"
+          style={{
+            width: '100%',
+            maxHeight: 260,
+            objectFit: 'contain',
+            borderRadius: 14,
+            border: '1px solid #cbd5e1',
+            background: '#ffffff',
+            marginTop: 10,
+          }}
+        />
+      ) : (
+        <div style={{ ...emptyStateStyle, marginTop: 10 }}>
+          Nenhuma imagem cadastrada.
+        </div>
+      )}
+
+      <input
+        type="file"
+        accept="image/*"
+        onChange={(e) => {
+          const file = e.target.files?.[0] || null
+          setEditingQuestions((prev) =>
+            prev.map((item) =>
+              item.id === question.id
+                ? { ...item, newQuestionImageFile: file }
+                : item
+            )
+          )
+        }}
+        style={{
+          ...inputStyle,
+          width: '100%',
+          marginTop: 12,
+        }}
+      />
+    </div>
+
+    <div>
+      <textarea
+        placeholder="Texto complementar abaixo da imagem"
+        value={question.imageCaption || ''}
+        onChange={(e) => {
+          const value = e.target.value
+          setEditingQuestions((prev) =>
+            prev.map((item) =>
+              item.id === question.id
+                ? { ...item, imageCaption: value }
+                : item
+            )
+          )
+        }}
+        style={{
+          ...inputStyle,
+          width: '100%',
+          minHeight: 180,
+          resize: 'vertical',
+        }}
+      />
+    </div>
+  </div>
+
+  <div
+    style={{
+      borderTop: '1px solid #e2e8f0',
+      paddingTop: 18,
+      marginTop: 6,
+    }}
+  >
+    <strong style={{ color: '#0f172a', fontSize: 18 }}>
+      Alternativas
+    </strong>
+
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        gap: 12,
+        marginTop: 14,
+      }}
+    >
+      {[
+        ['A', 'optionA'],
+        ['B', 'optionB'],
+        ['C', 'optionC'],
+        ['D', 'optionD'],
+        ['E', 'optionE'],
+      ].map(([label, key]) => (
+        <div
+          key={label}
           style={{
             border: '1px solid #e2e8f0',
-            borderRadius: 22,
-            padding: 20,
-            background: '#f8fafc',
+            borderRadius: 16,
+            padding: 12,
+            background:
+              question.correct_option === label ? '#dcfce7' : '#f8fafc',
           }}
         >
-          <div
+          <label
             style={{
+              display: 'block',
+              fontSize: 12,
               fontWeight: 900,
-              marginBottom: 12,
-              color: '#0f172a',
+              color: '#2563eb',
+              marginBottom: 8,
             }}
           >
-            Questão{' '}
-            {String(index + 1).padStart(
-              2,
-              '0'
-            )}
-          </div>
+            Alternativa {label}
+          </label>
 
           <textarea
-            value={question.statement}
+            value={question[key as keyof typeof question] as string}
             onChange={(e) => {
-              const value =
-                e.target.value
-
-              setEditingQuestions(
-                (prev) =>
-                  prev.map((item) =>
-                    item.id ===
-                    question.id
-                      ? {
-                          ...item,
-                          statement:
-                            value,
-                        }
-                      : item
-                  )
+              const value = e.target.value
+              setEditingQuestions((prev) =>
+                prev.map((item) =>
+                  item.id === question.id ? { ...item, [key]: value } : item
+                )
               )
             }}
             style={{
               ...inputStyle,
-              minHeight: 120,
+              width: '100%',
+              minHeight: 80,
               resize: 'vertical',
-              marginBottom: 14,
             }}
           />
-
-          {[
-            ['A', 'optionA'],
-            ['B', 'optionB'],
-            ['C', 'optionC'],
-            ['D', 'optionD'],
-            ['E', 'optionE'],
-          ].map(([label, key]) => (
-            <input
-              key={label}
-              value={
-                question[
-                  key as keyof typeof question
-                ] as string
-              }
-              onChange={(e) => {
-                const value =
-                  e.target.value
-
-                setEditingQuestions(
-                  (prev) =>
-                    prev.map((item) =>
-                      item.id ===
-                      question.id
-                        ? {
-                            ...item,
-                            [key]:
-                              value,
-                          }
-                        : item
-                    )
-                )
-              }}
-              placeholder={`Alternativa ${label}`}
-              style={{
-                ...inputStyle,
-                marginBottom: 10,
-              }}
-            />
-          ))}
-
-          <select
-            value={
-              question.correct_option
-            }
-            onChange={(e) => {
-              const value =
-                e.target.value
-
-              setEditingQuestions(
-                (prev) =>
-                  prev.map((item) =>
-                    item.id ===
-                    question.id
-                      ? {
-                          ...item,
-                          correct_option:
-                            value,
-                        }
-                      : item
-                  )
-              )
-            }}
-            style={inputStyle}
-          >
-            <option value="A">
-              Alternativa A
-            </option>
-
-            <option value="B">
-              Alternativa B
-            </option>
-
-            <option value="C">
-              Alternativa C
-            </option>
-
-            <option value="D">
-              Alternativa D
-            </option>
-
-            <option value="E">
-              Alternativa E
-            </option>
-          </select>
         </div>
+      ))}
+    </div>
+  </div>
+
+  <div style={{ marginTop: 18, maxWidth: 260 }}>
+    <select
+      value={question.correct_option}
+      onChange={(e) => {
+        const value = e.target.value
+        setEditingQuestions((prev) =>
+          prev.map((item) =>
+            item.id === question.id
+              ? { ...item, correct_option: value }
+              : item
+          )
+        )
+      }}
+      style={{
+        ...inputStyle,
+        width: '100%',
+        fontWeight: 800,
+      }}
+    >
+      <option value="A">Gabarito: Alternativa A</option>
+      <option value="B">Gabarito: Alternativa B</option>
+      <option value="C">Gabarito: Alternativa C</option>
+      <option value="D">Gabarito: Alternativa D</option>
+      <option value="E">Gabarito: Alternativa E</option>
+    </select>
+  </div>
+</div>
       )
     )}
 
@@ -5077,4 +5460,46 @@ const questionChartLabelStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 900,
   color: '#64748b',
+}
+
+const alternativeBoxStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 10,
+  padding: 14,
+  borderRadius: 18,
+  border: '1px solid #e2e8f0',
+  background: '#f8fafc',
+}
+
+const alternativeImagePreviewStyle: React.CSSProperties = {
+  width: '100%',
+  maxHeight: 180,
+  objectFit: 'contain',
+  borderRadius: 14,
+  border: '1px solid #cbd5e1',
+  background: '#ffffff',
+}
+
+const modalOverlayStyle: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(15, 23, 42, 0.55)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 99999,
+  padding: 20,
+}
+
+const modalBoxStyle: React.CSSProperties = {
+  width: '100%',
+  maxWidth: 480,
+  borderRadius: 28,
+  background: '#ffffff',
+  padding: 28,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 20,
+  boxShadow: '0 40px 80px rgba(15, 23, 42, 0.28)',
 }

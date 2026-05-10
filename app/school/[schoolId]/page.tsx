@@ -182,6 +182,8 @@ const [reportRecords, setReportRecords] = useState<
     attendance_date: string
     status: 'present' | 'absent'
     source: 'system_default' | 'qr' | 'facial' | 'manual'
+    created_at?: string
+    updated_at?: string
   }[]
 >([])
   const [occurrenceRecords, setOccurrenceRecords] = useState<Occurrence[]>([])
