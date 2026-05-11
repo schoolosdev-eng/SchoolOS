@@ -39,6 +39,9 @@ type AttendanceReportsSectionProps = {
   setEndDate: (value: string) => void
   onGenerate: () => void
   loading: boolean
+
+  isSubscriptionActive: boolean
+  showMessage: (text: string) => void
 }
 
 export default function AttendanceReportsSection({
@@ -56,6 +59,8 @@ export default function AttendanceReportsSection({
   setEndDate,
   onGenerate,
   loading,
+  isSubscriptionActive,
+  showMessage,
 }: AttendanceReportsSectionProps) {
   const [windowWidth, setWindowWidth] = useState(1200)
 
@@ -189,23 +194,41 @@ const studentMap = new Map(
       </div>
 
       <button
-        onClick={onGenerate}
-        disabled={loading}
+  onClick={() => {
+    if (!isSubscriptionActive) {
+      showMessage(
+        'Sua assinatura expirou. Renove para gerar relatórios.'
+      )
+      return
+    }
+
+    onGenerate()
+  }}
+  disabled={loading || !isSubscriptionActive}
         style={{
   padding: '14px 18px',
   borderRadius: 16,
   border: 'none',
-  background: loading
+  background: !isSubscriptionActive
+  ? '#cbd5e1'
+  : loading
     ? '#94a3b8'
     : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
   color: '#fff',
   fontWeight: 800,
-  cursor: loading ? 'not-allowed' : 'pointer',
+  cursor:
+  loading || !isSubscriptionActive
+    ? 'not-allowed'
+    : 'pointer',
   boxShadow: '0 14px 30px rgba(37,99,235,0.25)',
   width: isMobile ? '100%' : 'auto',
 }}
       >
-        {loading ? 'Gerando...' : 'Gerar relatório'}
+        {!isSubscriptionActive
+  ? 'Assinatura expirada'
+  : loading
+  ? 'Gerando...'
+  : 'Gerar relatório'}
       </button>
     </div>
 
