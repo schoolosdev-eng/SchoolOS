@@ -375,10 +375,14 @@ const studentMap = new Map(
 
 <td style={tdStyle}>
   {r.status === 'present' && (r.updated_at || r.created_at)
-    ? new Date(r.updated_at || r.created_at || '').toLocaleTimeString('pt-BR', {
-        hour: '2-digit',
-        minute: '2-digit',
-      })
+    ? new Date(r.updated_at || r.created_at || '').toLocaleTimeString(
+        'pt-BR',
+        {
+          timeZone: 'America/Sao_Paulo',
+          hour: '2-digit',
+          minute: '2-digit',
+        }
+      )
     : ''}
 </td>
 <td style={tdStyle}>

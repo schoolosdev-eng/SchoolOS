@@ -419,33 +419,44 @@ function ResponsiveStyles() {
         width: 100% !important;
       }
 
-      #reader video {
-        width: 100% !important;
-        max-height: 68vh;
-        object-fit: cover;
-      }
+     #reader video {
+  width: 100% !important;
+  max-height: 52vh;
+  object-fit: cover;
+}
 
-      @media (max-width: 1024px) {
-        .gate-grid {
-          grid-template-columns: 1fr !important;
-        }
+@media (max-width: 1024px) {
+  .gate-grid {
+    grid-template-columns: 1fr !important;
+  }
 
-        .top-bar {
-          align-items: flex-start !important;
-        }
-      }
+  .top-bar {
+    align-items: flex-start !important;
+  }
+}
 
-      @media (max-width: 640px) {
-        .gate-page {
-          padding: 12px !important;
-        }
+@media (max-width: 640px) {
+  .gate-page {
+    padding: 12px !important;
+  }
 
-        .top-bar,
-        .scanner-card,
-        .result-card {
-          border-radius: 20px !important;
-          padding: 16px !important;
-        }
+  #reader video {
+    max-height: 38vh;
+  }
+
+  .result-card {
+    position: sticky;
+    bottom: 8px;
+    z-index: 20;
+  }
+
+  .top-bar,
+  .scanner-card,
+  .result-card {
+    border-radius: 20px !important;
+    padding: 16px !important;
+  }
+}
 
         .top-bar {
           flex-direction: column !important;
@@ -1026,15 +1037,16 @@ const scannerBoxStyle: React.CSSProperties = {
   overflow: 'hidden',
   border: '2px solid #dbeafe',
   background: '#0f172a',
-  minHeight: 340,
+  minHeight: 240,
+  maxHeight: '52vh',
 }
 
 const resultCardStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.96)',
   border: '1px solid #e2e8f0',
   borderRadius: 28,
-  padding: 24,
-  minHeight: 620,
+  padding: 18,
+  minHeight: 'auto',
   boxShadow: '0 20px 50px rgba(15, 23, 42, 0.06)',
 }
 
@@ -1119,18 +1131,18 @@ const waitingStyle: React.CSSProperties = {
 }
 
 const bigResultStyle: React.CSSProperties = {
-  marginTop: 16,
+  marginTop: 12,
   border: '1px solid',
-  borderRadius: 28,
-  padding: 24,
+  borderRadius: 24,
+  padding: 16,
   textAlign: 'center',
   animation: 'scanPop 0.35s ease-out',
 }
 
 const bigPhotoStyle: React.CSSProperties = {
-  width: 140,
-  height: 140,
-  borderRadius: 28,
+  width: 96,
+  height: 96,
+  borderRadius: 22,
   objectFit: 'cover',
   border: '4px solid white',
   boxShadow: '0 14px 32px rgba(15, 23, 42, 0.16)',
@@ -1156,7 +1168,7 @@ const bigStatusStyle: React.CSSProperties = {
 
 const bigNameStyle: React.CSSProperties = {
   margin: '8px 0 4px',
-  fontSize: 34,
+  fontSize: 24,
   fontWeight: 900,
   color: '#0f172a',
 }
@@ -1169,8 +1181,8 @@ const bigClassStyle: React.CSSProperties = {
 }
 
 const bigMessageStyle: React.CSSProperties = {
-  marginTop: 14,
-  fontSize: 22,
+  marginTop: 10,
+  fontSize: 18,
   fontWeight: 900,
   color: '#0f172a',
 }
