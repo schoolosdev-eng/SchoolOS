@@ -128,6 +128,21 @@ function sendSingleWhatsapp(studentName: string, phone: string, date: string) {
   window.open(`https://wa.me/55${cleanPhone}?text=${message}`, '_blank')
 }
 
+function formatTimeBR(dateString?: string) {
+  if (!dateString) return ''
+
+  const safeDateString =
+    dateString.endsWith('Z') || dateString.includes('+')
+      ? dateString
+      : `${dateString}Z`
+
+  return new Date(safeDateString).toLocaleTimeString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 const studentMap = new Map(
   students.map((s) => [s.id, s])
 )
@@ -375,14 +390,7 @@ const studentMap = new Map(
 
 <td style={tdStyle}>
   {r.status === 'present' && (r.updated_at || r.created_at)
-    ? new Date(r.updated_at || r.created_at || '').toLocaleTimeString(
-        'pt-BR',
-        {
-          timeZone: 'America/Sao_Paulo',
-          hour: '2-digit',
-          minute: '2-digit',
-        }
-      )
+    ? formatTimeBR(r.updated_at || r.created_at)
     : ''}
 </td>
 <td style={tdStyle}>
