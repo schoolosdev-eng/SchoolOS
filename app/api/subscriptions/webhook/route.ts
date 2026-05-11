@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server'
-import { MercadoPagoConfig, Payment } from 'mercadopago'
+import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
 
-const mercadoPago = new MercadoPagoConfig({
-  accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN || '',
-})
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,110 +17,123 @@ const supabase = createClient(
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
+    const body = await request.text()
+    const signature = request.headers.get('stripe-signature')
 
-    console.log('WEBHOOK RECEBIDO:', JSON.stringify(body))
-
-    const paymentId =
-      body?.data?.id ||
-      body?.id ||
-      body?.resource
-
-    const type =
-      body?.type ||
-      body?.topic
-
-    if (type !== 'payment' || !paymentId) {
-      return NextResponse.json({ received: true })
-    }
-
-    const paymentApi = new Payment(mercadoPago)
-
-    const payment = await paymentApi.get({
-      id: String(paymentId),
-    })
-
-    const paymentData = payment as any
-
-    console.log('PAGAMENTO MP:', JSON.stringify({
-      id: paymentData.id,
-      status: paymentData.status,
-      metadata: paymentData.metadata,
-    }))
-
-    const status = paymentData.status
-    const metadata = paymentData.metadata || {}
-
-    const schoolId = metadata.school_id
-    const planId = metadata.plan_id
-    const internalPaymentId = metadata.internal_payment_id
-
-    if (!schoolId || !planId || !internalPaymentId) {
-      console.error('METADATA INVÁLIDA:', metadata)
-
+    if (!signature) {
       return NextResponse.json(
-        { error: 'Metadata inválida.' },
+        { error: 'Assinatura Stripe ausente.' },
         { status: 400 }
       )
     }
 
-    const { error: paymentUpdateError } = await supabase
-      .from('subscription_payments')
-      .update({
-        mercado_pago_payment_id: String(paymentId),
-        status,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', internalPaymentId)
+    const event = stripe.webhooks.constructEvent(
+      body,
+      signature,
+      process.env.STRIPE_WEBHOOK_SECRET!
+    )
 
-    if (paymentUpdateError) {
-      console.error('ERRO AO ATUALIZAR PAGAMENTO:', paymentUpdateError)
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object as Stripe.Checkout.Session
 
-      return NextResponse.json(
-        { error: 'Erro ao atualizar pagamento.' },
-        { status: 500 }
-      )
+      const schoolId = session.metadata?.school_id
+      const planId = session.metadata?.plan_id
+      const internalPaymentId = session.metadata?.internal_payment_id
+
+      if (!schoolId || !planId || !internalPaymentId) {
+        console.error('METADATA STRIPE INVÁLIDA:', session.metadata)
+
+        return NextResponse.json(
+          { error: 'Metadata inválida.' },
+          { status: 400 }
+        )
+      }
+
+      const now = new Date()
+      const expiresAt = new Date(now)
+
+      const isAnnual =
+        planId.includes('yearly') ||
+        planId.includes('annual')
+
+      if (isAnnual) {
+        expiresAt.setFullYear(expiresAt.getFullYear() + 1)
+      } else {
+        expiresAt.setMonth(expiresAt.getMonth() + 1)
+      }
+
+      await supabase
+        .from('subscription_payments')
+        .update({
+          stripe_session_id: session.id,
+          stripe_subscription_id:
+            typeof session.subscription === 'string'
+              ? session.subscription
+              : session.subscription?.id,
+          status: 'approved',
+          updated_at: now.toISOString(),
+        })
+        .eq('id', internalPaymentId)
+
+      await supabase
+        .from('school_subscriptions')
+        .upsert(
+          {
+            school_id: schoolId,
+            plan_id: planId,
+            status: 'active',
+            started_at: now.toISOString(),
+            expires_at: expiresAt.toISOString(),
+            billing_cycle: isAnnual ? 'annual' : 'monthly',
+            stripe_subscription_id:
+              typeof session.subscription === 'string'
+                ? session.subscription
+                : session.subscription?.id,
+            updated_at: now.toISOString(),
+          },
+          {
+            onConflict: 'school_id',
+          }
+        )
     }
 
-if (status === 'approved') {
-  const now = new Date()
+    if (event.type === 'invoice.payment_failed') {
+      const invoice = event.data.object as Stripe.Invoice
 
-  const expiresAt = new Date(now)
+      const subscriptionId =
+        typeof invoice.subscription === 'string'
+          ? invoice.subscription
+          : invoice.subscription?.id
 
-  const isAnnual =
-    planId.includes('yearly') ||
-    planId.includes('annual')
-
-  if (isAnnual) {
-    expiresAt.setFullYear(expiresAt.getFullYear() + 1)
-  } else {
-    expiresAt.setMonth(expiresAt.getMonth() + 1)
-  }
-
-  await supabase
-    .from('school_subscriptions')
-    .upsert(
-      {
-        school_id: schoolId,
-        plan_id: planId,
-        status: 'active',
-        started_at: now.toISOString(),
-        expires_at: expiresAt.toISOString(),
-        billing_cycle: isAnnual ? 'annual' : 'monthly',
-        updated_at: now.toISOString(),
-      },
-      {
-        onConflict: 'school_id',
+      if (subscriptionId) {
+        await supabase
+          .from('school_subscriptions')
+          .update({
+            status: 'past_due',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('stripe_subscription_id', subscriptionId)
       }
-    )
-}
+    }
 
-    return NextResponse.json({ success: true })
+    if (event.type === 'customer.subscription.deleted') {
+      const subscription = event.data.object as Stripe.Subscription
+
+      await supabase
+        .from('school_subscriptions')
+        .update({
+          status: 'canceled',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('stripe_subscription_id', subscription.id)
+    }
+
+    return NextResponse.json({ received: true })
   } catch (error) {
-    console.error('ERRO NO WEBHOOK:', error)
+    console.error('ERRO NO WEBHOOK STRIPE:', error)
 
     return NextResponse.json(
-      { error: 'Erro no webhook.' },
+      { error: 'Erro no webhook Stripe.' },
       { status: 500 }
     )
   }

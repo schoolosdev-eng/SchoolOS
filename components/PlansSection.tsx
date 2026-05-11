@@ -156,6 +156,7 @@ if (currentStudents > selectedPlan.student_limit) {
       planName: plan.name,
       price: plan.price,
       studentLimit: plan.student_limit,
+      billingCycle: plan.billing_cycle,
     }),
   })
 
@@ -169,7 +170,7 @@ if (!response.ok) {
   return
 }
 
-  const checkoutUrl = data.initPoint || data.sandboxInitPoint
+  const checkoutUrl = data.checkoutUrl
 
   if (!checkoutUrl) {
     showMessage('Link de pagamento não encontrado.')
