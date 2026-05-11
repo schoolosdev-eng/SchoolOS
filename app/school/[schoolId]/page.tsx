@@ -145,6 +145,9 @@ export default function SchoolPage() {
 const [subscriptionPlanId, setSubscriptionPlanId] =
   useState<string | null>(null)
 
+const [subscriptionExpiresAt, setSubscriptionExpiresAt] =
+  useState<string | null>(null)
+
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [selectedNotification, setSelectedNotification] = useState<AlertStudent | null>(null)
   const [readNotifications, setReadNotifications] = useState<string[]>([])
@@ -309,7 +312,11 @@ const isMobile = windowWidth < 768
 const isTablet = windowWidth >= 768 && windowWidth < 1024
 
 const isSubscriptionActive =
-  subscriptionStatus === 'active'
+  subscriptionStatus === 'active' &&
+  (
+    !subscriptionExpiresAt ||
+    new Date(subscriptionExpiresAt) > new Date()
+  )
 
 const isFreePlan =
   subscriptionPlanId === 'free_monthly'
@@ -492,9 +499,10 @@ async function loadSubscriptionStatus() {
   const { data, error } = await supabase
     .from('school_subscriptions')
     .select(`
-      status,
-      plan_id
-    `)
+  status,
+  plan_id,
+  expires_at
+`)
     .eq('school_id', schoolId)
     .single()
 
@@ -504,6 +512,7 @@ async function loadSubscriptionStatus() {
 
   setSubscriptionStatus(data.status)
   setSubscriptionPlanId(data.plan_id)
+  setSubscriptionExpiresAt(data.expires_at)
 }
 
 async function fetchStudents(currentSchoolIdParam?: string) {
@@ -3693,6 +3702,8 @@ onClick={() => {
             setEndDate={setReportEndDate}
             onGenerate={handleGenerateAttendanceReport}
             loading={reportLoading || studentsLoading}
+            isSubscriptionActive={isSubscriptionActive}
+            showMessage={showMessage}
           />
 
           <div style={{ marginTop: 14, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
