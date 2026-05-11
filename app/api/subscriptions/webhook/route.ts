@@ -100,10 +100,14 @@ export async function POST(request: Request) {
     if (event.type === 'invoice.payment_failed') {
       const invoice = event.data.object as Stripe.Invoice
 
-      const subscriptionId =
-        typeof invoice.subscription === 'string'
-          ? invoice.subscription
-          : invoice.subscription?.id
+const invoiceWithSubscription = invoice as Stripe.Invoice & {
+  subscription?: string | Stripe.Subscription | null
+}
+
+const subscriptionId =
+  typeof invoiceWithSubscription.subscription === 'string'
+    ? invoiceWithSubscription.subscription
+    : invoiceWithSubscription.subscription?.id
 
       if (subscriptionId) {
         await supabase
