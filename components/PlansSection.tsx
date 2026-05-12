@@ -755,17 +755,19 @@ async function handlePixCheckout(plan: Plan) {
       Assinar com cartão
     </button>
 
-    <button
-      disabled={loading}
-      onClick={() => handlePixCheckout(plan)}
-      style={{
-        ...actionButtonStyle(false),
-        background: '#16a34a',
-        boxShadow: '0 14px 30px rgba(22, 163, 74, 0.22)',
-      }}
-    >
-      Pagar com Pix
-    </button>
+    {false && (
+  <button
+    disabled={loading}
+    onClick={() => handlePixCheckout(plan)}
+    style={{
+      ...actionButtonStyle(false),
+      background: '#16a34a',
+      boxShadow: '0 14px 30px rgba(22, 163, 74, 0.22)',
+    }}
+  >
+    Pagar com Pix
+  </button>
+)}
   </div>
 )}
             </div>
