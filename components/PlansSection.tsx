@@ -180,6 +180,56 @@ if (!response.ok) {
   window.location.href = checkoutUrl
 }
 
+async function handlePixCheckout(plan: Plan) {
+  try {
+    setLoading(true)
+
+    const response = await fetch(
+      '/api/subscriptions/create-pix-checkout',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          schoolId,
+          planId: plan.id,
+          planName: plan.name,
+          price: plan.price,
+          studentLimit: plan.student_limit,
+          billingCycle: plan.billing_cycle,
+        }),
+      }
+    )
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      showMessage(
+        data.error || 'Erro ao iniciar pagamento Pix.'
+      )
+      return
+    }
+
+    if (!data.checkoutUrl) {
+      showMessage(
+        'Checkout Pix não retornou URL.'
+      )
+      return
+    }
+
+    window.location.href = data.checkoutUrl
+  } catch (error) {
+    console.error(error)
+
+    showMessage(
+      'Erro inesperado ao gerar pagamento Pix.'
+    )
+  } finally {
+    setLoading(false)
+  }
+}
+
   useEffect(() => {
     async function init() {
       setLoading(true)
@@ -680,15 +730,44 @@ if (!response.ok) {
                 </div>
               </div>
 
-              <button
-                disabled={loading || isCurrent}
-onClick={() => handleCheckout(plan)}
-                style={actionButtonStyle(isCurrent)}
-              >
-                {isCurrent
-                  ? 'Plano Atual'
-                  : 'Selecionar Plano'}
-              </button>
+              {isCurrent ? (
+  <button
+    disabled
+    style={actionButtonStyle(true)}
+  >
+    Plano Atual
+  </button>
+) : plan.price <= 0 ? (
+  <button
+    disabled={loading}
+    onClick={() => handleCheckout(plan)}
+    style={actionButtonStyle(false)}
+  >
+    Ativar Plano Gratuito
+  </button>
+) : (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <button
+      disabled={loading}
+      onClick={() => handleCheckout(plan)}
+      style={actionButtonStyle(false)}
+    >
+      Assinar com cartão
+    </button>
+
+    <button
+      disabled={loading}
+      onClick={() => handlePixCheckout(plan)}
+      style={{
+        ...actionButtonStyle(false),
+        background: '#16a34a',
+        boxShadow: '0 14px 30px rgba(22, 163, 74, 0.22)',
+      }}
+    >
+      Pagar com Pix
+    </button>
+  </div>
+)}
             </div>
           )
         })}

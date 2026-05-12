@@ -53,8 +53,9 @@ export async function POST(request: Request) {
       const expiresAt = new Date(now)
 
       const isAnnual =
-        planId.includes('yearly') ||
-        planId.includes('annual')
+  session.metadata?.billing_cycle === 'annual' ||
+  planId.includes('yearly') ||
+  planId.includes('annual')
 
       if (isAnnual) {
         expiresAt.setFullYear(expiresAt.getFullYear() + 1)
@@ -67,9 +68,11 @@ export async function POST(request: Request) {
         .update({
           stripe_session_id: session.id,
           stripe_subscription_id:
-            typeof session.subscription === 'string'
-              ? session.subscription
-              : session.subscription?.id,
+  session.metadata?.payment_type === 'pix'
+    ? null
+    : typeof session.subscription === 'string'
+      ? session.subscription
+      : session.subscription?.id,
           status: 'approved',
           updated_at: now.toISOString(),
         })
@@ -86,9 +89,11 @@ export async function POST(request: Request) {
             expires_at: expiresAt.toISOString(),
             billing_cycle: isAnnual ? 'annual' : 'monthly',
             stripe_subscription_id:
-              typeof session.subscription === 'string'
-                ? session.subscription
-                : session.subscription?.id,
+  session.metadata?.payment_type === 'pix'
+    ? null
+    : typeof session.subscription === 'string'
+      ? session.subscription
+      : session.subscription?.id,
             updated_at: now.toISOString(),
           },
           {
