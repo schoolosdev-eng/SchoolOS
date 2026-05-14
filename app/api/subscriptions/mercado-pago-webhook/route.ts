@@ -14,7 +14,13 @@ const supabase = createClient(
 
 export async function POST(request: Request) {
   try {
-const body = await request.json()
+let body: any = {}
+
+try {
+  body = await request.json()
+} catch {
+  body = {}
+}
 
 console.log('WEBHOOK MERCADO PAGO BODY:', body)
 
