@@ -1,10 +1,5 @@
 import { NextResponse } from 'next/server'
-import { MercadoPagoConfig, Payment } from 'mercadopago'
 import { createClient } from '@supabase/supabase-js'
-
-const client = new MercadoPagoConfig({
-  accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN!,
-})
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,37 +16,44 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
 
-    const paymentId =
-      body?.data?.id ||
-      body?.id ||
-      body?.resource?.split('/').pop()
+    console.log('WEBHOOK MERCADO PAGO BODY:', body)
 
-    const type = body?.type || body?.topic
+    const paymentId = body?.data?.id
 
-    if (type !== 'payment' || !paymentId) {
+    if (!paymentId) {
       return NextResponse.json({ received: true })
     }
 
-    const paymentClient = new Payment(client)
-    const payment = await paymentClient.get({ id: paymentId })
+    const mpResponse = await fetch(
+      `https://api.mercadopago.com/v1/payments/${paymentId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.MERCADO_PAGO_ACCESS_TOKEN}`,
+        },
+      }
+    )
+
+    const payment = await mpResponse.json()
+
+    console.log('PAGAMENTO MERCADO PAGO:', payment)
 
     if (payment.status !== 'approved') {
       return NextResponse.json({ received: true })
     }
 
-    const internalPaymentId =
-      payment.external_reference ||
-      payment.metadata?.internal_payment_id
+    const internalPaymentId = payment.external_reference
 
-    const schoolId = payment.metadata?.school_id
-    const planId = payment.metadata?.plan_id
-    const billingCycle = payment.metadata?.billing_cycle || 'monthly'
+    const { data: paymentRow, error: paymentRowError } = await supabase
+      .from('subscription_payments')
+      .select('*')
+      .eq('id', internalPaymentId)
+      .single()
 
-    if (!internalPaymentId || !schoolId || !planId) {
-      console.error('METADATA MERCADO PAGO INVÁLIDA:', payment)
+    if (paymentRowError || !paymentRow) {
+      console.error('PAGAMENTO INTERNO NÃO ENCONTRADO:', paymentRowError)
 
       return NextResponse.json(
-        { error: 'Metadata Mercado Pago inválida.' },
+        { error: 'Pagamento interno não encontrado.' },
         { status: 400 }
       )
     }
@@ -59,10 +61,12 @@ export async function POST(request: Request) {
     const now = new Date()
     const expiresAt = new Date(now)
 
+    const planId = paymentRow.plan_id as string
+
     const isAnnual =
-      billingCycle === 'annual' ||
       planId.includes('yearly') ||
-      planId.includes('annual')
+      planId.includes('annual') ||
+      planId.includes('anual')
 
     if (isAnnual) {
       expiresAt.setFullYear(expiresAt.getFullYear() + 1)
@@ -83,8 +87,8 @@ export async function POST(request: Request) {
       .from('school_subscriptions')
       .upsert(
         {
-          school_id: schoolId,
-          plan_id: planId,
+          school_id: paymentRow.school_id,
+          plan_id: paymentRow.plan_id,
           status: 'active',
           started_at: now.toISOString(),
           expires_at: expiresAt.toISOString(),
