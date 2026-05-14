@@ -52,6 +52,9 @@ export async function POST(request: Request) {
 
     const result = await preference.create({
       body: {
+        
+        notification_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/subscriptions/mercado-pago-webhook`,
+
         items: [
           {
             id: planId,

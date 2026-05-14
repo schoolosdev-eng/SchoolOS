@@ -14,52 +14,66 @@ const supabase = createClient(
 
 export async function POST(request: Request) {
   try {
-let body: any = {}
+    console.log('WEBHOOK MP INICIADO')
 
-try {
-  body = await request.json()
-} catch {
-  body = {}
-}
+    let body: any = {}
 
-console.log('WEBHOOK MERCADO PAGO BODY:', body)
+    try {
+      body = await request.json()
+    } catch (parseError) {
+      console.error('ERRO PARSE JSON:', parseError)
+      body = {}
+    }
 
-const url = new URL(request.url)
+    console.log('BODY RECEBIDO:', body)
 
-const paymentId =
-  body?.data?.id ||
-  body?.id ||
-  url.searchParams.get('data.id') ||
-  url.searchParams.get('id')
+    const url = new URL(request.url)
 
-if (!paymentId) {
-  return NextResponse.json({ received: true })
-}
+    const paymentId =
+      body?.data?.id ||
+      body?.id ||
+      url.searchParams.get('data.id') ||
+      url.searchParams.get('id')
 
-const mpResponse = await fetch(
-  `https://api.mercadopago.com/v1/payments/${paymentId}`,
-  {
-    headers: {
-      Authorization: `Bearer ${process.env.MERCADO_PAGO_ACCESS_TOKEN}`,
-    },
-  }
-)
+    console.log('PAYMENT ID:', paymentId)
 
-const payment = await mpResponse.json()
+    if (!paymentId) {
+      console.log('SEM PAYMENT ID')
+      return NextResponse.json({ received: true })
+    }
 
-console.log('PAGAMENTO MERCADO PAGO:', payment)
+    console.log('BUSCANDO PAGAMENTO MP')
 
-if (!mpResponse.ok) {
-  console.error('ERRO AO BUSCAR PAGAMENTO MP:', payment)
-  return NextResponse.json({ received: true })
-}
+    const mpResponse = await fetch(
+      `https://api.mercadopago.com/v1/payments/${paymentId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.MERCADO_PAGO_ACCESS_TOKEN}`,
+        },
+      }
+    )
 
-if (payment.status !== 'approved') {
-  return NextResponse.json({ received: true })
-}
+    console.log('STATUS MP RESPONSE:', mpResponse.status)
 
-const internalPaymentId =
-  payment.external_reference || payment.metadata?.internal_payment_id
+    const payment = await mpResponse.json()
+
+    console.log('PAYMENT DATA:', payment)
+
+    if (!mpResponse.ok) {
+      console.error('ERRO MP RESPONSE')
+      return NextResponse.json({ received: true })
+    }
+
+    if (payment.status !== 'approved') {
+      console.log('PAGAMENTO NÃO APROVADO:', payment.status)
+      return NextResponse.json({ received: true })
+    }
+
+    const internalPaymentId =
+      payment.external_reference ||
+      payment.metadata?.internal_payment_id
+
+    console.log('INTERNAL PAYMENT ID:', internalPaymentId)
 
     const { data: paymentRow, error: paymentRowError } = await supabase
       .from('subscription_payments')
@@ -67,8 +81,11 @@ const internalPaymentId =
       .eq('id', internalPaymentId)
       .single()
 
+    console.log('PAYMENT ROW:', paymentRow)
+    console.log('PAYMENT ROW ERROR:', paymentRowError)
+
     if (paymentRowError || !paymentRow) {
-      console.error('PAGAMENTO INTERNO NÃO ENCONTRADO:', paymentRowError)
+      console.error('PAGAMENTO INTERNO NÃO ENCONTRADO')
 
       return NextResponse.json(
         { error: 'Pagamento interno não encontrado.' },
@@ -92,6 +109,8 @@ const internalPaymentId =
       expiresAt.setMonth(expiresAt.getMonth() + 1)
     }
 
+    console.log('ATUALIZANDO SUBSCRIPTION_PAYMENTS')
+
     await supabase
       .from('subscription_payments')
       .update({
@@ -100,6 +119,8 @@ const internalPaymentId =
         updated_at: now.toISOString(),
       })
       .eq('id', internalPaymentId)
+
+    console.log('ATUALIZANDO SCHOOL_SUBSCRIPTIONS')
 
     await supabase
       .from('school_subscriptions')
@@ -118,6 +139,8 @@ const internalPaymentId =
           onConflict: 'school_id',
         }
       )
+
+    console.log('WEBHOOK MP FINALIZADO')
 
     return NextResponse.json({ received: true })
   } catch (error) {
