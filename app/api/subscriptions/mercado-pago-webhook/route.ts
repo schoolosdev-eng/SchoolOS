@@ -35,7 +35,7 @@ export async function POST(request: Request) {
       url.searchParams.get('data.id') ||
       url.searchParams.get('id')
 
-    console.log('PAYMENT ID:', paymentId)
+    console.log('PAYMENT ID:', paymentId, typeof paymentId)
 
     if (!paymentId) {
       console.log('SEM PAYMENT ID')
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     console.log('PAYMENT DATA:', payment)
 
     if (!mpResponse.ok) {
-      console.error('ERRO MP RESPONSE')
+      console.error('ERRO MP RESPONSE:', payment)
       return NextResponse.json({ received: true })
     }
 
