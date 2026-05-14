@@ -29,13 +29,25 @@ export async function POST(request: Request) {
 
     const url = new URL(request.url)
 
-    const paymentId =
-      body?.data?.id ||
-      body?.id ||
-      url.searchParams.get('data.id') ||
-      url.searchParams.get('id')
+    const eventType =
+  body?.type ||
+  body?.topic ||
+  url.searchParams.get('type') ||
+  url.searchParams.get('topic')
 
-    console.log('PAYMENT ID:', paymentId, typeof paymentId)
+console.log('EVENT TYPE:', eventType)
+
+if (eventType && eventType !== 'payment') {
+  console.log('EVENTO IGNORADO:', eventType)
+  return NextResponse.json({ received: true })
+}
+
+   const paymentId =
+  body?.data?.id ||
+  url.searchParams.get('data.id') ||
+  url.searchParams.get('id')
+
+console.log('PAYMENT ID:', paymentId, typeof paymentId)
 
     if (!paymentId) {
       console.log('SEM PAYMENT ID')
