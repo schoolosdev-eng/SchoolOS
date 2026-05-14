@@ -14,34 +14,46 @@ const supabase = createClient(
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
+const body = await request.json()
 
-    console.log('WEBHOOK MERCADO PAGO BODY:', body)
+console.log('WEBHOOK MERCADO PAGO BODY:', body)
 
-    const paymentId = body?.data?.id
+const url = new URL(request.url)
 
-    if (!paymentId) {
-      return NextResponse.json({ received: true })
-    }
+const paymentId =
+  body?.data?.id ||
+  body?.id ||
+  url.searchParams.get('data.id') ||
+  url.searchParams.get('id')
 
-    const mpResponse = await fetch(
-      `https://api.mercadopago.com/v1/payments/${paymentId}`,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.MERCADO_PAGO_ACCESS_TOKEN}`,
-        },
-      }
-    )
+if (!paymentId) {
+  return NextResponse.json({ received: true })
+}
 
-    const payment = await mpResponse.json()
+const mpResponse = await fetch(
+  `https://api.mercadopago.com/v1/payments/${paymentId}`,
+  {
+    headers: {
+      Authorization: `Bearer ${process.env.MERCADO_PAGO_ACCESS_TOKEN}`,
+    },
+  }
+)
 
-    console.log('PAGAMENTO MERCADO PAGO:', payment)
+const payment = await mpResponse.json()
 
-    if (payment.status !== 'approved') {
-      return NextResponse.json({ received: true })
-    }
+console.log('PAGAMENTO MERCADO PAGO:', payment)
 
-    const internalPaymentId = payment.external_reference
+if (!mpResponse.ok) {
+  console.error('ERRO AO BUSCAR PAGAMENTO MP:', payment)
+  return NextResponse.json({ received: true })
+}
+
+if (payment.status !== 'approved') {
+  return NextResponse.json({ received: true })
+}
+
+const internalPaymentId =
+  payment.external_reference || payment.metadata?.internal_payment_id
 
     const { data: paymentRow, error: paymentRowError } = await supabase
       .from('subscription_payments')
