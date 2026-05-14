@@ -185,20 +185,21 @@ async function handlePixCheckout(plan: Plan) {
     setLoading(true)
 
     const response = await fetch(
-      '/api/subscriptions/create-pix-checkout',
+      '/api/subscriptions/create-mercado-pago-checkout',
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          schoolId,
-          planId: plan.id,
-          planName: plan.name,
-          price: plan.price,
-          studentLimit: plan.student_limit,
-          billingCycle: plan.billing_cycle,
-        }),
+  schoolId,
+  planId: plan.id,
+  planName: plan.name,
+  price: plan.price,
+  billingCycle: plan.billing_cycle,
+  paymentMode: 'one_time',
+  provider: 'mercado_pago',
+}),
       }
     )
 
