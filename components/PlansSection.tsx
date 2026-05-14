@@ -765,7 +765,7 @@ async function handlePixCheckout(plan: Plan) {
         boxShadow: '0 14px 30px rgba(22, 163, 74, 0.22)',
       }}
     >
-      Pagar com Pix
+      PIX MERCADO TESTE 123
     </button>
   </div>
 )}
