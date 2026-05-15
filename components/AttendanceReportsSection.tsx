@@ -299,10 +299,134 @@ const studentMap = new Map(
         marginBottom: 24,
       }}
     >
-      <StatCard label="Registros" value={totalRecords} isMobile={isMobile} />
-<StatCard label="Presentes" value={totalPresent} color="green" isMobile={isMobile} />
-<StatCard label="Faltosos" value={totalAbsent} color="red" isMobile={isMobile} />
-<StatCard label="Frequência" value={`${attendanceRate}%`} color="blue" isMobile={isMobile} />
+  <div style={modernStatsGridStyle}>
+  <div style={modernStatCardStyle}>
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}
+    >
+      <div style={modernStatLabelStyle}>Alunos Filtrados</div>
+      <div style={modernStatIconStyle}>📋</div>
+    </div>
+
+    <div style={modernStatValueStyle}>
+      {totalRecords}
+    </div>
+
+    <div style={modernProgressBarStyle}>
+      <div
+        style={modernProgressFillStyle(
+          totalRecords > 0 ? '100%' : '0%',
+          '#3b82f6'
+        )}
+      />
+    </div>
+  </div>
+
+  <div
+    style={{
+      ...modernStatCardStyle,
+      background:
+        'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
+      border: '1px solid #bbf7d0',
+    }}
+  >
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}
+    >
+      <div style={modernStatLabelStyle}>Presentes</div>
+      <div style={modernStatIconStyle}>✅</div>
+    </div>
+
+    <div style={modernStatValueStyle}>
+      {totalPresent}
+    </div>
+
+    <div style={modernProgressBarStyle}>
+      <div
+        style={modernProgressFillStyle(
+          `${attendanceRate}%`,
+          '#22c55e'
+        )}
+      />
+    </div>
+  </div>
+
+  <div
+    style={{
+      ...modernStatCardStyle,
+      background:
+        'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)',
+      border: '1px solid #fecaca',
+    }}
+  >
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}
+    >
+      <div style={modernStatLabelStyle}>Faltosos</div>
+      <div style={modernStatIconStyle}>❌</div>
+    </div>
+
+    <div style={modernStatValueStyle}>
+      {totalAbsent}
+    </div>
+
+    <div style={modernProgressBarStyle}>
+      <div
+        style={modernProgressFillStyle(
+          totalRecords > 0
+            ? `${(totalAbsent / totalRecords) * 100}%`
+            : '0%',
+          '#ef4444'
+        )}
+      />
+    </div>
+  </div>
+
+  <div
+    style={{
+      ...modernStatCardStyle,
+      background:
+        'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+      border: '1px solid #bfdbfe',
+    }}
+  >
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}
+    >
+      <div style={modernStatLabelStyle}>Frequência</div>
+      <div style={modernStatIconStyle}>📈</div>
+    </div>
+
+    <div style={modernStatValueStyle}>
+      {attendanceRate}%
+    </div>
+
+    <div style={modernProgressBarStyle}>
+      <div
+        style={modernProgressFillStyle(
+          `${attendanceRate}%`,
+          '#2563eb'
+        )}
+      />
+    </div>
+  </div>
+</div>
     </div>
     <div
   style={{
@@ -338,6 +462,107 @@ const studentMap = new Map(
         overflow: 'hidden',
       }}
     >
+<div
+  className="print-only-chart"
+  style={{
+    display: 'none',
+    padding: 20,
+    borderBottom: '1px solid #e2e8f0',
+    background: '#ffffff',
+  }}
+>
+  <div
+    style={{
+      fontSize: 18,
+      fontWeight: 900,
+      color: '#0f172a',
+      marginBottom: 16,
+    }}
+  >
+    Gráfico de presença
+  </div>
+
+  <div style={{ marginBottom: 18 }}>
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        marginBottom: 8,
+        fontWeight: 800,
+        color: '#166534',
+      }}
+    >
+      <span>Presentes</span>
+      <span>{totalPresent}</span>
+    </div>
+
+    <div
+      style={{
+        width: '100%',
+        borderTop: '16px solid #dcfce7',
+        borderRadius: 999,
+      }}
+    >
+      <div
+        style={{
+          width:
+            totalRecords > 0
+              ? `${(totalPresent / totalRecords) * 100}%`
+              : '0%',
+          borderTop: '16px solid #22c55e',
+          borderRadius: 999,
+          marginTop: -16,
+        }}
+      />
+    </div>
+  </div>
+
+  <div style={{ marginBottom: 18 }}>
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        marginBottom: 8,
+        fontWeight: 800,
+        color: '#991b1b',
+      }}
+    >
+      <span>Faltosos</span>
+      <span>{totalAbsent}</span>
+    </div>
+
+    <div
+      style={{
+        width: '100%',
+        borderTop: '16px solid #fee2e2',
+        borderRadius: 999,
+      }}
+    >
+      <div
+        style={{
+          width:
+            totalRecords > 0
+              ? `${(totalAbsent / totalRecords) * 100}%`
+              : '0%',
+          borderTop: '16px solid #ef4444',
+          borderRadius: 999,
+          marginTop: -16,
+        }}
+      />
+    </div>
+  </div>
+
+  <div
+    style={{
+      marginTop: 18,
+      fontSize: 15,
+      fontWeight: 900,
+      color: '#0f172a',
+    }}
+  >
+    Frequência geral: {attendanceRate}%
+  </div>
+</div>
       {records.length === 0 ? (
         <div style={emptyStyle}>
           Nenhum registro encontrado
@@ -368,7 +593,9 @@ const studentMap = new Map(
                     <th style={thStyle}>Data</th>
                     <th style={thStyle}>Status</th>
                     <th style={thStyle}>Horário</th>
-                    <th style={thStyle}>Aviso</th>
+                    <th className="hide-on-print" style={thStyle}>
+  Aviso
+</th>
                   </tr>
                 </thead>
 
@@ -416,7 +643,7 @@ const studentMap = new Map(
     ? formatTimeBR(r.updated_at || r.created_at)
     : ''}
 </td>
-<td style={tdStyle}>
+<td className="hide-on-print" style={tdStyle}>
   {r.status === 'absent' && student?.responsible_whatsapp ? (
     <button
       onClick={() =>
@@ -498,6 +725,74 @@ const emptyStyle: React.CSSProperties = {
   color: '#475569',
   fontWeight: 700,
 }
+
+const isMobile = typeof window !== 'undefined'
+  ? window.innerWidth < 768
+  : false
+
+const isTablet = typeof window !== 'undefined'
+  ? window.innerWidth >= 768 && window.innerWidth < 1024
+  : false
+
+const modernStatsGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: isMobile
+    ? '1fr'
+    : isTablet
+    ? 'repeat(2, 1fr)'
+    : 'repeat(4, 1fr)',
+  gap: 16,
+  marginTop: 20,
+}
+
+const modernStatCardStyle: React.CSSProperties = {
+  position: 'relative',
+  overflow: 'hidden',
+  borderRadius: 24,
+  padding: isMobile ? 18 : 22,
+  border: '1px solid #dbeafe',
+  background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+  boxShadow: '0 10px 30px rgba(15,23,42,0.06)',
+  minHeight: 150,
+  display: 'flex',
+  flexDirection: 'column',
+  justifyContent: 'space-between',
+}
+
+const modernStatValueStyle: React.CSSProperties = {
+  fontSize: isMobile ? 30 : 36,
+  fontWeight: 900,
+  color: '#0f172a',
+  lineHeight: 1,
+  letterSpacing: '-1px',
+}
+
+const modernStatLabelStyle: React.CSSProperties = {
+  fontSize: 15,
+  fontWeight: 700,
+  color: '#1e293b',
+}
+
+const modernStatIconStyle: React.CSSProperties = {
+  fontSize: 34,
+}
+
+const modernProgressBarStyle: React.CSSProperties = {
+  width: '100%',
+  height: 10,
+  background: '#e2e8f0',
+  borderRadius: 999,
+  overflow: 'hidden',
+  marginTop: 12,
+}
+
+const modernProgressFillStyle = (width: string, color: string): React.CSSProperties => ({
+  width,
+  height: '100%',
+  background: color,
+  borderRadius: 999,
+  transition: '0.4s ease',
+})
 
 function translateSource(source: AttendanceRecord['source']) {
   if (source === 'system_default') return 'Padrão do sistema'

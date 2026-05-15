@@ -6,6 +6,7 @@ type Student = {
   id: string
   name?: string | null
   full_name?: string | null
+  responsible_whatsapp?: string | null
 }
 
 type SchoolClass = {
@@ -19,6 +20,8 @@ type Occurrence = {
   class_id: string
   student_id: string
   teacher_id: string
+  created_by_name?: string
+  created_by_email?: string | null
   situation: string
   description: string | null
   created_at: string
@@ -40,6 +43,7 @@ type Props = {
   selectedSituation: string
   setSelectedSituation: (value: string) => void
   onGenerate: () => void
+  onDeleteOccurrence: (occurrenceId: string) => void
 }
 
 const situationOptions = [
@@ -102,6 +106,7 @@ export default function OccurrenceReportsSection({
   selectedSituation,
   setSelectedSituation,
   onGenerate,
+  onDeleteOccurrence,
 }: Props) {
 const filteredStudents = useMemo(() => {
   return [...students].sort((a, b) => {
@@ -192,14 +197,54 @@ const occurrencesByStudent = useMemo(() => {
     return new Date(value).toLocaleString('pt-BR')
   }
 
-  async function copyOccurrenceMessage(occurrence: Occurrence) {
-  const studentName = getStudentName(occurrence.student_id)
+function sendOccurrenceWhatsapp(occurrence: Occurrence) {
+  const student = students.find(
+    (item) => item.id === occurrence.student_id
+  )
+
+  const rawPhone =
+    student?.responsible_whatsapp?.replace(/\D/g, '')
+
+  if (!rawPhone) {
+    alert('Responsável sem WhatsApp cadastrado.')
+    return
+  }
+
+  const phone = rawPhone.startsWith('55')
+    ? rawPhone
+    : `55${rawPhone}`
+
+  const studentName =
+    student?.full_name ||
+    student?.name ||
+    'Aluno'
+
   const className = getClassName(occurrence.class_id)
+
   const date = formatDateTime(occurrence.created_at)
 
-  const text = `Olá! Informamos que foi registrada uma ocorrência envolvendo o(a) aluno(a) ${studentName}, da turma ${className}, em ${date}. Situação: ${occurrence.situation}.${occurrence.description ? ` Observação: ${occurrence.description}` : ''}`
+  const text = `
+Olá! Informamos que foi registrada uma ocorrência escolar referente ao aluno(a) ${studentName}.
 
-  await navigator.clipboard.writeText(text)
+Turma: ${className}
+
+Situação:
+${occurrence.situation}
+
+Descrição:
+${occurrence.description || 'Sem descrição'}
+
+Registrado por:
+${occurrence.created_by_email || 'Usuário escolar'}
+
+Data:
+${date}
+  `.trim()
+
+  window.open(
+    `https://wa.me/${phone}?text=${encodeURIComponent(text)}`,
+    '_blank'
+  )
 }
 
 function getOccurrenceColor(situation: string) {
@@ -587,15 +632,52 @@ style={{
                   )}
                 </div>
 
-                <div style={dateBoxStyle}>
-                  {formatDateTime(occurrence.created_at)}
-                </div>
-                <button
-                onClick={() => copyOccurrenceMessage(occurrence)}
-                    style={copyButtonStyle}
-                                >
-                    Copiar mensagem
-                    </button>
+                <div
+  style={{
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    alignItems: 'flex-end',
+  }}
+>
+  <div style={dateBoxStyle}>
+    {formatDateTime(occurrence.created_at)}
+  </div>
+
+  <div
+    style={{
+      fontSize: 12,
+      fontWeight: 800,
+      color: '#475569',
+      textAlign: 'right',
+      maxWidth: 180,
+    }}
+  >
+    Registrado por:<br />
+    {occurrence.created_by_email || 'Usuário escolar'}
+  </div>
+</div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+  <button
+    onClick={() => sendOccurrenceWhatsapp(occurrence)}
+    style={{
+      ...copyButtonStyle,
+      background: '#25D366',
+    }}
+  >
+    WhatsApp
+  </button>
+
+  <button
+    onClick={() => onDeleteOccurrence(occurrence.id)}
+    style={{
+      ...copyButtonStyle,
+      background: '#dc2626',
+    }}
+  >
+    Excluir
+  </button>
+</div>
               </div>
             ))}
           </div>

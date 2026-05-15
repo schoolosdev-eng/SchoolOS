@@ -454,13 +454,14 @@ async function handleSubmitActivityAnswer() {
     }
 
     const { error } = await supabase.from('student_occurrences').insert({
-      school_id: schoolId,
-      class_id: selectedClassId,
-      student_id: selectedStudent.id,
-      teacher_id: userId,
-      situation: selectedSituation,
-      description: occurrenceDescription.trim() || null,
-    })
+  school_id: schoolId,
+  class_id: selectedClassId,
+  student_id: selectedStudent.id,
+  teacher_id: userId,
+  created_by_email: userEmail,
+  situation: selectedSituation,
+  description: occurrenceDescription.trim() || null,
+})
 
     if (error) {
       notify(`Erro ao registrar ocorrência: ${error.message}`)

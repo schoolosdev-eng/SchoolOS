@@ -20,6 +20,7 @@ import { offlineAttendanceDb } from '@/lib/offlineAttendanceDb'
 import StudentsListSection from '@/components/StudentsListSection'
 import ClassMapSection from '@/components/ClassMapSection'
 import PlansSection from '@/components/PlansSection'
+import AttendanceFrequencyRanking from '@/components/AttendanceFrequencyRanking'
 
 type Student = {
   id: string
@@ -87,6 +88,7 @@ type Occurrence = {
   class_id: string
   student_id: string
   teacher_id: string
+  created_by_name?: string
   situation: string
   description: string | null
   created_at: string
@@ -197,6 +199,7 @@ const [reportRecords, setReportRecords] = useState<
     updated_at?: string
   }[]
 >([])
+const [annualRankingRecords, setAnnualRankingRecords] = useState<typeof reportRecords>([])
   const [occurrenceRecords, setOccurrenceRecords] = useState<Occurrence[]>([])
   const [occurrenceLoading, setOccurrenceLoading] = useState(false)
   const [occurrenceStartDate, setOccurrenceStartDate] = useState(today)
@@ -451,6 +454,26 @@ async function markAllNotificationsAsRead() {
     .upsert(rows, {
       onConflict: 'user_id,school_id,alert_id',
     })
+}
+
+async function fetchAnnualRankingRecords() {
+  if (!schoolId) return
+
+  const currentYear = new Date().getFullYear()
+
+  const { data, error } = await supabase
+    .from('attendance_records')
+    .select('id, student_id, class_id, attendance_date, status, source, created_at, updated_at')
+    .eq('school_id', schoolId)
+    .gte('attendance_date', `${currentYear}-01-01`)
+    .lte('attendance_date', `${currentYear}-12-31`)
+
+  if (error) {
+    showMessage(`Erro ao carregar ranking anual: ${error.message}`)
+    return
+  }
+
+  setAnnualRankingRecords((data || []) as typeof reportRecords)
 }
 
 async function loadReadNotifications() {
@@ -1150,7 +1173,7 @@ async function handleGenerateOccurrenceReport() {
 
   let query = supabase
     .from('student_occurrences')
-    .select('id, school_id, class_id, student_id, teacher_id, situation, description, created_at')
+    .select('id, school_id, class_id, student_id, teacher_id, created_by_email, situation, description, created_at')
     .eq('school_id', schoolId)
     .gte('created_at', `${occurrenceStartDate}T00:00:00`)
     .lte('created_at', `${occurrenceEndDate}T23:59:59`)
@@ -1177,8 +1200,58 @@ async function handleGenerateOccurrenceReport() {
     return
   }
 
-  setOccurrenceRecords((data || []) as Occurrence[])
+  const mappedOccurrences = ((data || []) as Occurrence[]).map((occurrence) => {
+  const teacher = teachers.find(
+    (item) => item.id === occurrence.teacher_id
+  )
+
+  const manager = managers.find(
+    (item) => item.id === occurrence.teacher_id
+  )
+
+  let createdByName = 'Administrador'
+
+  if (teacher) {
+    createdByName = teacher.full_name
+  }
+
+  if (manager) {
+    createdByName = manager.full_name
+  }
+
+  return {
+    ...occurrence,
+    created_by_name: createdByName,
+  }
+})
+
+setOccurrenceRecords(mappedOccurrences)
   showMessage('Relatório de ocorrências gerado com sucesso.')
+}
+
+async function handleDeleteOccurrence(occurrenceId: string) {
+  const confirmDelete = window.confirm(
+    'Tem certeza que deseja excluir esta ocorrência?'
+  )
+
+  if (!confirmDelete) return
+
+  const { error } = await supabase
+    .from('student_occurrences')
+    .delete()
+    .eq('id', occurrenceId)
+    .eq('school_id', schoolId)
+
+  if (error) {
+    showMessage(`Erro ao excluir ocorrência: ${error.message}`)
+    return
+  }
+
+  setOccurrenceRecords((prev) =>
+    prev.filter((item) => item.id !== occurrenceId)
+  )
+
+  showMessage('Ocorrência excluída com sucesso.')
 }
 
 function handlePrintOccurrenceReport() {
@@ -1317,6 +1390,14 @@ function handlePrintAttendanceReport() {
             padding-bottom: 16px;
             margin-bottom: 24px;
           }
+
+          .print-only-chart {
+  display: block !important;
+}
+
+.hide-on-print {
+  display: none !important;
+}
 
           .school-name {
             font-size: 24px;
@@ -2765,6 +2846,10 @@ function handleChangeSection(
 ) {
   setActiveSection(section)
 
+  if (section === 'reports') {
+    fetchAnnualRankingRecords()
+  }
+
   if (isMobile) {
     setSidebarOpen(false)
   }
@@ -3730,10 +3815,11 @@ onClick={() => {
 
     <OccurrenceReportsSection
       students={students.map((student) => ({
-        id: student.id,
-        full_name: student.full_name || student.name || 'Aluno sem nome',
-        name: student.name || student.full_name || 'Aluno sem nome',
-      }))}
+  id: student.id,
+  full_name: student.full_name || student.name || 'Aluno sem nome',
+  name: student.name || student.full_name || 'Aluno sem nome',
+  responsible_whatsapp: student.responsible_whatsapp || null,
+}))}
       classes={classes}
       occurrences={occurrenceRecords}
       loading={occurrenceLoading}
@@ -3748,6 +3834,7 @@ onClick={() => {
       selectedSituation={occurrenceSituation}
       setSelectedSituation={setOccurrenceSituation}
       onGenerate={handleGenerateOccurrenceReport}
+      onDeleteOccurrence={handleDeleteOccurrence}
     />
     <div style={{ marginTop: 14 }}>
   <button
@@ -3767,11 +3854,19 @@ onClick={() => {
         <section style={dashboardCardStyle}>
           <div style={dashboardCardHeaderStyle}>
             <div>
-              <div style={dashboardCardEyebrowStyle}>Resumo</div>
-              <h2 style={dashboardCardTitleStyle}>Relatórios escolares</h2>
-              <p style={dashboardCardTextStyle}>
-                Use os filtros para gerar relatórios diários, semanais, mensais ou personalizados.
-              </p>
+              <div style={dashboardCardEyebrowStyle}>Frequência</div>
+<h2 style={dashboardCardTitleStyle}>Ranking escolar</h2>
+<p style={dashboardCardTextStyle}>
+  Ranking anual de frequência dos alunos no ano letivo atual.
+</p>
+
+<div style={{ marginTop: 18 }}>
+  <AttendanceFrequencyRanking
+  students={students}
+  records={annualRankingRecords}
+  classes={classes}
+/>
+</div>
             </div>
           </div>
         </section>
