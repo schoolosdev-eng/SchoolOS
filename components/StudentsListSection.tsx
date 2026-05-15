@@ -54,6 +54,7 @@ const [editPhotoPositionY, setEditPhotoPositionY] = useState(50)
 const [editPhotoZoom, setEditPhotoZoom] = useState(1)
 const [editPhotoInputKey, setEditPhotoInputKey] = useState(0)
 const [photoUrls, setPhotoUrls] = useState<Record<string, string | null>>({})
+const [selectedQrStudentIds, setSelectedQrStudentIds] = useState<string[]>([])
 
   const availableClasses = useMemo(() => {
     const classNames = students
@@ -93,17 +94,43 @@ const filteredStudents = students
     return nameA.localeCompare(nameB)
   })
 
+  function toggleQrStudentSelection(studentId: string) {
+  setSelectedQrStudentIds((prev) =>
+    prev.includes(studentId)
+      ? prev.filter((id) => id !== studentId)
+      : [...prev, studentId]
+  )
+}
+
+function clearQrSelection() {
+  setSelectedQrStudentIds([])
+}
+
+function selectAllFilteredStudents() {
+  const filteredIds = filteredStudents.map((student) => student.id)
+
+  setSelectedQrStudentIds((prev) => {
+    const merged = new Set([...prev, ...filteredIds])
+    return Array.from(merged)
+  })
+}
+
   function handlePrintFilteredQRCodes() {
-    if (filteredStudents.length === 0) {
-      alert('Nenhum aluno filtrado para imprimir.')
-      return
-    }
+    const studentsToPrint =
+  selectedQrStudentIds.length > 0
+    ? students.filter((student) => selectedQrStudentIds.includes(student.id))
+    : filteredStudents
+
+if (studentsToPrint.length === 0) {
+  alert('Nenhum aluno selecionado ou filtrado para imprimir.')
+  return
+}
 
     const printWindow = window.open('', '_blank')
 
     if (!printWindow) return
 
-    const qrCards = filteredStudents
+const qrCards = studentsToPrint
       .filter((student) => student.qr_code_token)
       .map((student) => {
         const qrContainer = document.getElementById(`student-qr-${student.id}`)
@@ -312,8 +339,47 @@ async function createAdjustedEditPhotoFile() {
         </div>
 
         <button onClick={handlePrintFilteredQRCodes} style={secondaryButtonStyle}>
-          Imprimir QR Codes filtrados
+          {selectedQrStudentIds.length > 0
+  ? `Imprimir ${selectedQrStudentIds.length} QR Code(s) selecionado(s)`
+  : 'Imprimir QR Codes filtrados'}
         </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+  <button
+    type="button"
+    onClick={selectAllFilteredStudents}
+    style={{
+      padding: '10px 12px',
+      borderRadius: 12,
+      border: '1px solid #cbd5e1',
+      background: '#ffffff',
+      fontWeight: 800,
+      cursor: 'pointer',
+      fontSize: 13,
+      color: '#0f172a',
+    }}
+  >
+    Selecionar filtrados
+  </button>
+
+  {selectedQrStudentIds.length > 0 && (
+    <button
+      type="button"
+      onClick={clearQrSelection}
+      style={{
+        padding: '10px 12px',
+        borderRadius: 12,
+        border: '1px solid #fecaca',
+        background: '#fff1f2',
+        color: '#be123c',
+        fontWeight: 800,
+        cursor: 'pointer',
+        fontSize: 13,
+      }}
+    >
+      Limpar seleção
+    </button>
+  )}
+</div>
       </div>
 
 <div style={filtersGridStyle}>
@@ -382,6 +448,23 @@ async function createAdjustedEditPhotoFile() {
     <div key={student.id} style={itemCardStyle}>
       <div style={studentRowStyle}>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <input
+    type="checkbox"
+    checked={selectedQrStudentIds.includes(student.id)}
+    onChange={() => {
+      setSelectedQrStudentIds((prev) =>
+        prev.includes(student.id)
+          ? prev.filter((id) => id !== student.id)
+          : [...prev, student.id]
+      )
+    }}
+    style={{
+      width: 18,
+      height: 18,
+      cursor: 'pointer',
+      marginTop: 4,
+    }}
+  />
 {photoUrls[student.id] ? (
   <img
     src={photoUrls[student.id] || ''}
@@ -542,7 +625,7 @@ async function createAdjustedEditPhotoFile() {
               <div id={`student-qr-${student.id}`}>
                 <QRCodeCanvas
                   value={`schoolos:student:${student.qr_code_token}`}
-                  size={220}
+                  size={520}
                   level="H"
                   includeMargin
                   style={{
@@ -669,6 +752,35 @@ const message = encodeURIComponent(
 })}
         </div>
       )}
+
+    <div
+  style={{
+    position: 'absolute',
+    left: -99999,
+    top: -99999,
+    width: 1,
+    height: 1,
+    overflow: 'hidden',
+  }}
+>
+  {(selectedQrStudentIds.length > 0
+    ? students.filter((student) =>
+        selectedQrStudentIds.includes(student.id)
+      )
+    : filteredStudents
+  )
+    .filter((student) => student.qr_code_token)
+    .map((student) => (
+      <div key={student.id} id={`student-qr-${student.id}`}>
+        <QRCodeCanvas
+          value={`schoolos:student:${student.qr_code_token}`}
+          size={520}
+          level="H"
+          includeMargin
+        />
+      </div>
+    ))}
+</div>
       {studentToDelete && (
   <div style={modalOverlayStyle}>
     <div style={modalCardStyle}>
