@@ -94,6 +94,32 @@ const isTablet = windowWidth >= 768 && windowWidth < 1024
   }
 }
 
+async function handleForgotPassword() {
+  if (!email.trim()) {
+    setMessage('Informe seu e-mail para recuperar a senha.')
+    return
+  }
+
+  setLoading(true)
+  setMessage('Enviando link de recuperação...')
+
+  const { error } = await supabase.auth.resetPasswordForEmail(
+    email.trim().toLowerCase(),
+    {
+      redirectTo: `${window.location.origin}/reset-password`,
+    }
+  )
+
+  if (error) {
+    setMessage('Erro ao enviar o link de recuperação. Tente novamente.')
+    setLoading(false)
+    return
+  }
+
+  setMessage('Enviamos um link de recuperação para seu e-mail.')
+  setLoading(false)
+}
+
   return (
     <main
       style={{
@@ -356,6 +382,24 @@ const isTablet = windowWidth >= 768 && windowWidth < 1024
                   boxSizing: 'border-box',
                 }}
               />
+              <button
+  type="button"
+  onClick={handleForgotPassword}
+  disabled={loading}
+  style={{
+    marginTop: 8,
+    background: 'transparent',
+    border: 'none',
+    color: '#2563eb',
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: loading ? 'not-allowed' : 'pointer',
+    padding: 0,
+    float: 'right',
+  }}
+>
+  Esqueci minha senha
+</button>
             </div>
             <button
   onClick={handleGoogleLogin}

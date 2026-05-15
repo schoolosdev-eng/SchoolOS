@@ -148,6 +148,8 @@ const inputStyle: React.CSSProperties = {
   fontSize: 16,
   outline: 'none',
   width: '100%',
+  color: '#0f172a',
+  fontWeight: 500,
 }
 
 const primaryButtonStyle: React.CSSProperties = {
@@ -286,6 +288,7 @@ const sidebarButtonStyle: React.CSSProperties = {
           >
             <input
               type="text"
+              className="school-input"
               placeholder="Nome da escola"
               value={schoolName}
               onChange={(e) => setSchoolName(e.target.value)}
@@ -294,6 +297,7 @@ const sidebarButtonStyle: React.CSSProperties = {
 
             <input
               type="email"
+              className="school-input"
               placeholder="E-mail da escola"
               value={schoolEmail}
               onChange={(e) => setSchoolEmail(e.target.value)}
@@ -302,6 +306,7 @@ const sidebarButtonStyle: React.CSSProperties = {
 
             <input
               type="text"
+              className="school-input"
               placeholder="Telefone da escola"
               value={schoolPhone}
               onChange={(e) => setSchoolPhone(e.target.value)}
@@ -310,6 +315,7 @@ const sidebarButtonStyle: React.CSSProperties = {
 
             <input
               type="text"
+              className="school-input"
               placeholder="Endereço da escola"
               value={schoolAddress}
               onChange={(e) => setSchoolAddress(e.target.value)}
@@ -318,6 +324,7 @@ const sidebarButtonStyle: React.CSSProperties = {
 
             <input
               type="text"
+              className="school-input"
               placeholder="CEP da escola"
               value={schoolCep}
               onChange={(e) => setSchoolCep(e.target.value)}

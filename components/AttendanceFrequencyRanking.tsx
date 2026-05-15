@@ -1,11 +1,15 @@
 'use client'
 
 import { useMemo } from 'react'
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
 
 type Student = {
   id: string
   name?: string | null
   full_name?: string | null
+  profile_photo_url?: string | null
+  profile_photo_path?: string | null
 }
 
 type AttendanceRecord = {
@@ -39,6 +43,7 @@ export default function AttendanceFrequencyRanking({
       {
   studentId: string
   studentName: string
+  studentPhoto: string | null
   className: string
   total: number
   present: number
@@ -55,8 +60,9 @@ export default function AttendanceFrequencyRanking({
         result[record.student_id] = {
   studentId: record.student_id,
   studentName:
-    student?.full_name || student?.name || 'Aluno não encontrado',
-  className: schoolClass?.name || 'Sem turma',
+  student?.full_name || student?.name || 'Aluno não encontrado',
+studentPhoto: student?.profile_photo_url || null,
+className: schoolClass?.name || 'Sem turma',
   total: 0,
   present: 0,
   absent: 0,
@@ -83,6 +89,8 @@ export default function AttendanceFrequencyRanking({
     return Object.values(result)
   }, [students, records, classes])
 
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
+
   const bestStudents = [...ranking]
     .sort((a, b) => b.rate - a.rate)
     .slice(0, 10)
@@ -91,6 +99,28 @@ export default function AttendanceFrequencyRanking({
     .filter((item) => item.rate < 75)
     .sort((a, b) => a.rate - b.rate)
     .slice(0, 10)
+
+    useEffect(() => {
+  async function loadPhotos() {
+    const studentsWithPhoto = students.filter(
+      (student) => student.profile_photo_path
+    )
+
+    const entries = await Promise.all(
+      studentsWithPhoto.map(async (student) => {
+        const { data } = await supabase.storage
+          .from('student-profile-photos')
+          .createSignedUrl(student.profile_photo_path!, 3600)
+
+        return [student.id, data?.signedUrl || ''] as const
+      })
+    )
+
+    setPhotoUrls(Object.fromEntries(entries))
+  }
+
+  loadPhotos()
+}, [students])
 
   if (records.length === 0) {
     return (
@@ -177,7 +207,21 @@ export default function AttendanceFrequencyRanking({
           >
             {badge.label}
           </span>
-          {item.studentName}
+          <img
+  src={photoUrls[item.studentId] || '/default-avatar.png'}
+  alt={item.studentName}
+  style={{
+    width: 52,
+    height: 52,
+    borderRadius: '50%',
+    objectFit: 'cover',
+    border: '3px solid rgba(255,255,255,0.9)',
+    background: '#e5e7eb',
+    verticalAlign: 'middle',
+    marginRight: 8,
+  }}
+/>
+{item.studentName}
         </span>
 
         <span>{item.rate.toFixed(1)}%</span>
@@ -257,10 +301,24 @@ export default function AttendanceFrequencyRanking({
         >
           {index + 1}º
         </span>
-        {item.studentName}
+        <img
+  src={photoUrls[item.studentId] || '/default-avatar.png'}
+  alt={item.studentName}
+  style={{
+    width: 52,
+    height: 52,
+    borderRadius: '50%',
+    objectFit: 'cover',
+    border: '3px solid rgba(255,255,255,0.9)',
+    background: '#e5e7eb',
+    verticalAlign: 'middle',
+    marginRight: 8,
+  }}
+/>
+{item.studentName}
       </span>
 
-      <span>{item.rate.toFixed(1)}%</span>
+      <span>{item.absent} falta(s)</span>
     </div>
 
     <div
@@ -271,7 +329,7 @@ export default function AttendanceFrequencyRanking({
         fontWeight: 700,
       }}
     >
-      {item.className} • {item.absent} falta(s)
+      {item.className}
     </div>
   </div>
 ))

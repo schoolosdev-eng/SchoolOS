@@ -90,3 +90,8 @@ button:hover:not(:disabled) {
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
 }
 
+.school-input::placeholder {
+  color: #334155;
+  opacity: 1;
+}
+

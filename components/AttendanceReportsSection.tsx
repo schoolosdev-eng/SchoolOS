@@ -308,7 +308,7 @@ const studentMap = new Map(
         alignItems: 'center',
       }}
     >
-      <div style={modernStatLabelStyle}>Alunos Filtrados</div>
+      <div style={modernStatLabelStyle}>Registros</div>
       <div style={modernStatIconStyle}>📋</div>
     </div>
 
