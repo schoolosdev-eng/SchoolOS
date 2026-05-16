@@ -763,12 +763,9 @@ const message = encodeURIComponent(
     overflow: 'hidden',
   }}
 >
-  {(selectedQrStudentIds.length > 0
-    ? students.filter((student) =>
-        selectedQrStudentIds.includes(student.id)
-      )
-    : filteredStudents
-  )
+  {students.filter((student) =>
+  selectedQrStudentIds.includes(student.id)
+)
     .filter((student) => student.qr_code_token)
     .map((student) => (
       <div key={student.id} id={`student-qr-${student.id}`}>
