@@ -224,12 +224,22 @@ const qrCards = filteredStudents
     const qrImage = canvas?.toDataURL('image/png') || ''
 
     return `
-      <div class="qr-card">
-        <img src="${qrImage}" />
-        <h3>${student.full_name || student.name || 'Aluno'}</h3>
-        <p>${student.class_name || 'Sem turma'}</p>
-      </div>
-    `
+  <div class="qr-card">
+    <div class="student-photo-wrapper">
+      ${
+        photoUrls[student.id]
+          ? `<img class="student-photo" src="${photoUrls[student.id]}" />`
+          : `<div class="student-photo-placeholder">Sem foto</div>`
+      }
+    </div>
+
+    <h3>${student.full_name || student.name || 'Aluno'}</h3>
+
+    <p>${student.class_name || 'Sem turma'}</p>
+
+    <img class="qr-image" src="${qrImage}" />
+  </div>
+`
   })
   .join('')
 
@@ -258,12 +268,40 @@ printWindow.document.write(`
           break-inside: avoid;
         }
 
-        .qr-card img {
-          width: 220px;
-          height: 220px;
-          image-rendering: crisp-edges;
-          image-rendering: pixelated;
-        }
+        .student-photo-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.student-photo {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid #cbd5e1;
+}
+
+.student-photo-placeholder {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.qr-image {
+  width: 220px;
+  height: 220px;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+}
 
         .qr-card h3 {
           margin: 10px 0 4px;

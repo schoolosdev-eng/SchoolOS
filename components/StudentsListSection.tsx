@@ -141,12 +141,21 @@ const qrCards = studentsToPrint
         const qrImage = canvas?.toDataURL('image/png') || ''
 
         return `
-          <div class="qr-card">
-            <img src="${qrImage}" />
-            <h3>${student.full_name || student.name || 'Aluno'}</h3>
-            <p>${student.class_name || 'Sem turma'}</p>
-          </div>
-        `
+  <div class="qr-card">
+    <div class="student-photo-wrapper">
+      ${
+        photoUrls[student.id]
+          ? `<img class="student-photo" src="${photoUrls[student.id]}" />`
+          : `<div class="student-photo-placeholder">${(student.full_name || student.name || '?')[0]}</div>`
+      }
+    </div>
+
+    <h3>${student.full_name || student.name || 'Aluno'}</h3>
+    <p>${student.class_name || 'Sem turma'}</p>
+
+    <img class="qr-image" src="${qrImage}" />
+  </div>
+`
       })
       .join('')
 
@@ -176,12 +185,40 @@ const qrCards = studentsToPrint
     box-sizing: border-box;
   }
 
-  .qr-card img {
-    width: 220px;   /* AUMENTA o QR */
-    height: 220px;
-    image-rendering: crisp-edges;
-    image-rendering: pixelated;
-  }
+  .student-photo-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.student-photo {
+  width: 82px;
+  height: 82px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid #cbd5e1;
+}
+
+.student-photo-placeholder {
+  width: 82px;
+  height: 82px;
+  border-radius: 50%;
+  background: #dbeafe;
+  color: #1d4ed8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 900;
+}
+
+.qr-image {
+  width: 220px;
+  height: 220px;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+  margin-top: 10px;
+}
 
   .qr-card h3 {
     margin: 12px 0 6px;
