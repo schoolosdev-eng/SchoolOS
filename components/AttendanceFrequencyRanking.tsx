@@ -36,69 +36,91 @@ export default function AttendanceFrequencyRanking({
   classes,
 }: Props) {
   const ranking = useMemo(() => {
-    const studentMap = new Map(students.map((s) => [s.id, s]))
+  const studentMap = new Map(students.map((s) => [s.id, s]))
+  const classMap = new Map(classes.map((c) => [c.id, c.name]))
 
-    const result: Record<
-      string,
-      {
-  studentId: string
-  studentName: string
-  studentPhoto: string | null
-  className: string
-  total: number
-  present: number
-  absent: number
-  rate: number
-}
-    > = {}
+  const result: Record<
+    string,
+    {
+      studentId: string
+      studentName: string
+      studentPhoto: string | null
+      className: string
+      total: number
+      present: number
+      absent: number
+      rate: number
+    }
+  > = {}
 
-    records.forEach((record) => {
-      const student = studentMap.get(record.student_id)
-      const schoolClass = classes.find((item) => item.id === record.class_id)
+  records.forEach((record) => {
+    if (!record.student_id) return
 
-      if (!result[record.student_id]) {
-        result[record.student_id] = {
-  studentId: record.student_id,
-  studentName:
-  student?.full_name || student?.name || 'Aluno não encontrado',
-studentPhoto: student?.profile_photo_url || null,
-className: schoolClass?.name || 'Sem turma',
-  total: 0,
-  present: 0,
-  absent: 0,
-  rate: 0,
-}
+    const student = studentMap.get(record.student_id)
+
+    if (!student) return
+
+    if (!result[record.student_id]) {
+      result[record.student_id] = {
+        studentId: record.student_id,
+        studentName:
+          student.full_name || student.name || 'Aluno sem nome',
+        studentPhoto: student.profile_photo_url || null,
+        className: record.class_id
+          ? classMap.get(record.class_id) || 'Sem turma'
+          : 'Sem turma',
+        total: 0,
+        present: 0,
+        absent: 0,
+        rate: 0,
       }
+    }
 
-      result[record.student_id].total += 1
+    result[record.student_id].total += 1
 
-      if (record.status === 'present') {
-        result[record.student_id].present += 1
-      }
-      if (record.status === 'absent') {
-  result[record.student_id].absent += 1
-}
+    if (record.status === 'present') {
+      result[record.student_id].present += 1
+    }
 
-      result[record.student_id].rate =
-        result[record.student_id].total > 0
-          ? (result[record.student_id].present / result[record.student_id].total) *
-            100
-          : 0
-    })
+    if (record.status === 'absent') {
+      result[record.student_id].absent += 1
+    }
 
-    return Object.values(result)
-  }, [students, records, classes])
+    result[record.student_id].rate =
+      result[record.student_id].total > 0
+        ? (result[record.student_id].present /
+            result[record.student_id].total) *
+          100
+        : 0
+  })
+
+  return Object.values(result)
+}, [students, records, classes])
 
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
 
-  const bestStudents = [...ranking]
-    .sort((a, b) => b.rate - a.rate)
-    .slice(0, 10)
+  const orderedRanking = [...ranking]
+  .filter((item) => item.total > 0)
 
-  const criticalStudents = [...ranking]
-    .filter((item) => item.rate < 75)
-    .sort((a, b) => a.rate - b.rate)
-    .slice(0, 10)
+const bestStudents = [...orderedRanking]
+  .sort((a, b) => {
+    if (b.rate !== a.rate) return b.rate - a.rate
+    if (b.present !== a.present) return b.present - a.present
+    if (a.absent !== b.absent) return a.absent - b.absent
+
+    return a.studentName.localeCompare(b.studentName, 'pt-BR')
+  })
+  .slice(0, 10)
+
+const criticalStudents = [...orderedRanking]
+  .sort((a, b) => {
+    if (a.rate !== b.rate) return a.rate - b.rate
+    if (b.absent !== a.absent) return b.absent - a.absent
+    if (a.present !== b.present) return a.present - b.present
+
+    return a.studentName.localeCompare(b.studentName, 'pt-BR')
+  })
+  .slice(0, 10)
 
     useEffect(() => {
   async function loadPhotos() {
@@ -135,7 +157,7 @@ className: schoolClass?.name || 'Sem turma',
           lineHeight: 1.5,
         }}
       >
-        Gere um relatório para visualizar o ranking de frequência.
+        Nenhum dado carregado ainda.
       </div>
     )
   }
@@ -235,7 +257,7 @@ className: schoolClass?.name || 'Sem turma',
           fontWeight: 700,
         }}
       >
-        {item.className} • {item.absent} falta(s)
+        {item.className} • {item.present} presença(s) • {item.absent} falta(s)
       </div>
     </div>
   )
@@ -318,7 +340,7 @@ className: schoolClass?.name || 'Sem turma',
 {item.studentName}
       </span>
 
-      <span>{item.absent} falta(s)</span>
+      <span>{item.rate.toFixed(1)}%</span>
     </div>
 
     <div
@@ -329,7 +351,7 @@ className: schoolClass?.name || 'Sem turma',
         fontWeight: 700,
       }}
     >
-      {item.className}
+      {item.className} • {item.present} presença(s) • {item.absent} falta(s)
     </div>
   </div>
 ))
