@@ -199,7 +199,18 @@ const [reportRecords, setReportRecords] = useState<
     updated_at?: string
   }[]
 >([])
-const [annualRankingRecords, setAnnualRankingRecords] = useState<typeof reportRecords>([])
+type AttendanceRankingItem = {
+  student_id: string
+  student_name: string
+  class_id: string | null
+  class_name: string | null
+  presences: number
+  absences: number
+  total: number
+  frequency_rate: number
+}
+
+const [annualRankingData, setAnnualRankingData] = useState<AttendanceRankingItem[]>([])
   const [occurrenceRecords, setOccurrenceRecords] = useState<Occurrence[]>([])
   const [occurrenceLoading, setOccurrenceLoading] = useState(false)
   const [occurrenceStartDate, setOccurrenceStartDate] = useState(today)
@@ -334,20 +345,16 @@ useEffect(() => {
         schema: 'public',
         table: 'attendance_records',
       },
-      async () => {
-  await generateAbsenceAlertsSilent()
-
-  if (activeSection === 'reports') {
-    await fetchAnnualRankingRecords()
-  }
-}
+      () => {
+        generateAbsenceAlertsSilent()
+      }
     )
     .subscribe()
 
   return () => {
     supabase.removeChannel(channel)
   }
-}, [activeSection, schoolId])
+}, [])
 
 useEffect(() => {
   if (!schoolId) return
@@ -475,24 +482,20 @@ async function fetchAnnualRankingRecords() {
 
   const currentYear = new Date().getFullYear()
 
-  const { data, error } = await supabase
-    .from('attendance_records')
-    .select('id, student_id, class_id, attendance_date, status, source, created_at, updated_at')
-    .eq('school_id', schoolId)
-    .gte('attendance_date', `${currentYear}-01-01`)
-    .lte('attendance_date', `${currentYear}-12-31`)
+  const { data, error } = await supabase.rpc(
+    'get_attendance_frequency_ranking',
+    {
+      p_school_id: schoolId,
+      p_year: currentYear,
+    }
+  )
 
   if (error) {
     showMessage(`Erro ao carregar ranking anual: ${error.message}`)
     return
   }
 
- console.log('ESCOLA ATUAL:', schoolId)
-console.log('TOTAL RANKING:', data?.length)
-console.log('FALTAS:', data?.filter((r) => r.status === 'absent').length)
-console.log('PRESENÇAS:', data?.filter((r) => r.status === 'present').length)
-
-  setAnnualRankingRecords((data || []) as typeof reportRecords)
+  setAnnualRankingData((data || []) as AttendanceRankingItem[])
 }
 
 async function loadReadNotifications() {
@@ -764,6 +767,8 @@ async function initializeAttendanceForToday() {
     }
   }
 
+  await fetchAnnualRankingRecords()
+
   return true
 }
 
@@ -778,7 +783,6 @@ async function handleStartReading() {
   setScannerMode('camera')
   setIsScannerActive(true)
   showMessage('Leitura iniciada. Todos os alunos do dia começaram como faltosos.')
-  await fetchAnnualRankingRecords()
 }
 
 function handleStopReading() {
@@ -989,7 +993,6 @@ const className = classData?.name || 'Sem turma'
   ? formatTimeBR(updatedRecord.updated_at)
   : formatTimeBR(now),
       })
-      await fetchAnnualRankingRecords()
       return
     }
 
@@ -1029,9 +1032,6 @@ const className = classData?.name || 'Sem turma'
   ? formatTimeBR(inserted.created_at)
   : formatTimeBR(now),
     })
-
-    await fetchAnnualRankingRecords()
-
   } catch (error) {
     console.error(error)
     setResultWithTimeout({
@@ -1086,8 +1086,10 @@ async function handleGenerateAttendanceReport() {
   }
 
   setReportRecords((data || []) as typeof reportRecords)
-  showMessage('Relatório gerado com sucesso.')
-  await fetchAnnualRankingRecords()
+
+await fetchAnnualRankingRecords()
+
+showMessage('Relatório gerado com sucesso.')
 }
 
 async function handleUpdateStudent(
@@ -1252,7 +1254,6 @@ async function handleGenerateOccurrenceReport() {
 
 setOccurrenceRecords(mappedOccurrences)
   showMessage('Relatório de ocorrências gerado com sucesso.')
-  await fetchAnnualRankingRecords()
 }
 
 async function handleDeleteOccurrence(occurrenceId: string) {
@@ -2858,7 +2859,7 @@ const studentClassMap = useMemo(() => {
     )
   }
 
-async function handleChangeSection(
+function handleChangeSection(
   section:
     | 'overview'
     | 'registrations'
@@ -2873,7 +2874,7 @@ async function handleChangeSection(
   setActiveSection(section)
 
   if (section === 'reports') {
-    await fetchAnnualRankingRecords()
+    fetchAnnualRankingRecords()
   }
 
   if (isMobile) {
@@ -3889,8 +3890,7 @@ onClick={() => {
 <div style={{ marginTop: 18 }}>
   <AttendanceFrequencyRanking
   students={students}
-  records={annualRankingRecords}
-  classes={classes}
+  ranking={annualRankingData}
 />
 </div>
             </div>
