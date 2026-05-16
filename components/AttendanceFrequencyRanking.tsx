@@ -12,113 +12,49 @@ type Student = {
   profile_photo_path?: string | null
 }
 
-type AttendanceRecord = {
-  id: string
+type RankingItem = {
   student_id: string
-  class_id?: string
-  status: 'present' | 'absent'
-}
-
-type SchoolClass = {
-  id: string
-  name: string
+  student_name: string
+  class_id: string | null
+  class_name: string | null
+  presences: number
+  absences: number
+  total: number
+  frequency_rate: number
 }
 
 type Props = {
+  ranking: RankingItem[]
   students: Student[]
-  records: AttendanceRecord[]
-  classes: SchoolClass[]
 }
 
 export default function AttendanceFrequencyRanking({
+  ranking,
   students,
-  records,
-  classes,
 }: Props) {
-  const ranking = useMemo(() => {
-  const studentMap = new Map(students.map((s) => [s.id, s]))
-  const classMap = new Map(classes.map((c) => [c.id, c.name]))
-
-  const result: Record<
-    string,
-    {
-      studentId: string
-      studentName: string
-      studentPhoto: string | null
-      className: string
-      total: number
-      present: number
-      absent: number
-      rate: number
-    }
-  > = {}
-
-  records.forEach((record) => {
-    if (!record.student_id) return
-
-    const student = studentMap.get(record.student_id)
-
-    if (!student) return
-
-    if (!result[record.student_id]) {
-      result[record.student_id] = {
-        studentId: record.student_id,
-        studentName:
-          student.full_name || student.name || 'Aluno sem nome',
-        studentPhoto: student.profile_photo_url || null,
-        className: record.class_id
-          ? classMap.get(record.class_id) || 'Sem turma'
-          : 'Sem turma',
-        total: 0,
-        present: 0,
-        absent: 0,
-        rate: 0,
-      }
-    }
-
-    result[record.student_id].total += 1
-
-    if (record.status === 'present') {
-      result[record.student_id].present += 1
-    }
-
-    if (record.status === 'absent') {
-      result[record.student_id].absent += 1
-    }
-
-    result[record.student_id].rate =
-      result[record.student_id].total > 0
-        ? (result[record.student_id].present /
-            result[record.student_id].total) *
-          100
-        : 0
-  })
-
-  return Object.values(result)
-}, [students, records, classes])
 
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
 
   const orderedRanking = [...ranking]
-  .filter((item) => item.total > 0)
+  .filter((item) => Number(item.total) > 0)
 
 const bestStudents = [...orderedRanking]
   .sort((a, b) => {
-    if (b.rate !== a.rate) return b.rate - a.rate
-    if (b.present !== a.present) return b.present - a.present
-    if (a.absent !== b.absent) return a.absent - b.absent
+    if (b.frequency_rate !== a.frequency_rate) return b.frequency_rate - a.frequency_rate
+    if (b.presences !== a.presences) return b.presences - a.presences
+    if (a.absences !== b.absences) return a.absences - b.absences
 
-    return a.studentName.localeCompare(b.studentName, 'pt-BR')
+    return a.student_name.localeCompare(b.student_name, 'pt-BR')
   })
   .slice(0, 10)
 
 const criticalStudents = [...orderedRanking]
   .sort((a, b) => {
-    if (a.rate !== b.rate) return a.rate - b.rate
-    if (b.absent !== a.absent) return b.absent - a.absent
-    if (a.present !== b.present) return a.present - b.present
+    if (a.frequency_rate !== b.frequency_rate) return a.frequency_rate - b.frequency_rate
+    if (b.absences !== a.absences) return b.absences - a.absences
+    if (a.presences !== b.presences) return a.presences - b.presences
 
-    return a.studentName.localeCompare(b.studentName, 'pt-BR')
+    return a.student_name.localeCompare(b.student_name, 'pt-BR')
   })
   .slice(0, 10)
 
@@ -144,7 +80,7 @@ const criticalStudents = [...orderedRanking]
   loadPhotos()
 }, [students])
 
-  if (records.length === 0) {
+  if (ranking.length === 0) {
     return (
       <div
         style={{
@@ -196,7 +132,7 @@ const criticalStudents = [...orderedRanking]
 
   return (
     <div
-      key={item.studentId}
+      key={item.student_id}
       style={{
         padding: '10px 0',
         borderBottom:
@@ -230,8 +166,8 @@ const criticalStudents = [...orderedRanking]
             {badge.label}
           </span>
           <img
-  src={photoUrls[item.studentId] || '/default-avatar.png'}
-  alt={item.studentName}
+  src={photoUrls[item.student_id] || '/default-avatar.png'}
+  alt={item.student_name}
   style={{
     width: 52,
     height: 52,
@@ -243,10 +179,10 @@ const criticalStudents = [...orderedRanking]
     marginRight: 8,
   }}
 />
-{item.studentName}
+{item.student_name}
         </span>
 
-        <span>{item.rate.toFixed(1)}%</span>
+        <span>{item.frequency_rate.toFixed(1)}%</span>
       </div>
 
       <div
@@ -257,7 +193,7 @@ const criticalStudents = [...orderedRanking]
           fontWeight: 700,
         }}
       >
-        {item.className} • {item.present} presença(s) • {item.absent} falta(s)
+        {item.class_name} • {item.presences} presença(s) • {item.absences} falta(s)
       </div>
     </div>
   )
@@ -291,7 +227,7 @@ const criticalStudents = [...orderedRanking]
         ) : (
           criticalStudents.map((item, index) => (
   <div
-    key={item.studentId}
+    key={item.student_id}
     style={{
       padding: '10px 0',
       borderBottom:
@@ -324,8 +260,8 @@ const criticalStudents = [...orderedRanking]
           {index + 1}º
         </span>
         <img
-  src={photoUrls[item.studentId] || '/default-avatar.png'}
-  alt={item.studentName}
+  src={photoUrls[item.student_id] || '/default-avatar.png'}
+  alt={item.student_name}
   style={{
     width: 52,
     height: 52,
@@ -337,10 +273,10 @@ const criticalStudents = [...orderedRanking]
     marginRight: 8,
   }}
 />
-{item.studentName}
+{item.student_name}
       </span>
 
-      <span>{item.rate.toFixed(1)}%</span>
+      <span>{item.frequency_rate.toFixed(1)}%</span>
     </div>
 
     <div
@@ -351,7 +287,7 @@ const criticalStudents = [...orderedRanking]
         fontWeight: 700,
       }}
     >
-      {item.className} • {item.present} presença(s) • {item.absent} falta(s)
+      {item.class_name} • {item.presences} presença(s) • {item.absences} falta(s)
     </div>
   </div>
 ))
