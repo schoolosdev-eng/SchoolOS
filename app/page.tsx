@@ -474,6 +474,44 @@ async function handleForgotPassword() {
               Criar conta
             </button>
 
+   <p
+  style={{
+    margin: '2px 0 0',
+    fontSize: 13,
+    lineHeight: 1.7,
+    color: '#64748b',
+    textAlign: 'center',
+  }}
+>
+  Ao continuar, você concorda com nossos{' '}
+  <a
+    href="/termos-de-uso"
+    target="_blank"
+    rel="noopener noreferrer"
+    style={{
+      color: '#1d4ed8',
+      fontWeight: 800,
+      textDecoration: 'none',
+    }}
+  >
+    Termos de Uso
+  </a>{' '}
+  e{' '}
+  <a
+    href="/politica-de-privacidade"
+    target="_blank"
+    rel="noopener noreferrer"
+    style={{
+      color: '#1d4ed8',
+      fontWeight: 800,
+      textDecoration: 'none',
+    }}
+  >
+    Política de Privacidade
+  </a>
+  .
+</p>
+
             {message ? (
               <div
                 style={{
@@ -498,7 +536,59 @@ async function handleForgotPassword() {
             ) : null}
           </div>
         </div>
-      </section>
+            </section>
+
+      <a
+        href="https://wa.me/5588921826192?text=Olá!%20Tenho%20dúvidas%20sobre%20o%20SchoolOS."
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          position: 'fixed',
+          left: isMobile ? 16 : 24,
+          bottom: isMobile ? 16 : 24,
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          maxWidth: isMobile ? 280 : 360,
+          padding: isMobile ? '12px 14px' : '14px 18px',
+          borderRadius: 999,
+          background: 'linear-gradient(135deg, #25D366, #16a34a)',
+          color: '#ffffff',
+          textDecoration: 'none',
+          boxShadow: '0 18px 40px rgba(37, 211, 102, 0.35)',
+          border: '1px solid rgba(255,255,255,0.25)',
+          fontWeight: 800,
+        }}
+      >
+        <span
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: '50%',
+            background: 'rgba(255,255,255,0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 22,
+            flexShrink: 0,
+          }}
+        >
+          <svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="22"
+  height="22"
+  viewBox="0 0 24 24"
+  fill="currentColor"
+>
+  <path d="M20.52 3.48A11.78 11.78 0 0012.04 0C5.52 0 .24 5.28.24 11.76c0 2.08.56 4.12 1.6 5.92L0 24l6.52-1.72a11.8 11.8 0 005.52 1.4h.04c6.48 0 11.76-5.28 11.76-11.76 0-3.12-1.2-6.04-3.32-8.44zm-8.48 18.2a9.8 9.8 0 01-5-1.36l-.36-.2-3.88 1.04 1.04-3.8-.24-.4a9.78 9.78 0 01-1.52-5.2c0-5.4 4.4-9.8 9.84-9.8 2.6 0 5.08 1 6.92 2.88a9.7 9.7 0 012.88 6.92c0 5.44-4.4 9.84-9.84 9.84zm5.4-7.36c-.28-.16-1.68-.84-1.92-.92-.28-.12-.44-.16-.64.16-.2.28-.72.92-.88 1.12-.16.2-.32.24-.6.08-.28-.16-1.16-.44-2.2-1.4-.8-.72-1.36-1.64-1.52-1.92-.16-.28-.04-.44.12-.6.12-.12.28-.32.4-.48.12-.16.16-.28.24-.48.08-.16.04-.36-.04-.52-.08-.16-.64-1.56-.88-2.12-.24-.6-.48-.52-.64-.52h-.56c-.2 0-.52.08-.8.36-.28.28-1.04 1-.96 2.4.08 1.4 1 2.76 1.16 2.96.16.2 2 3.08 4.88 4.2.68.28 1.24.44 1.68.56.72.24 1.36.2 1.88.12.56-.08 1.68-.68 1.92-1.36.24-.64.24-1.24.16-1.36-.08-.08-.24-.16-.52-.28z"/>
+</svg>
+        </span>
+
+        <span style={{ fontSize: isMobile ? 12 : 14, lineHeight: 1.35 }}>
+          Alguma dúvida? Clique aqui. Nossa meta é te ajudar!
+        </span>
+      </a>
     </main>
   )
 }
