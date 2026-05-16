@@ -375,6 +375,16 @@ function formatDateBR(date: string) {
   return `${day}/${month}/${year}`
 }
 
+function formatTimeBR(date?: string | Date | null) {
+  if (!date) return ''
+
+  return new Date(date).toLocaleTimeString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 function getAlertId(alert: AlertStudent) {
   return `${alert.studentId}-${alert.classId}-${alert.alertType}`
 }
@@ -792,13 +802,13 @@ function setResultWithTimeout(data: Result) {
       studentName: data.student.name,
       className: data.student.className,
       photo: data.student.photo,
-      time: data.time || new Date().toLocaleTimeString(),
+      time: data.time || formatTimeBR(new Date()),
     })
   } else {
     pushRecentScan({
       status: data.status,
       message: data.message,
-      time: data.time || new Date().toLocaleTimeString(),
+      time: data.time || formatTimeBR(new Date()),
     })
   }
 
@@ -929,9 +939,9 @@ const className = classData?.name || 'Sem turma'
           className,
           photo: photoUrl,
         },
-        time: new Date(
-          existingAttendance.updated_at || existingAttendance.created_at
-        ).toLocaleTimeString(),
+        time: formatTimeBR(
+  existingAttendance.updated_at || existingAttendance.created_at
+),
       })
       return
     }
@@ -966,8 +976,8 @@ const className = classData?.name || 'Sem turma'
           photo: photoUrl,
         },
         time: updatedRecord?.updated_at
-          ? new Date(updatedRecord.updated_at).toLocaleTimeString()
-          : now.toLocaleTimeString(),
+  ? formatTimeBR(updatedRecord.updated_at)
+  : formatTimeBR(now),
       })
       return
     }
@@ -1005,8 +1015,8 @@ const className = classData?.name || 'Sem turma'
         photo: photoUrl,
       },
       time: inserted?.created_at
-        ? new Date(inserted.created_at).toLocaleTimeString()
-        : now.toLocaleTimeString(),
+  ? formatTimeBR(inserted.created_at)
+  : formatTimeBR(now),
     })
   } catch (error) {
     console.error(error)
