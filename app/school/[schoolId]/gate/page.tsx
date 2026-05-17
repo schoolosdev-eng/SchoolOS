@@ -30,6 +30,7 @@ export default function GatePage() {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
   const [manualQrCode, setManualQrCode] = useState('')
   const [manualMode, setManualMode] = useState(false)
+  const [gateMode, setGateMode] = useState<'entry' | 'exit'>('entry')
   const audioContextRef = useRef<AudioContext | null>(null)
   const [loadingOffline, setLoadingOffline] = useState(false)
 const [loadingSync, setLoadingSync] = useState(false)
@@ -48,6 +49,20 @@ const [loadingSync, setLoadingSync] = useState(false)
       time: string
     }[]
   >([])
+
+  const [pendingExitStudent, setPendingExitStudent] = useState<{
+  id: string
+  school_id: string
+  full_name: string
+  class_id: string
+  class_name: string
+  profile_photo_path: string | null
+  photoUrl: string | null
+} | null>(null)
+
+const [exitReason, setExitReason] = useState('')
+const [otherExitReason, setOtherExitReason] = useState('')
+const [authorizedByName, setAuthorizedByName] = useState('')
 
   function pushRecentScan(data: {
     status: 'success' | 'duplicate' | 'error'
@@ -245,6 +260,150 @@ if (navigator.onLine && student.profile_photo_path) {
     },
     time: now.toLocaleTimeString(),
   })
+}
+
+async function handleEarlyExitScan(text: string) {
+  if (!text?.trim()) {
+    setResultWithTimeout({
+      status: 'error',
+      message: 'Código QR inválido.',
+    })
+    return
+  }
+
+  if (!text.startsWith('schoolos:student:')) {
+    setResultWithTimeout({
+      status: 'error',
+      message: 'QR inválido.',
+    })
+    return
+  }
+
+  const token = text.replace('schoolos:student:', '').trim()
+
+  const student = await offlineAttendanceDb.students
+    .where('qr_code_token')
+    .equals(token)
+    .first()
+
+  if (!student) {
+    setResultWithTimeout({
+      status: 'error',
+      message: 'Aluno não encontrado no dispositivo.',
+    })
+    return
+  }
+
+  if (student.school_id !== schoolId) {
+    setResultWithTimeout({
+      status: 'error',
+      message: 'Aluno não pertence a esta escola.',
+    })
+    return
+  }
+
+  const today = new Date().toISOString().split('T')[0]
+
+const todayAttendance = await offlineAttendanceDb.attendance
+  .where('student_id')
+  .equals(student.id)
+  .filter((record) => record.attendance_date === today && record.status === 'present')
+  .first()
+
+if (!todayAttendance) {
+  setResultWithTimeout({
+    status: 'error',
+    message:
+      'Saída não permitida. Este aluno ainda não possui entrada/presença registrada hoje.',
+    student: {
+      name: student.full_name,
+      className: student.class_name,
+      photo: null,
+    },
+  })
+  return
+}
+
+  let photoUrl: string | null = null
+
+  if (navigator.onLine && student.profile_photo_path) {
+    const { data } = await supabase.storage
+      .from('student-profile-photos')
+      .createSignedUrl(student.profile_photo_path, 3600)
+
+    photoUrl = data?.signedUrl || null
+  }
+
+  setPendingExitStudent({
+    id: student.id,
+    school_id: student.school_id,
+    full_name: student.full_name,
+    class_id: student.class_id,
+    class_name: student.class_name,
+    profile_photo_path: student.profile_photo_path,
+    photoUrl,
+  })
+
+  setExitReason('')
+  setOtherExitReason('')
+  setAuthorizedByName('')
+}
+
+async function confirmEarlyExit() {
+  if (!pendingExitStudent) return
+
+  const finalReason =
+    exitReason === 'Outro' ? otherExitReason.trim() : exitReason
+
+  if (!finalReason) {
+    setResultWithTimeout({
+      status: 'error',
+      message: 'Informe o motivo da saída.',
+    })
+    return
+  }
+
+  const now = new Date()
+  const exitDate = now.toISOString().split('T')[0]
+
+  await offlineAttendanceDb.earlyExits.add({
+    id: crypto.randomUUID(),
+    school_id: schoolId,
+    student_id: pendingExitStudent.id,
+    class_id: pendingExitStudent.class_id,
+    exit_date: exitDate,
+    exit_time: now.toLocaleTimeString(),
+    reason: finalReason,
+    authorized_by_name: authorizedByName.trim() || null,
+    responsible_contact: null,
+    recorded_at: now.toISOString(),
+    synced: false,
+  })
+
+  setResultWithTimeout({
+    status: 'success',
+    message: `Saída registrada: ${finalReason}`,
+    student: {
+      name: pendingExitStudent.full_name,
+      className: pendingExitStudent.class_name,
+      photo: pendingExitStudent.photoUrl,
+    },
+    time: now.toLocaleTimeString(),
+  })
+
+  setPendingExitStudent(null)
+  setExitReason('')
+  setOtherExitReason('')
+  setAuthorizedByName('')
+}
+
+async function handleGateScan(text: string) {
+  if (gateMode === 'entry') {
+    await handleOfflineScan(text)
+    return
+  }
+
+  await handleEarlyExitScan(text)
 }
 
 async function syncOfflineAttendance() {
@@ -763,11 +922,41 @@ async function handleStartReading() {
         <div style={scannerCardStyle} className="scanner-card">
           <div style={scannerHeaderStyle}>
             <div>
-              <h2 style={sectionTitleStyle}>Leitura de entrada</h2>
+              <h2 style={sectionTitleStyle}>
+  {gateMode === 'entry' ? 'Leitura de entrada' : 'Registrar saída'}
+</h2>
               <p style={sectionTextStyle}>
-                Aponte o QR Code do aluno para registrar a presença.
+                {gateMode === 'entry'
+  ? 'Aponte o QR Code do aluno para registrar a presença.'
+  : 'Aponte o QR Code do aluno para registrar a saída antecipada.'}
               </p>
             </div>
+
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
+  <button
+    onClick={() => setGateMode('entry')}
+    style={{
+      ...secondaryButtonStyle,
+      background: gateMode === 'entry' ? '#dbeafe' : '#ffffff',
+      borderColor: gateMode === 'entry' ? '#2563eb' : '#cbd5e1',
+      color: gateMode === 'entry' ? '#1d4ed8' : '#0f172a',
+    }}
+  >
+    Entrada
+  </button>
+
+  <button
+    onClick={() => setGateMode('exit')}
+    style={{
+      ...secondaryButtonStyle,
+      background: gateMode === 'exit' ? '#ffedd5' : '#ffffff',
+      borderColor: gateMode === 'exit' ? '#f97316' : '#cbd5e1',
+      color: gateMode === 'exit' ? '#c2410c' : '#0f172a',
+    }}
+  >
+    Registrar saída
+  </button>
+</div>
 
             <div style={scannerActionsStyle} className="scanner-actions">
               {!isScannerActive && !manualMode && (
@@ -825,7 +1014,7 @@ async function handleStartReading() {
           {isScannerActive && (
             <div style={scannerBoxStyle}>
 <QRScanner
-  onScan={handleOfflineScan}
+  onScan={handleGateScan}
   onNoCamera={handleNoCamera}
   isActive={isScannerActive}
 />
@@ -844,10 +1033,10 @@ async function handleStartReading() {
 
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 <button
-                  onClick={() => handleOfflineScan(manualQrCode)}
+                  onClick={() => handleGateScan(manualQrCode)}
                   style={primaryButtonStyle}
                 >
-                  Confirmar presença
+                  {gateMode === 'entry' ? 'Confirmar presença' : 'Confirmar saída'}
                 </button>
 
                 <AppButton
@@ -865,7 +1054,8 @@ async function handleStartReading() {
 
           {!isScannerActive && !manualMode && (
             <div style={idleBoxStyle}>
-              Clique em <strong>Iniciar leitura</strong> para começar a chamada.
+              Clique em <strong>Iniciar leitura</strong> para começar o registro de{' '}
+{gateMode === 'entry' ? 'entrada.' : 'saída.'}
             </div>
           )}
         </div>
@@ -939,6 +1129,78 @@ async function handleStartReading() {
           </AttendanceSection>
         </div>
       </section>
+
+      {pendingExitStudent && (
+  <div style={modalOverlayStyle}>
+    <div style={exitModalStyle}>
+      <h2 style={sectionTitleStyle}>Registrar saída</h2>
+
+      <p style={sectionTextStyle}>
+        Confirme o motivo da saída antecipada do aluno.
+      </p>
+
+      <div style={{
+        padding: 14,
+        borderRadius: 18,
+        background: '#f8fafc',
+        border: '1px solid #e2e8f0',
+        marginBottom: 16,
+      }}>
+        <strong>{pendingExitStudent.full_name}</strong>
+        <br />
+        <span>{pendingExitStudent.class_name}</span>
+      </div>
+
+      <div style={{ display: 'grid', gap: 10 }}>
+        {['Consulta médica', 'Mal-estar', 'Compromisso familiar', 'Autorização da gestão', 'Outro'].map((reason) => (
+          <button
+            key={reason}
+            onClick={() => setExitReason(reason)}
+            style={{
+              ...secondaryButtonStyle,
+              background: exitReason === reason ? '#ffedd5' : '#ffffff',
+              borderColor: exitReason === reason ? '#f97316' : '#cbd5e1',
+              color: exitReason === reason ? '#c2410c' : '#0f172a',
+            }}
+          >
+            {reason}
+          </button>
+        ))}
+      </div>
+
+      {exitReason === 'Outro' && (
+        <input
+          type="text"
+          placeholder="Informe o motivo"
+          value={otherExitReason}
+          onChange={(e) => setOtherExitReason(e.target.value)}
+          style={{ ...inputStyle, marginTop: 12 }}
+        />
+      )}
+
+      <input
+        type="text"
+        placeholder="Nome de quem autorizou/retirou"
+        value={authorizedByName}
+        onChange={(e) => setAuthorizedByName(e.target.value)}
+        style={{ ...inputStyle, marginTop: 12 }}
+      />
+
+      <div style={{ display: 'flex', gap: 12, marginTop: 18, flexWrap: 'wrap' }}>
+        <button onClick={confirmEarlyExit} style={primaryButtonStyle}>
+          Confirmar saída
+        </button>
+
+        <button
+          onClick={() => setPendingExitStudent(null)}
+          style={secondaryButtonStyle}
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </main>
   )
 }
@@ -1191,4 +1453,25 @@ const bigTimeStyle: React.CSSProperties = {
   marginTop: 8,
   color: '#64748b',
   fontWeight: 800,
+}
+
+const modalOverlayStyle: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(15, 23, 42, 0.55)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 16,
+  zIndex: 999,
+}
+
+const exitModalStyle: React.CSSProperties = {
+  width: '100%',
+  maxWidth: 460,
+  background: '#ffffff',
+  borderRadius: 24,
+  padding: 22,
+  border: '1px solid #e2e8f0',
+  boxShadow: '0 24px 80px rgba(15, 23, 42, 0.25)',
 }
