@@ -273,53 +273,6 @@ async function createAdjustedStudentPhotoFile() {
 
   const image = new Image()
   image.src = studentPhotoPreview
-  await image.decode()
-
-  const size = 512
-
-  const canvas = document.createElement('canvas')
-  canvas.width = size
-  canvas.height = size
-
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return null
-
-  const imageWidth = image.naturalWidth
-  const imageHeight = image.naturalHeight
-
-  const baseScale = Math.max(size / imageWidth, size / imageHeight)
-  const scale = baseScale * photoZoom
-
-  const drawWidth = imageWidth * scale
-  const drawHeight = imageHeight * scale
-
-  const x = (size - drawWidth) * (photoPositionX / 100)
-  const y = (size - drawHeight) * (photoPositionY / 100)
-
-  ctx.drawImage(image, x, y, drawWidth, drawHeight)
-
-  return new Promise<File | null>((resolve) => {
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) return resolve(null)
-
-        resolve(
-          new File([blob], `foto-aluno-${Date.now()}.jpg`, {
-            type: 'image/jpeg',
-          })
-        )
-      },
-      'image/jpeg',
-      0.92
-    )
-  })
-}
-
-async function createAdjustedStudentPhotoFile() {
-  if (!studentPhotoPreview) return null
-
-  const image = new Image()
-  image.src = studentPhotoPreview
   image.crossOrigin = 'anonymous'
 
   await new Promise<void>((resolve, reject) => {
