@@ -411,7 +411,11 @@ async function confirmEarlyExit() {
 
   await loadTodayEarlyExits()
 
-  const rawPhone = pendingExitStudent.responsible_whatsapp?.replace(/\D/g, '')
+if (navigator.onLine) {
+  await syncEarlyExits()
+}
+
+const rawPhone = pendingExitStudent.responsible_whatsapp?.replace(/\D/g, '')
 
 if (rawPhone) {
   const phone = rawPhone.startsWith('55') ? rawPhone : `55${rawPhone}`
@@ -494,13 +498,16 @@ const pendingRecords = await offlineAttendanceDb.attendance
   .filter((record) => record.synced === false)
   .toArray()
 
-  if (pendingRecords.length === 0) {
-    setResultWithTimeout({
-      status: 'duplicate',
-      message: 'Não há presenças pendentes para sincronizar.',
-    })
-    return
-  }
+ if (pendingRecords.length === 0) {
+  await syncEarlyExits()
+
+  setResultWithTimeout({
+    status: 'success',
+    message: 'Sincronização verificada.',
+  })
+
+  return
+}
 
   const {
     data: { user },
@@ -578,8 +585,6 @@ const pendingRecords = await offlineAttendanceDb.attendance
 }
 
 async function syncEarlyExits() {
-  if (loadingSync) return
-
   setLoadingSync(true)
 
   try {
