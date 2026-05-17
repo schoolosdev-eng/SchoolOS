@@ -24,6 +24,16 @@ type AttendanceRecord = {
   updated_at?: string
 }
 
+type EarlyExitRecord = {
+  id: string
+  student_id: string
+  class_id: string
+  exit_date: string
+  exit_time: string
+  reason: string
+  authorized_by_name?: string | null
+}
+
 type AttendanceReportsSectionProps = {
   schoolName: string
   students: Student[]
@@ -38,6 +48,7 @@ type AttendanceReportsSectionProps = {
   endDate: string
   setEndDate: (value: string) => void
   onGenerate: () => void
+  earlyExits: EarlyExitRecord[]
   loading: boolean
 
   isSubscriptionActive: boolean
@@ -61,6 +72,7 @@ export default function AttendanceReportsSection({
   loading,
   isSubscriptionActive,
   showMessage,
+  earlyExits,
 }: AttendanceReportsSectionProps) {
   const [windowWidth, setWindowWidth] = useState(1200)
 
@@ -150,6 +162,13 @@ function formatTimeBR(dateString?: string) {
 
 const studentMap = new Map(
   students.map((s) => [s.id, s])
+)
+
+const earlyExitMap = new Map(
+  earlyExits.map((exit) => [
+    `${exit.student_id}_${exit.exit_date}`,
+    exit,
+  ])
 )
 
   return (
@@ -633,9 +652,40 @@ const studentMap = new Map(
                                 : '#dc2626',
                           }}
                         >
-                          {r.status === 'present'
-                            ? 'Presente'
-                            : 'Faltoso'}
+                          {(() => {
+  const earlyExit = earlyExitMap.get(
+    `${r.student_id}_${r.attendance_date}`
+  )
+
+  if (r.status === 'present' && earlyExit) {
+    return `Presente • Saída às ${earlyExit.exit_time}`
+  }
+
+  return r.status === 'present'
+    ? 'Presente'
+    : 'Faltou'
+})()}
+
+{(() => {
+  const earlyExit = earlyExitMap.get(
+    `${r.student_id}_${r.attendance_date}`
+  )
+
+  if (!earlyExit) return null
+
+  return (
+    <div
+      style={{
+        marginTop: 4,
+        fontSize: 11,
+        fontWeight: 600,
+        color: '#c2410c',
+      }}
+    >
+      Motivo: {earlyExit.reason}
+    </div>
+  )
+})()}
                         </td>
 
 <td style={tdStyle}>
