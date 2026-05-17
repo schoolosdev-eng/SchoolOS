@@ -99,6 +99,16 @@ type SchoolInfo = {
   name: string
 }
 
+type EarlyExitRecord = {
+  id: string
+  student_id: string
+  class_id: string
+  exit_date: string
+  exit_time: string
+  reason: string
+  authorized_by_name?: string | null
+}
+
 export default function SchoolPage() {
   const params = useParams<{ schoolId: string }>()
   const router = useRouter()
@@ -221,6 +231,7 @@ const [annualRankingData, setAnnualRankingData] = useState<AttendanceRankingItem
   const [schoolName, setSchoolName] = useState('SchoolOS')
   const [absenceAlerts, setAbsenceAlerts] = useState<AlertStudent[]>([])
   const [alertsLoading, setAlertsLoading] = useState(false)
+  const [earlyExits, setEarlyExits] = useState<EarlyExitRecord[]>([])
 
   const [guardianEmail, setGuardianEmail] = useState('')
   const [guardianWhatsapp, setGuardianWhatsapp] = useState('')
@@ -1078,14 +1089,31 @@ async function handleGenerateAttendanceReport() {
 
   const { data, error } = await query
 
+if (error) {
   setReportLoading(false)
+  showMessage(`Erro ao gerar relatório: ${error.message}`)
+  return
+}
 
-  if (error) {
-    showMessage(`Erro ao gerar relatório: ${error.message}`)
-    return
-  }
+const { data: earlyExitData, error: earlyExitError } = await supabase
+  .from('student_early_exits')
+  .select(
+    'id, student_id, class_id, exit_date, exit_time, reason, authorized_by_name'
+  )
+  .eq('school_id', schoolId)
+  .gte('exit_date', reportStartDate)
+  .lte('exit_date', reportEndDate)
 
-  setReportRecords((data || []) as typeof reportRecords)
+setReportLoading(false)
+
+if (earlyExitError) {
+  console.error('Erro ao buscar saídas antecipadas:', earlyExitError)
+  setEarlyExits([])
+} else {
+  setEarlyExits((earlyExitData || []) as EarlyExitRecord[])
+}
+
+setReportRecords((data || []) as typeof reportRecords)
 
 await fetchAnnualRankingRecords()
 
@@ -3816,6 +3844,7 @@ onClick={() => {
             loading={reportLoading || studentsLoading}
             isSubscriptionActive={isSubscriptionActive}
             showMessage={showMessage}
+            earlyExits={earlyExits}
           />
 
           <div style={{ marginTop: 14, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
