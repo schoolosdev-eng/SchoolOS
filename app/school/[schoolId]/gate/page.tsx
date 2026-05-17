@@ -325,6 +325,29 @@ if (!todayAttendance) {
   return
 }
 
+const alreadyExitedToday = await offlineAttendanceDb.earlyExits
+  .where('student_id')
+  .equals(student.id)
+  .filter(
+    (exit) =>
+      exit.exit_date === today &&
+      exit.school_id === schoolId
+  )
+  .first()
+
+if (alreadyExitedToday) {
+  setResultWithTimeout({
+    status: 'duplicate',
+    message: `Saída já registrada hoje às ${alreadyExitedToday.exit_time}.`,
+    student: {
+      name: student.full_name,
+      className: student.class_name,
+      photo: null,
+    },
+  })
+  return
+}
+
   let photoUrl: string | null = null
 
   if (navigator.onLine && student.profile_photo_path) {
