@@ -117,7 +117,7 @@ const criticalStudents = [...orderedRanking]
             fontWeight: 900,
           }}
         >
-          🏆 Melhores frequências
+          🏆 Melhores Frequências
         </h3>
 
         {bestStudents.map((item, index) => {
@@ -217,7 +217,7 @@ const criticalStudents = [...orderedRanking]
             fontWeight: 900,
           }}
         >
-          ⚠️ Frequência crítica
+          ⚠️ Ranking Frequências Críticas
         </h3>
 
         {criticalStudents.length === 0 ? (
