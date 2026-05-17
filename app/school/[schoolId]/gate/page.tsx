@@ -528,7 +528,74 @@ const pendingRecords = await offlineAttendanceDb.attendance
     status: 'success',
     message: `Sincronização concluída. Registros enviados: ${syncedCount}`,
   })
+  await syncEarlyExits()
     } finally {
+    setLoadingSync(false)
+  }
+}
+
+async function syncEarlyExits() {
+  if (loadingSync) return
+
+  setLoadingSync(true)
+
+  try {
+    if (!navigator.onLine) {
+      setResultWithTimeout({
+        status: 'error',
+        message:
+          'Sem internet. As saídas serão sincronizadas quando a conexão voltar.',
+      })
+      return
+    }
+
+    const pendingExits = await offlineAttendanceDb.earlyExits
+      .filter((record) => record.synced === false)
+      .toArray()
+
+    if (pendingExits.length === 0) {
+      return
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    let syncedCount = 0
+
+    for (const exit of pendingExits) {
+      const { error } = await supabase
+        .from('student_early_exits')
+        .insert({
+          id: exit.id,
+          school_id: exit.school_id,
+          student_id: exit.student_id,
+          class_id: exit.class_id,
+          exit_date: exit.exit_date,
+          exit_time: exit.exit_time,
+          reason: exit.reason,
+          authorized_by_name: exit.authorized_by_name,
+          responsible_contact: exit.responsible_contact,
+          recorded_at: exit.recorded_at,
+          recorded_by_user_id: user?.id || null,
+        })
+
+      if (!error) {
+        await offlineAttendanceDb.earlyExits.update(exit.id, {
+          synced: true,
+        })
+
+        syncedCount++
+      }
+    }
+
+    if (syncedCount > 0) {
+      setResultWithTimeout({
+        status: 'success',
+        message: `Saídas sincronizadas: ${syncedCount}`,
+      })
+    }
+  } finally {
     setLoadingSync(false)
   }
 }
