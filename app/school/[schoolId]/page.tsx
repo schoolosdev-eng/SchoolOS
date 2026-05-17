@@ -37,6 +37,14 @@ type Student = {
   responsible_whatsapp?: string | null
 }
 
+type BatchStudentInput = {
+  full_name: string
+  email: string
+  birth_date: string
+  responsible_email: string
+  responsible_whatsapp: string
+}
+
 type AlertStudent = {
   studentId: string
   studentName: string
@@ -1931,6 +1939,95 @@ if (photoToUpload) {
   }
 }
 
+async function handleCreateStudentsBatch(batchStudents: BatchStudentInput[]) {
+  if (!schoolId) {
+    showMessage('Escola não identificada.')
+    return
+  }
+
+  if (!canManage) {
+    showMessage('Você não tem permissão para cadastrar alunos.')
+    return
+  }
+
+  const validStudents = batchStudents
+    .map((student) => ({
+      full_name: student.full_name.trim(),
+      email: student.email.trim().toLowerCase(),
+      birth_date: student.birth_date,
+      responsible_email: student.responsible_email.trim().toLowerCase(),
+      responsible_whatsapp: student.responsible_whatsapp.trim(),
+    }))
+    .filter((student) => student.full_name && student.email && student.birth_date)
+
+  if (validStudents.length === 0) {
+    showMessage('Preencha pelo menos um aluno válido.')
+    return
+  }
+
+  const { data: subscriptionData, error: subscriptionError } = await supabase
+    .from('school_subscriptions')
+    .select(`
+      plan_id,
+      subscription_plans (
+        student_limit
+      )
+    `)
+    .eq('school_id', schoolId)
+    .single()
+
+  if (subscriptionError || !subscriptionData) {
+    showMessage('Não foi possível verificar o plano da escola.')
+    return
+  }
+
+  const subscriptionPlan = Array.isArray(subscriptionData.subscription_plans)
+    ? subscriptionData.subscription_plans[0]
+    : subscriptionData.subscription_plans as unknown as {
+        student_limit: number
+      } | null
+
+  const studentLimit = subscriptionPlan?.student_limit || 0
+  const availableSlots = studentLimit - students.length
+
+  if (availableSlots <= 0) {
+    showMessage(`Limite do plano atingido (${studentLimit} alunos).`)
+    return
+  }
+
+  if (validStudents.length > availableSlots) {
+    showMessage(
+      `Seu plano permite cadastrar apenas mais ${availableSlots} aluno(s).`
+    )
+    return
+  }
+
+  const rows = validStudents.map((student) => ({
+    name: student.full_name,
+    full_name: student.full_name,
+    email: student.email || null,
+    birth_date: student.birth_date,
+    school_id: schoolId,
+    profile_photo_path: null,
+    qr_code_token: crypto.randomUUID().replace(/-/g, ''),
+    responsible_email: student.responsible_email || null,
+    responsible_whatsapp: student.responsible_whatsapp || null,
+  }))
+
+  const { error } = await supabase
+    .from('students')
+    .insert(rows)
+
+  if (error) {
+    showMessage(`Erro ao cadastrar alunos em lote: ${error.message}`)
+    return
+  }
+
+  await fetchStudents()
+
+  showMessage(`${validStudents.length} aluno(s) cadastrado(s) com sucesso.`)
+}
+
 async function handleDeleteStudent(studentId: string) {
   if (!schoolId) {
     showMessage('Escola não identificada.')
@@ -3553,6 +3650,7 @@ onClick={() => {
             setGuardianWhatsapp={setGuardianWhatsapp}
             setStudentPhoto={setStudentPhoto}
             handleCreateStudent={handleCreateStudent}
+            handleCreateStudentsBatch={handleCreateStudentsBatch}
           />
 
           <div style={dashboardSectionSpacerStyle} />
