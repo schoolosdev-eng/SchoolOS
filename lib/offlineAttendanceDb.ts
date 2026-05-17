@@ -8,6 +8,7 @@ export type OfflineStudent = {
   profile_photo_path: string | null
   class_id: string
   class_name: string
+  responsible_whatsapp: string | null
 }
 
 export type OfflineAttendance = {

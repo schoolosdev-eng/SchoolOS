@@ -58,6 +58,7 @@ const [loadingSync, setLoadingSync] = useState(false)
   class_name: string
   profile_photo_path: string | null
   photoUrl: string | null
+  responsible_whatsapp: string | null
 } | null>(null)
 
 const [exitReason, setExitReason] = useState('')
@@ -98,7 +99,8 @@ async function downloadOfflineData() {
           full_name,
           school_id,
           profile_photo_path,
-          qr_code_token
+          qr_code_token,
+          responsible_whatsapp
         ),
         classes (
           id,
@@ -135,6 +137,7 @@ async function downloadOfflineData() {
           profile_photo_path: student.profile_photo_path || null,
           class_id: schoolClass.id,
           class_name: schoolClass.name || 'Sem turma',
+          responsible_whatsapp: student.responsible_whatsapp || null,
         }
       })
       .filter(Boolean)
@@ -366,6 +369,7 @@ if (alreadyExitedToday) {
     class_name: student.class_name,
     profile_photo_path: student.profile_photo_path,
     photoUrl,
+    responsible_whatsapp: student.responsible_whatsapp || null,
   })
 
   setExitReason('')
@@ -405,6 +409,21 @@ async function confirmEarlyExit() {
   })
 
   await loadTodayEarlyExits()
+
+  const rawPhone = pendingExitStudent.responsible_whatsapp?.replace(/\D/g, '')
+
+if (rawPhone) {
+  const phone = rawPhone.startsWith('55') ? rawPhone : `55${rawPhone}`
+
+  const message = encodeURIComponent(
+    `Olá! Informamos que o(a) aluno(a) ${pendingExitStudent.full_name}, da turma ${pendingExitStudent.class_name}, registrou saída antecipada da escola às ${now.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })}. Motivo: ${finalReason}.`
+  )
+
+  window.open(`https://wa.me/${phone}?text=${message}`, '_blank')
+}
 
   setResultWithTimeout({
     status: 'success',
