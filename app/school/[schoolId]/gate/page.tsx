@@ -63,6 +63,7 @@ const [loadingSync, setLoadingSync] = useState(false)
 const [exitReason, setExitReason] = useState('')
 const [otherExitReason, setOtherExitReason] = useState('')
 const [authorizedByName, setAuthorizedByName] = useState('')
+const [todayEarlyExits, setTodayEarlyExits] = useState<any[]>([])
 
   function pushRecentScan(data: {
     status: 'success' | 'duplicate' | 'error'
@@ -380,6 +381,8 @@ async function confirmEarlyExit() {
     synced: false,
   })
 
+  await loadTodayEarlyExits()
+
   setResultWithTimeout({
     status: 'success',
     message: `Saída registrada: ${finalReason}`,
@@ -404,6 +407,30 @@ async function handleGateScan(text: string) {
   }
 
   await handleEarlyExitScan(text)
+}
+
+async function loadTodayEarlyExits() {
+  const today = new Date().toISOString().split('T')[0]
+
+  const exits = await offlineAttendanceDb.earlyExits
+    .where('exit_date')
+    .equals(today)
+    .reverse()
+    .sortBy('recorded_at')
+
+  const exitsWithStudents = await Promise.all(
+    exits.map(async (exit) => {
+      const student = await offlineAttendanceDb.students.get(exit.student_id)
+
+      return {
+        ...exit,
+        student_name: student?.full_name || 'Aluno não encontrado',
+        class_name: student?.class_name || 'Turma não encontrada',
+      }
+    })
+  )
+
+  setTodayEarlyExits(exitsWithStudents.reverse())
 }
 
 async function syncOfflineAttendance() {
@@ -847,6 +874,7 @@ async function handleStartReading() {
       if (!accessOk) return
 
       await fetchSchoolName()
+      await loadTodayEarlyExits()
       setLoading(false)
     }
 
@@ -1128,6 +1156,55 @@ async function handleStartReading() {
             <></>
           </AttendanceSection>
         </div>
+        <section
+  style={{
+    marginTop: 20,
+    background: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 12px 40px rgba(15, 23, 42, 0.08)',
+  }}
+>
+  <h2 style={sectionTitleStyle}>Saídas registradas hoje</h2>
+
+  {todayEarlyExits.length === 0 ? (
+    <p style={sectionTextStyle}>
+      Nenhuma saída antecipada registrada hoje.
+    </p>
+  ) : (
+    <div style={{ display: 'grid', gap: 10 }}>
+      {todayEarlyExits.map((exit) => (
+        <div
+          key={exit.id}
+          style={{
+            padding: 12,
+            borderRadius: 16,
+            background: '#fff7ed',
+            border: '1px solid #fed7aa',
+          }}
+        >
+          <strong>{exit.student_name}</strong>
+          <br />
+          <span>{exit.class_name}</span>
+          <br />
+          <span>Saída: {exit.exit_time}</span>
+          <br />
+          <span>Motivo: {exit.reason}</span>
+
+          {exit.authorized_by_name && (
+            <>
+              <br />
+              <span>
+                Autorizado/retirado por: {exit.authorized_by_name}
+              </span>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  )}
+</section>
       </section>
 
       {pendingExitStudent && (
