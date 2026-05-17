@@ -34,6 +34,7 @@ export default function GatePage() {
   const audioContextRef = useRef<AudioContext | null>(null)
   const [loadingOffline, setLoadingOffline] = useState(false)
 const [loadingSync, setLoadingSync] = useState(false)
+const [closingGateMode, setClosingGateMode] = useState(false)
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [resultAnimationKey, setResultAnimationKey] = useState(0)
@@ -960,6 +961,30 @@ async function handleStartReading() {
     setIsScannerActive(false)
   }
 
+  async function handleCloseGateMode() {
+  if (closingGateMode) return
+
+  setClosingGateMode(true)
+  setIsScannerActive(false)
+  setManualMode(false)
+
+  try {
+    if (navigator.onLine) {
+      await syncOfflineAttendance()
+    } else {
+      setResultWithTimeout({
+        status: 'error',
+        message:
+          'Sem internet. As presenças ficaram salvas no dispositivo e serão sincronizadas quando a conexão voltar.',
+      })
+    }
+
+    router.push(`/school/${schoolId}`)
+  } finally {
+    setClosingGateMode(false)
+  }
+}
+
   function handleNoCamera() {
     setIsScannerActive(false)
     setManualMode(true)
@@ -978,17 +1003,19 @@ async function handleStartReading() {
 }, [])
 
   useEffect(() => {
-    async function init() {
-      const accessOk = await ensureAccess()
-      if (!accessOk) return
+  async function init() {
+    const accessOk = await ensureAccess()
+    if (!accessOk) return
 
-      await fetchSchoolName()
-      await loadTodayEarlyExits()
-      setLoading(false)
-    }
+    await fetchSchoolName()
+    await loadTodayEarlyExits()
+    await downloadOfflineData()
 
-    init()
-  }, [schoolId])
+    setLoading(false)
+  }
+
+  init()
+}, [schoolId])
 
   useEffect(() => {
   return () => {
@@ -1048,11 +1075,16 @@ async function handleStartReading() {
         </div>
 
         <button
-          onClick={() => router.push(`/school/${schoolId}`)}
-          style={secondaryButtonStyle}
-        >
-          Voltar ao painel
-        </button>
+  onClick={handleCloseGateMode}
+  disabled={closingGateMode}
+  style={{
+    ...secondaryButtonStyle,
+    opacity: closingGateMode ? 0.7 : 1,
+    cursor: closingGateMode ? 'not-allowed' : 'pointer',
+  }}
+>
+  {closingGateMode ? 'Sincronizando...' : 'Encerrar e voltar ao painel'}
+</button>
       </section>
 
       <section style={gateGridStyle} className="gate-grid">
