@@ -574,6 +574,13 @@ async function loadStudentPhoto(studentId: string, path?: string | null) {
   )
 }
 
+function formatDateBR(date: string) {
+  if (!date) return ''
+
+  const [year, month, day] = date.split('-')
+  return `${day}/${month}/${year}`
+}
+
 function getSubmissionsByActivity(activityId: string) {
   return submissions.filter(
     (submission) => submission.activity_id === activityId
@@ -882,7 +889,7 @@ className="class-card-responsive"
       <strong>{activity.discipline}</strong>
 
       <span>
-        Prazo: {new Date(activity.due_date).toLocaleDateString('pt-BR')}
+        Prazo: {formatDateBR(activity.due_date)}
       </span>
 
       <span
