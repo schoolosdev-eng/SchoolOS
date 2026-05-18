@@ -32,7 +32,7 @@ type ClassActivity = {
   teacher_id: string
   discipline: string
   due_date: string
-  file_url: string
+  file_path: string
   file_name: string | null
   file_type: string | null
   description: string | null
@@ -45,7 +45,7 @@ type ActivitySubmission = {
   class_id: string
   activity_id: string
   student_id: string
-  file_url: string
+  file_path: string
   file_name: string | null
   file_type: string | null
   comment: string | null
@@ -243,6 +243,30 @@ useEffect(() => {
   })
 }, [studentsFromSelectedClass])
 
+async function getActivitySignedUrl(filePath: string) {
+  const { data, error } = await supabase.storage
+    .from('class-activities')
+    .createSignedUrl(filePath, 60 * 60)
+
+  if (error || !data?.signedUrl) {
+    throw new Error(error?.message || 'Erro ao gerar link.')
+  }
+
+  return data.signedUrl
+}
+
+async function getSubmissionSignedUrl(filePath: string) {
+  const { data, error } = await supabase.storage
+    .from('activity-submissions')
+    .createSignedUrl(filePath, 60 * 60)
+
+  if (error || !data?.signedUrl) {
+    throw new Error(error?.message || 'Erro ao gerar link.')
+  }
+
+  return data.signedUrl
+}
+
   async function openClass(classId: string) {
     setSelectedClassId(classId)
     setMessage('')
@@ -327,9 +351,6 @@ async function handleUploadActivity() {
       return
     }
 
-    const { data: publicUrlData } = supabase.storage
-      .from('class-activities')
-      .getPublicUrl(filePath)
 
     const { error: insertError } = await supabase.from('class_activities').insert({
       school_id: schoolId,
@@ -337,7 +358,7 @@ async function handleUploadActivity() {
       teacher_id: userId,
       discipline: discipline.trim(),
       due_date: dueDate,
-      file_url: publicUrlData.publicUrl,
+      file_path: filePath,
       file_name: activityFile.name,
       file_type: activityFile.type,
       description: description.trim() || null,
@@ -402,10 +423,6 @@ async function handleSubmitActivityAnswer() {
       return
     }
 
-    const { data: publicUrlData } = supabase.storage
-      .from('activity-submissions')
-      .getPublicUrl(filePath)
-
     const { error: insertError } = await supabase
       .from('activity_submissions')
       .insert({
@@ -413,7 +430,7 @@ async function handleSubmitActivityAnswer() {
         class_id: selectedClassId,
         activity_id: selectedActivityForSubmission.id,
         student_id: loggedStudent.id,
-        file_url: publicUrlData.publicUrl,
+        file_path: filePath,
         file_name: submissionFile.name,
         file_type: submissionFile.type,
         comment: submissionComment.trim() || null,
@@ -854,15 +871,23 @@ className="class-card-responsive"
 
       {activity.description && <p>{activity.description}</p>}
 
-      <a
-        href={activity.file_url}
-        target="_blank"
-        rel="noreferrer"
-        style={downloadButtonStyle}
-className="download-button-responsive"
-      >
-        Baixar atividade
-      </a>
+      <button
+  onClick={async () => {
+    try {
+      const signedUrl = await getActivitySignedUrl(
+        activity.file_path
+      )
+
+      window.open(signedUrl, '_blank')
+    } catch (error) {
+      alert('Erro ao abrir atividade.')
+    }
+  }}
+  style={downloadButtonStyle}
+  className="download-button-responsive"
+>
+  Baixar atividade
+</button>
 
       {isStudent && loggedStudent && (
         <>
@@ -888,15 +913,23 @@ className="download-button-responsive"
                 </span>
               )}
 
-              <a
-                href={studentSubmission.file_url}
-                target="_blank"
-                rel="noreferrer"
-                style={downloadButtonStyle}
-className="download-button-responsive"
-              >
-                Ver minha resposta
-              </a>
+              <button
+  onClick={async () => {
+    try {
+      const signedUrl = await getSubmissionSignedUrl(
+        studentSubmission.file_path
+      )
+
+      window.open(signedUrl, '_blank')
+    } catch (error) {
+      alert('Erro ao abrir resposta.')
+    }
+  }}
+  style={downloadButtonStyle}
+  className="download-button-responsive"
+>
+  Ver minha resposta
+</button>
             </div>
           ) : expired ? (
             <div
@@ -975,15 +1008,23 @@ className="download-button-responsive"
                       )}
                     </div>
 
-                    <a
-                      href={submission.file_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={downloadButtonStyle}
-className="download-button-responsive"
-                    >
-                      Baixar resposta
-                    </a>
+                    <button
+  onClick={async () => {
+    try {
+      const signedUrl = await getSubmissionSignedUrl(
+        submission.file_path
+      )
+
+      window.open(signedUrl, '_blank')
+    } catch (error) {
+      alert('Erro ao baixar resposta.')
+    }
+  }}
+  style={downloadButtonStyle}
+  className="download-button-responsive"
+>
+  Baixar resposta
+</button>
                   </div>
                 )
               })}
