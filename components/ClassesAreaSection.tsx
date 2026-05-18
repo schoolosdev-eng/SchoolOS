@@ -243,12 +243,39 @@ useEffect(() => {
   })
 }, [studentsFromSelectedClass])
 
+function normalizeActivityStoragePath(value: string) {
+  if (!value) return ''
+
+  const marker = '/class-activities/'
+
+  if (value.includes(marker)) {
+    return value.split(marker)[1]
+  }
+
+  return value
+}
+
+function normalizeSubmissionStoragePath(value: string) {
+  if (!value) return ''
+
+  const marker = '/activity-submissions/'
+
+  if (value.includes(marker)) {
+    return value.split(marker)[1]
+  }
+
+  return value
+}
+
 async function getActivitySignedUrl(filePath: string) {
+  const normalizedPath = normalizeActivityStoragePath(filePath)
+
   const { data, error } = await supabase.storage
     .from('class-activities')
-    .createSignedUrl(filePath, 60 * 60)
+    .createSignedUrl(normalizedPath, 60 * 60)
 
   if (error || !data?.signedUrl) {
+    console.error('Erro signed activity:', error, normalizedPath)
     throw new Error(error?.message || 'Erro ao gerar link.')
   }
 
@@ -256,11 +283,14 @@ async function getActivitySignedUrl(filePath: string) {
 }
 
 async function getSubmissionSignedUrl(filePath: string) {
+  const normalizedPath = normalizeSubmissionStoragePath(filePath)
+
   const { data, error } = await supabase.storage
     .from('activity-submissions')
-    .createSignedUrl(filePath, 60 * 60)
+    .createSignedUrl(normalizedPath, 60 * 60)
 
   if (error || !data?.signedUrl) {
+    console.error('Erro signed submission:', error, normalizedPath)
     throw new Error(error?.message || 'Erro ao gerar link.')
   }
 
