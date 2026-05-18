@@ -201,14 +201,17 @@ const isTablet = windowWidth >= 768 && windowWidth < 1024
   useEffect(() => {
     async function loadAccess() {
       const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
+  data: { session },
+  error: sessionError,
+} = await supabase.auth.getSession()
 
-      if (userError || !user) {
-        router.replace('/')
-        return
-      }
+if (sessionError || !session?.user) {
+  setMessage('Sessão não encontrada. Faça login novamente.')
+  setLoading(false)
+  return
+}
+
+const user = session.user
 
       await ensureUserProfile(
         user.id,
