@@ -25,7 +25,6 @@ export async function POST(request: Request) {
       body = {}
     }
 
-    console.log('BODY RECEBIDO:', body)
 
     const url = new URL(request.url)
 
@@ -69,8 +68,6 @@ console.log('PAYMENT ID:', paymentId, typeof paymentId)
 
     const payment = await mpResponse.json()
 
-    console.log('PAYMENT DATA:', payment)
-
     if (!mpResponse.ok) {
       console.error('ERRO MP RESPONSE:', payment)
       return NextResponse.json({ received: true })
@@ -93,7 +90,6 @@ console.log('PAYMENT ID:', paymentId, typeof paymentId)
       .eq('id', internalPaymentId)
       .single()
 
-    console.log('PAYMENT ROW:', paymentRow)
     console.log('PAYMENT ROW ERROR:', paymentRowError)
 
     if (paymentRowError || !paymentRow) {
@@ -104,6 +100,11 @@ console.log('PAYMENT ID:', paymentId, typeof paymentId)
         { status: 400 }
       )
     }
+
+    if (paymentRow.status === 'approved') {
+  console.log('Pagamento já aprovado anteriormente.')
+  return NextResponse.json({ received: true })
+}
 
     const now = new Date()
     const expiresAt = new Date(now)
@@ -120,6 +121,21 @@ console.log('PAYMENT ID:', paymentId, typeof paymentId)
     } else {
       expiresAt.setMonth(expiresAt.getMonth() + 1)
     }
+
+    const paidAmount = Number(payment.transaction_amount)
+const expectedAmount = Number(paymentRow.amount)
+
+if (paidAmount !== expectedAmount) {
+  console.error('Valor pago diferente do esperado.', {
+    paidAmount,
+    expectedAmount,
+  })
+
+  return NextResponse.json(
+    { error: 'Valor pago inválido.' },
+    { status: 400 }
+  )
+}
 
     console.log('ATUALIZANDO SUBSCRIPTION_PAYMENTS')
 
