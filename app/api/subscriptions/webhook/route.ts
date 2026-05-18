@@ -49,6 +49,38 @@ export async function POST(request: Request) {
         )
       }
 
+      const { data: paymentRow, error: paymentRowError } = await supabase
+  .from('subscription_payments')
+  .select('*')
+  .eq('id', internalPaymentId)
+  .single()
+
+if (paymentRowError || !paymentRow) {
+  return NextResponse.json(
+    { error: 'Pagamento interno não encontrado.' },
+    { status: 400 }
+  )
+}
+
+if (paymentRow.status === 'approved') {
+  return NextResponse.json({ received: true })
+}
+
+const paidAmount = Number(session.amount_total || 0) / 100
+const expectedAmount = Number(paymentRow.amount)
+
+if (paidAmount.toFixed(2) !== expectedAmount.toFixed(2)) {
+  console.error('Valor Stripe diferente do esperado.', {
+    paidAmount,
+    expectedAmount,
+  })
+
+  return NextResponse.json(
+    { error: 'Valor pago inválido.' },
+    { status: 400 }
+  )
+}
+
       const now = new Date()
       const expiresAt = new Date(now)
 
@@ -62,6 +94,16 @@ export async function POST(request: Request) {
       } else {
         expiresAt.setMonth(expiresAt.getMonth() + 1)
       }
+
+      if (
+  paymentRow.school_id !== schoolId ||
+  paymentRow.plan_id !== planId
+) {
+  return NextResponse.json(
+    { error: 'Metadata não corresponde ao pagamento interno.' },
+    { status: 400 }
+  )
+}
 
       await supabase
         .from('subscription_payments')
