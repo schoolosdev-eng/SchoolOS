@@ -38,7 +38,7 @@ export default function ResetPasswordPage() {
     setMessage('Senha atualizada com sucesso. Redirecionando...')
 
     setTimeout(() => {
-      router.push('/')
+      router.push('/login')
     }, 1500)
   }
 
@@ -184,7 +184,7 @@ export default function ResetPasswordPage() {
 
           <button
             type="button"
-            onClick={() => router.push('/')}
+            onClick={() => router.push('/login')}
             style={{
               width: '100%',
               height: 48,

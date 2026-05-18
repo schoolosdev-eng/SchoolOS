@@ -229,7 +229,7 @@ export default function SignUpPage() {
               {loading ? 'Criando...' : 'Criar conta'}
             </button>
 
-            <button onClick={() => router.push('/')} style={secondaryButtonStyle}>
+            <button onClick={() => router.push('/login')} style={secondaryButtonStyle}>
               Voltar
             </button>
           </div>
