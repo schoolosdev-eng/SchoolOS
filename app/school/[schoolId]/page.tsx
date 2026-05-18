@@ -1887,7 +1887,17 @@ const subscriptionPlan = Array.isArray(subscriptionData.subscription_plans)
 
 const studentLimit = subscriptionPlan?.student_limit || 0
 
-if (students.length >= studentLimit) {
+const { count: currentStudentsCount, error: countError } = await supabase
+  .from('students')
+  .select('id', { count: 'exact', head: true })
+  .eq('school_id', schoolId)
+
+if (countError) {
+  showMessage('Não foi possível verificar a quantidade atual de alunos.')
+  return
+}
+
+if ((currentStudentsCount || 0) >= studentLimit) {
   showMessage(
     `Limite do plano atingido (${studentLimit} alunos).`
   )
@@ -1988,7 +1998,18 @@ async function handleCreateStudentsBatch(batchStudents: BatchStudentInput[]) {
       } | null
 
   const studentLimit = subscriptionPlan?.student_limit || 0
-  const availableSlots = studentLimit - students.length
+
+const { count: currentStudentsCount, error: countError } = await supabase
+  .from('students')
+  .select('id', { count: 'exact', head: true })
+  .eq('school_id', schoolId)
+
+if (countError) {
+  showMessage('Não foi possível verificar a quantidade atual de alunos.')
+  return
+}
+
+const availableSlots = studentLimit - (currentStudentsCount || 0)
 
   if (availableSlots <= 0) {
     showMessage(`Limite do plano atingido (${studentLimit} alunos).`)
