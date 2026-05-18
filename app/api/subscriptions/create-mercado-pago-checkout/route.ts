@@ -19,6 +19,34 @@ export async function POST(request: Request) {
       )
     }
 
+    const authHeader = request.headers.get('authorization')
+
+if (!authHeader) {
+  return NextResponse.json(
+    { error: 'Usuário não autenticado.' },
+    { status: 401 }
+  )
+}
+
+const token = authHeader.replace('Bearer ', '')
+
+const userSupabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+
+const {
+  data: { user },
+  error: userError,
+} = await userSupabase.auth.getUser(token)
+
+if (userError || !user) {
+  return NextResponse.json(
+    { error: 'Sessão inválida.' },
+    { status: 401 }
+  )
+}
+
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -29,6 +57,22 @@ export async function POST(request: Request) {
         },
       }
     )
+
+    const { data: membership, error: membershipError } = await supabaseAdmin
+  .from('school_memberships')
+  .select('id')
+  .eq('school_id', schoolId)
+  .eq('user_id', user.id)
+  .eq('role', 'admin')
+  .eq('status', 'active')
+  .maybeSingle()
+
+if (membershipError || !membership) {
+  return NextResponse.json(
+    { error: 'Apenas administradores podem alterar plano.' },
+    { status: 403 }
+  )
+}
 
     const { data: paymentRow, error: paymentError } = await supabaseAdmin
       .from('subscription_payments')
