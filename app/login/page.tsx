@@ -84,7 +84,7 @@ const isTablet = windowWidth >= 768 && windowWidth < 1024
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: window.location.origin + '/access'
+      redirectTo: `${window.location.origin}/auth/callback`,
     },
   })
 
