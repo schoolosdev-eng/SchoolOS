@@ -1,4 +1,8 @@
+'use client'
+
 import Link from 'next/link'
+import { useState } from 'react'
+import type { CSSProperties } from 'react'
 
 const features = [
   {
@@ -34,138 +38,69 @@ const features = [
 ]
 
 export default function HomePage() {
+  const [menuOpen, setMenuOpen] = useState(false)
   return (
-    <main
-      style={{
-        minHeight: '100vh',
-        background:
-          'linear-gradient(135deg, #f6f9ff 0%, #eef6ff 48%, #eaf4ff 100%)',
-        color: '#07122f',
-      }}
+    <main className="page">
+      <header className="header">
+  <Link href="/" className="logoLink">
+    <img src="/logoteste.png" alt="SchoolOS" className="topLogo" />
+  </Link>
+
+  <button
+    className="menuButton"
+    onClick={() => setMenuOpen((prev) => !prev)}
+    aria-label="Abrir menu"
+  >
+    {menuOpen ? '✕' : '☰'}
+  </button>
+
+  <nav className={`nav ${menuOpen ? 'navOpen' : ''}`}>
+    <a href="#recursos" style={navLink} onClick={() => setMenuOpen(false)}>
+      Recursos
+    </a>
+
+    <a href="#funcionalidades" style={navLink} onClick={() => setMenuOpen(false)}>
+      Funcionalidades
+    </a>
+
+    <a href="#escolas" style={navLink} onClick={() => setMenuOpen(false)}>
+      Para escolas
+    </a>
+
+    <a
+      href="https://wa.me/5588921826192"
+      target="_blank"
+      style={navLink}
+      onClick={() => setMenuOpen(false)}
     >
-      <header
-        style={{
-          height: 112,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 7vw',
-          background: 'rgba(255,255,255,0.82)',
-          borderBottom: '1px solid #dbe7f5',
-          backdropFilter: 'blur(14px)',
-        }}
-      >
-        <Link href="/" style={{ textDecoration: 'none' }}>
-          <img
-            src="/logoteste.png"
-            alt="SchoolOS"
-            style={{
-              width: 100,
-              maxWidth: '42vw',
-              height: 'auto',
-              display: 'block',
-            }}
-          />
-        </Link>
+      Contato
+    </a>
 
-        <nav
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 32,
-            fontSize: 16,
-            fontWeight: 800,
-          }}
-        >
-          <a href="#recursos" style={navLink}>
-            Recursos
-          </a>
-          <a href="#funcionalidades" style={navLink}>
-            Funcionalidades
-          </a>
-          <a href="#escolas" style={navLink}>
-            Para escolas
-          </a>
-          <a href="https://wa.me/5588921826192" target="_blank" style={navLink}>
-            Contato
-          </a>
+    <Link href="/login" style={loginTopButton} onClick={() => setMenuOpen(false)}>
+      Entrar
+    </Link>
+  </nav>
+</header>
 
-          <Link href="/login" style={loginTopButton}>
-            Entrar na plataforma
-          </Link>
-        </nav>
-      </header>
-
-      <section
-        style={{
-          maxWidth: 1440,
-          margin: '0 auto',
-          padding: '48px 32px 64px',
-          display: 'grid',
-          gridTemplateColumns: '0.95fr 1fr',
-          gap: 28,
-          alignItems: 'stretch',
-        }}
-      >
-        <div
-          style={{
-            background: 'rgba(255,255,255,0.9)',
-            border: '1px solid #dbe7f5',
-            borderRadius: 34,
-            padding: '52px 46px',
-            boxShadow: '0 24px 70px rgba(15, 23, 42, 0.08)',
-          }}
-        >
-          <div
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 10,
-              background: '#eaf2ff',
-              color: '#0f3f9f',
-              padding: '10px 18px',
-              borderRadius: 999,
-              fontWeight: 900,
-              marginBottom: 44,
-            }}
-          >
-            <span style={{ color: '#2457e6' }}>●</span>
+      <section className="hero">
+        <div className="heroCard">
+          <div className="pill">
+            <span>●</span>
             Plataforma Inteligente de Gestão Escolar
           </div>
 
           <img
             src="/logocompleta3.png"
             alt="SchoolOS Gestão Escolar Inteligente"
-            style={{
-              width: '100%',
-              maxWidth: 520,
-              height: 'auto',
-              display: 'block',
-              marginBottom: 44,
-            }}
+            className="mainLogo"
           />
 
-          <p
-            style={{
-              fontSize: 25,
-              lineHeight: 1.55,
-              color: '#4f6685',
-              maxWidth: 690,
-              margin: 0,
-            }}
-          >
+          <p className="heroText">
             A plataforma completa para escolas de ensino fundamental e médio.
             Mais controle, segurança e comunicação em um único ambiente.
           </p>
 
-          <div
-            style={{
-              display: 'flex',
-              gap: 16,
-              flexWrap: 'wrap',
-              marginTop: 42,
-            }}
-          >
+          <div className="buttons">
             <Link href="/login" style={primaryButton}>
               ↪ Entrar na plataforma
             </Link>
@@ -180,17 +115,7 @@ export default function HomePage() {
             </a>
           </div>
 
-          <div
-            id="escolas"
-            style={{
-              marginTop: 42,
-              paddingTop: 34,
-              borderTop: '1px solid #e2e8f0',
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-              gap: 26,
-            }}
-          >
+          <div id="escolas" className="miniGrid">
             <MiniInfo
               icon="🏫"
               title="Gestão completa"
@@ -203,22 +128,12 @@ export default function HomePage() {
             />
           </div>
 
-          <div
-            style={{
-              marginTop: 40,
-              paddingTop: 30,
-              borderTop: '1px solid #e2e8f0',
-              display: 'flex',
-              gap: 26,
-              flexWrap: 'wrap',
-              alignItems: 'center',
-            }}
-          >
+          <div className="legalArea">
             <Link href="/politica-de-privacidade" style={legalLink}>
               🛡️ Política de Privacidade
             </Link>
 
-            <span style={{ color: '#cbd5e1' }}>|</span>
+            <span>|</span>
 
             <Link href="/termos-de-uso" style={legalLink}>
               📄 Termos de Uso
@@ -226,119 +141,24 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div
-          id="recursos"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-            gap: 18,
-          }}
-        >
+        <div id="recursos" className="featuresGrid">
           {features.map((feature) => (
-            <div
-              key={feature.title}
-              style={{
-                background: 'rgba(255,255,255,0.9)',
-                border: '1px solid #dbe7f5',
-                borderRadius: 26,
-                padding: 30,
-                minHeight: 210,
-                boxShadow: '0 18px 45px rgba(15, 23, 42, 0.055)',
-              }}
-            >
-              <div
-                style={{
-                  width: 66,
-                  height: 66,
-                  borderRadius: 20,
-                  background: '#eaf2ff',
-                  color: '#2457e6',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 31,
-                  marginBottom: 22,
-                  fontWeight: 900,
-                }}
-              >
-                {feature.icon}
-              </div>
+            <div key={feature.title} className="featureCard">
+              <div className="featureIcon">{feature.icon}</div>
 
-              <h3
-                style={{
-                  margin: '0 0 12px',
-                  fontSize: 22,
-                  color: '#07122f',
-                  fontWeight: 950,
-                }}
-              >
-                {feature.title}
-              </h3>
+              <h3>{feature.title}</h3>
 
-              <p
-                style={{
-                  margin: 0,
-                  color: '#526987',
-                  fontSize: 17,
-                  lineHeight: 1.55,
-                }}
-              >
-                {feature.text}
-              </p>
+              <p>{feature.text}</p>
             </div>
           ))}
 
-          <div
-            id="funcionalidades"
-            style={{
-              gridColumn: '1 / -1',
-              background: 'linear-gradient(135deg, #2457e6 0%, #0f49d8 100%)',
-              borderRadius: 28,
-              padding: '34px 40px',
-              color: '#fff',
-              minHeight: 190,
-              display: 'grid',
-              gridTemplateColumns: '170px 1fr',
-              gap: 30,
-              alignItems: 'center',
-              boxShadow: '0 24px 50px rgba(36, 87, 230, 0.28)',
-            }}
-          >
-            <div
-              style={{
-                width: 150,
-                height: 110,
-                borderRadius: 22,
-                background: 'rgba(255,255,255,0.18)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 64,
-              }}
-            >
-              🖥️
-            </div>
+          <div id="funcionalidades" className="blueCard">
+            <div className="blueIcon">🖥️</div>
 
             <div>
-              <h2
-                style={{
-                  margin: '0 0 12px',
-                  fontSize: 31,
-                  lineHeight: 1.15,
-                  fontWeight: 950,
-                }}
-              >
-                Tudo que sua escola precisa em um só lugar
-              </h2>
+              <h2>Tudo que sua escola precisa em um só lugar</h2>
 
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: 18,
-                  lineHeight: 1.55,
-                  opacity: 0.92,
-                }}
-              >
+              <p>
                 Simplifique processos, ganhe tempo e melhore os resultados da
                 sua escola.
               </p>
@@ -346,6 +166,375 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      <style jsx>{`
+        .page {
+          min-height: 100vh;
+          background: linear-gradient(135deg, #f6f9ff 0%, #eef6ff 48%, #eaf4ff 100%);
+          color: #07122f;
+        }
+
+        .header {
+          min-height: 112px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 24px;
+          padding: 20px 7vw;
+          background: rgba(255, 255, 255, 0.82);
+          border-bottom: 1px solid #dbe7f5;
+          backdrop-filter: blur(14px);
+        }
+
+        .logoLink {
+          text-decoration: none;
+          flex-shrink: 0;
+        }
+
+        .topLogo {
+          width: 100px;
+          max-width: 42vw;
+          height: auto;
+          display: block;
+        }
+
+        .nav {
+          display: flex;
+          align-items: center;
+          gap: 32px;
+          font-size: 16px;
+          font-weight: 800;
+        }
+
+        .hero {
+          max-width: 1440px;
+          margin: 0 auto;
+          padding: 48px 32px 64px;
+          display: grid;
+          grid-template-columns: 0.95fr 1fr;
+          gap: 28px;
+          align-items: stretch;
+        }
+
+        .heroCard {
+          background: rgba(255, 255, 255, 0.9);
+          border: 1px solid #dbe7f5;
+          border-radius: 34px;
+          padding: 52px 46px;
+          box-shadow: 0 24px 70px rgba(15, 23, 42, 0.08);
+        }
+
+        .menuButton {
+  display: none;
+  width: 46px;
+  height: 46px;
+  border: 1px solid #cbd8ea;
+  border-radius: 14px;
+  background: #fff;
+  color: #07122f;
+  font-size: 24px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+        .pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          background: #eaf2ff;
+          color: #0f3f9f;
+          padding: 10px 18px;
+          border-radius: 999px;
+          font-weight: 900;
+          margin-bottom: 44px;
+        }
+
+        .pill span {
+          color: #2457e6;
+        }
+
+        .mainLogo {
+          width: 100%;
+          max-width: 520px;
+          height: auto;
+          display: block;
+          margin-bottom: 44px;
+        }
+
+        .heroText {
+          font-size: 25px;
+          line-height: 1.55;
+          color: #4f6685;
+          max-width: 690px;
+          margin: 0;
+        }
+
+        .buttons {
+          display: flex;
+          gap: 16px;
+          flex-wrap: wrap;
+          margin-top: 42px;
+        }
+
+        .miniGrid {
+          margin-top: 42px;
+          padding-top: 34px;
+          border-top: 1px solid #e2e8f0;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 26px;
+        }
+
+        .legalArea {
+          margin-top: 40px;
+          padding-top: 30px;
+          border-top: 1px solid #e2e8f0;
+          display: flex;
+          gap: 26px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+
+        .legalArea span {
+          color: #cbd5e1;
+        }
+
+        .featuresGrid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 18px;
+        }
+
+        .featureCard {
+          background: rgba(255, 255, 255, 0.9);
+          border: 1px solid #dbe7f5;
+          border-radius: 26px;
+          padding: 30px;
+          min-height: 210px;
+          box-shadow: 0 18px 45px rgba(15, 23, 42, 0.055);
+        }
+
+        .featureIcon {
+          width: 66px;
+          height: 66px;
+          border-radius: 20px;
+          background: #eaf2ff;
+          color: #2457e6;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 31px;
+          margin-bottom: 22px;
+          font-weight: 900;
+        }
+
+        .featureCard h3 {
+          margin: 0 0 12px;
+          font-size: 22px;
+          color: #07122f;
+          font-weight: 950;
+        }
+
+        .featureCard p {
+          margin: 0;
+          color: #526987;
+          font-size: 17px;
+          line-height: 1.55;
+        }
+
+        .blueCard {
+          grid-column: 1 / -1;
+          background: linear-gradient(135deg, #2457e6 0%, #0f49d8 100%);
+          border-radius: 28px;
+          padding: 34px 40px;
+          color: #fff;
+          min-height: 190px;
+          display: grid;
+          grid-template-columns: 170px 1fr;
+          gap: 30px;
+          align-items: center;
+          box-shadow: 0 24px 50px rgba(36, 87, 230, 0.28);
+        }
+
+        .blueIcon {
+          width: 150px;
+          height: 110px;
+          border-radius: 22px;
+          background: rgba(255, 255, 255, 0.18);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 64px;
+        }
+
+        .blueCard h2 {
+          margin: 0 0 12px;
+          font-size: 31px;
+          line-height: 1.15;
+          font-weight: 950;
+        }
+
+        .blueCard p {
+          margin: 0;
+          font-size: 18px;
+          line-height: 1.55;
+          opacity: 0.92;
+        }
+
+        @media (max-width: 1100px) {
+          .header {
+            flex-direction: column;
+            align-items: center;
+          }
+
+          .nav {
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 16px;
+          }
+
+          .hero {
+            grid-template-columns: 1fr;
+            padding: 34px 22px 52px;
+          }
+
+          .heroCard {
+            padding: 42px 34px;
+          }
+
+          .mainLogo {
+            max-width: 460px;
+          }
+        }
+
+        @media (max-width: 760px) {
+          .header {
+            min-height: auto;
+            padding: 18px 20px;
+          }
+
+          .topLogo {
+            width: 86px;
+          }
+
+          .menuButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.header {
+  flex-direction: row;
+  position: relative;
+}
+
+.nav {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 14px;
+  right: 14px;
+  display: none;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid #dbe7f5;
+  border-radius: 22px;
+  box-shadow: 0 24px 50px rgba(15, 23, 42, 0.16);
+  z-index: 50;
+}
+
+.navOpen {
+  display: flex;
+}
+
+.nav a {
+  width: 100%;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+          .hero {
+            padding: 24px 14px 42px;
+          }
+
+          .heroCard {
+            border-radius: 26px;
+            padding: 30px 22px;
+          }
+
+          .pill {
+            font-size: 13px;
+            line-height: 1.35;
+            margin-bottom: 28px;
+          }
+
+          .mainLogo {
+            max-width: 100%;
+            margin-bottom: 28px;
+          }
+
+          .heroText {
+            font-size: 19px;
+            line-height: 1.5;
+          }
+
+          .buttons {
+            flex-direction: column;
+            margin-top: 30px;
+          }
+
+          .buttons a {
+            width: 100%;
+            text-align: center;
+            box-sizing: border-box;
+          }
+
+          .miniGrid {
+            grid-template-columns: 1fr;
+            gap: 20px;
+          }
+
+          .legalArea {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 14px;
+          }
+
+          .legalArea span {
+            display: none;
+          }
+
+          .featuresGrid {
+            grid-template-columns: 1fr;
+          }
+
+          .featureCard {
+            min-height: auto;
+            padding: 24px;
+          }
+
+          .blueCard {
+            grid-template-columns: 1fr;
+            padding: 28px 24px;
+          }
+
+          .blueIcon {
+            width: 100%;
+            height: 96px;
+            font-size: 52px;
+          }
+
+          .blueCard h2 {
+            font-size: 25px;
+          }
+
+          .blueCard p {
+            font-size: 16px;
+          }
+        }
+      `}</style>
     </main>
   )
 }
@@ -409,22 +598,22 @@ function MiniInfo({
   )
 }
 
-const navLink: React.CSSProperties = {
+const navLink: CSSProperties = {
   color: '#07122f',
   textDecoration: 'none',
 }
 
-const loginTopButton: React.CSSProperties = {
+const loginTopButton: CSSProperties = {
   background: '#2457e6',
   color: '#fff',
-  padding: '17px 28px',
+  padding: '15px 24px',
   borderRadius: 15,
   textDecoration: 'none',
   fontWeight: 900,
   boxShadow: '0 14px 30px rgba(36, 87, 230, 0.24)',
 }
 
-const primaryButton: React.CSSProperties = {
+const primaryButton: CSSProperties = {
   background: '#2457e6',
   color: '#fff',
   padding: '18px 28px',
@@ -434,7 +623,7 @@ const primaryButton: React.CSSProperties = {
   boxShadow: '0 18px 35px rgba(36, 87, 230, 0.25)',
 }
 
-const secondaryButton: React.CSSProperties = {
+const secondaryButton: CSSProperties = {
   background: '#fff',
   color: '#07122f',
   padding: '18px 28px',
@@ -444,7 +633,7 @@ const secondaryButton: React.CSSProperties = {
   border: '1px solid #cbd8ea',
 }
 
-const legalLink: React.CSSProperties = {
+const legalLink: CSSProperties = {
   color: '#526987',
   textDecoration: 'none',
   fontWeight: 900,
