@@ -145,11 +145,22 @@ if (currentStudents > selectedPlan.student_limit) {
 
   setLoading(true)
 
+  const {
+  data: { session },
+} = await supabase.auth.getSession()
+
+if (!session?.access_token) {
+  showMessage('Usuário não autenticado.')
+  setLoading(false)
+  return
+}
+
   const response = await fetch('/api/subscriptions/create-checkout', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-    },
+  'Content-Type': 'application/json',
+  Authorization: `Bearer ${session.access_token}`,
+},
     body: JSON.stringify({
       schoolId,
       planId: plan.id,
