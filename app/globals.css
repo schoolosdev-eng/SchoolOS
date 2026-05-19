@@ -95,3 +95,53 @@ button:hover:not(:disabled) {
   opacity: 1;
 }
 
+.school-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    filter 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.school-button:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.04);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
+}
+
+.school-button:active {
+  transform: translateY(1px) scale(0.98);
+  filter: brightness(0.96);
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.12);
+}
+
+.school-button-primary {
+  background: linear-gradient(135deg, #2457e6 0%, #1746c8 100%);
+  color: white;
+}
+
+.school-button-secondary {
+  background: white;
+  color: #07122f;
+  border: 1px solid #cbd8ea;
+}
+
+.school-button-small {
+  padding: 15px 24px;
+  border-radius: 15px;
+  font-weight: 900;
+}
+
+.school-button-large {
+  padding: 18px 28px;
+  border-radius: 16px;
+  font-weight: 950;
+}
+

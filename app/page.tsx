@@ -76,9 +76,13 @@ export default function HomePage() {
       Contato
     </a>
 
-    <Link href="/login" style={loginTopButton} onClick={() => setMenuOpen(false)}>
-      Entrar
-    </Link>
+    <Link
+  href="/login"
+  className="school-button school-button-primary school-button-small"
+  onClick={() => setMenuOpen(false)}
+>
+  Entrar
+</Link>
   </nav>
 </header>
 
@@ -101,7 +105,10 @@ export default function HomePage() {
           </p>
 
           <div className="buttons">
-            <Link href="/login" style={primaryButton}>
+            <Link
+  href="/login"
+  className="school-button school-button-primary school-button-small"
+>
               ↪ Entrar na plataforma
             </Link>
 
@@ -109,7 +116,7 @@ export default function HomePage() {
               href="https://wa.me/5588921826192"
               target="_blank"
               rel="noreferrer"
-              style={secondaryButton}
+              className="school-button school-button-secondary school-button-large"
             >
               ◉ Falar no WhatsApp
             </a>
