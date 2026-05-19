@@ -76,7 +76,7 @@ export default function Home() {
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 16,
-    marginBottom: 54,
+    marginBottom: 2,
   }}
 >
   <div
@@ -89,16 +89,22 @@ export default function Home() {
       src="/logocompleta5.png"
       alt="SchoolOS"
       style={{
-        height: 220,
-        width: 'auto',
-        objectFit: 'contain',
-      }}
+  width: 280,
+  maxWidth: '45vw',
+  height: 'auto',
+  objectFit: 'contain',
+  display: 'block',
+}}
     />
   </div>
 
           <Link
             href="/login"
             style={{
+              display: 'flex',
+alignItems: 'center',
+justifyContent: 'center',
+textAlign: 'center',
               textDecoration: 'none',
               background: '#0f172a',
               color: '#fff',
