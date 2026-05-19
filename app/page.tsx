@@ -1,647 +1,429 @@
 'use client'
 
+import { useEffect, useState } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
-import { useState } from 'react'
-import type { CSSProperties } from 'react'
 
-const features = [
+const modules = [
   {
-    icon: '🎓',
-    title: 'Gestão de alunos',
-    text: 'Cadastros, turmas, matrículas e acompanhamento completo.',
+    title: 'Painel principal',
+    description: 'Visão geral da escola, atalhos rápidos e acompanhamento dos principais indicadores.',
+    image: '/modulos/dashboard.png',
   },
   {
-    icon: '▦',
-    title: 'Frequência inteligente',
-    text: 'Controle diário de presença com QR Code e modo portaria.',
+    title: 'Presença por QR Code',
+    description: 'Cadastro, fotos, dados escolares, turmas, responsáveis e organização dos estudantes.',
+    image: '/modulos/alunos.png',
   },
   {
-    icon: '📊',
-    title: 'Relatórios escolares',
-    text: 'Indicadores, rankings e relatórios completos da sua escola.',
+    title: 'Rankings de Presença',
+    description: 'Registro de presença, leitura por QR Code, relatórios e acompanhamento diário.',
+    image: '/modulos/frequencia.png',
   },
   {
-    icon: '💬',
-    title: 'Comunicação',
-    text: 'Envio de avisos e mensagens para responsáveis via WhatsApp.',
+    title: 'Relatórios profissionais',
+    description: 'Dashboards de frequência, rankings, filtros por turma e impressão de relatórios.',
+    image: '/modulos/relatorios.png',
   },
   {
-    icon: '🛡️',
-    title: 'Segurança e confiança',
-    text: 'Controle de acesso, proteção de dados e rotina escolar organizada.',
+    title: 'Turmas e atividades',
+    description: 'Organização das turmas, atividades anexadas, professores vinculados e acompanhamento pedagógico.',
+    image: '/modulos/turmas.png',
   },
   {
-    icon: '👥',
-    title: 'Para toda a escola',
-    text: 'Alunos, professores, gestores e responsáveis conectados.',
+    title: 'Ocorrências e comunicação',
+    description: 'Registro de ocorrências, avisos escolares e integração com WhatsApp para responsáveis.',
+    image: '/modulos/ocorrencias.png',
   },
 ]
 
-export default function HomePage() {
-  const [menuOpen, setMenuOpen] = useState(false)
+export default function Home() {
+
+  const [windowWidth, setWindowWidth] = useState(1200)
+
+  useEffect(() => {
+    const updateWidth = () => setWindowWidth(window.innerWidth)
+
+    updateWidth()
+    window.addEventListener('resize', updateWidth)
+
+    return () => window.removeEventListener('resize', updateWidth)
+  }, [])
+
+  const isMobile = windowWidth < 768
+  const isTablet = windowWidth >= 768 && windowWidth < 1024
+
   return (
-    <main className="page">
-      <header className="header">
-  <Link href="/" className="logoLink">
-    <img src="/logoteste.png" alt="SchoolOS" className="topLogo" />
-  </Link>
-
-  <button
-    className="menuButton"
-    onClick={() => setMenuOpen((prev) => !prev)}
-    aria-label="Abrir menu"
-  >
-    {menuOpen ? '✕' : '☰'}
-  </button>
-
-  <nav className={`nav ${menuOpen ? 'navOpen' : ''}`}>
-    <a href="#recursos" style={navLink} onClick={() => setMenuOpen(false)}>
-      Recursos
-    </a>
-
-    <a href="#funcionalidades" style={navLink} onClick={() => setMenuOpen(false)}>
-      Funcionalidades
-    </a>
-
-    <a href="#escolas" style={navLink} onClick={() => setMenuOpen(false)}>
-      Para escolas
-    </a>
-
-    <a
-      href="https://wa.me/5588921826192"
-      target="_blank"
-      style={navLink}
-      onClick={() => setMenuOpen(false)}
-    >
-      Contato
-    </a>
-
-    <Link
-  href="/login"
-  className="school-button school-button-primary school-button-small"
-  onClick={() => setMenuOpen(false)}
->
-  Entrar
-</Link>
-  </nav>
-</header>
-
-      <section className="hero">
-        <div className="heroCard">
-          <div className="pill">
-            <span>●</span>
-            Plataforma Inteligente de Gestão Escolar
-          </div>
-
-          <img
-            src="/logocompleta3.png"
-            alt="SchoolOS Gestão Escolar Inteligente"
-            className="mainLogo"
-          />
-
-          <p className="heroText">
-            A plataforma completa para escolas de ensino fundamental e médio.
-            Mais controle, segurança e comunicação em um único ambiente.
-          </p>
-
-          <div className="buttons">
-            <Link
-  href="/login"
-  className="school-button school-button-primary school-button-small"
->
-              ↪ Entrar na plataforma
-            </Link>
-
-            <a
-              href="https://wa.me/5588921826192"
-              target="_blank"
-              rel="noreferrer"
-              className="school-button school-button-secondary school-button-large"
-            >
-              ◉ Falar no WhatsApp
-            </a>
-          </div>
-
-          <div id="escolas" className="miniGrid">
-            <MiniInfo
-              icon="🏫"
-              title="Gestão completa"
-              text="Todos os módulos que sua escola precisa."
-            />
-            <MiniInfo
-              icon="🛡️"
-              title="Segurança total"
-              text="Dados protegidos com tecnologia de ponta."
-            />
-          </div>
-
-          <div className="legalArea">
-            <Link href="/politica-de-privacidade" style={legalLink}>
-              🛡️ Política de Privacidade
-            </Link>
-
-            <span>|</span>
-
-            <Link href="/termos-de-uso" style={legalLink}>
-              📄 Termos de Uso
-            </Link>
-          </div>
-        </div>
-
-        <div id="recursos" className="featuresGrid">
-          {features.map((feature) => (
-            <div key={feature.title} className="featureCard">
-              <div className="featureIcon">{feature.icon}</div>
-
-              <h3>{feature.title}</h3>
-
-              <p>{feature.text}</p>
-            </div>
-          ))}
-
-          <div id="funcionalidades" className="blueCard">
-            <div className="blueIcon">🖥️</div>
-
-            <div>
-              <h2>Tudo que sua escola precisa em um só lugar</h2>
-
-              <p>
-                Simplifique processos, ganhe tempo e melhore os resultados da
-                sua escola.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <style jsx>{`
-        .page {
-          min-height: 100vh;
-          background: linear-gradient(135deg, #f6f9ff 0%, #eef6ff 48%, #eaf4ff 100%);
-          color: #07122f;
-        }
-
-        .header {
-          min-height: 112px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 24px;
-          padding: 20px 7vw;
-          background: rgba(255, 255, 255, 0.82);
-          border-bottom: 1px solid #dbe7f5;
-          backdrop-filter: blur(14px);
-        }
-
-        .logoLink {
-          text-decoration: none;
-          flex-shrink: 0;
-        }
-
-        .topLogo {
-          width: 100px;
-          max-width: 42vw;
-          height: auto;
-          display: block;
-        }
-
-        .nav {
-          display: flex;
-          align-items: center;
-          gap: 32px;
-          font-size: 16px;
-          font-weight: 800;
-        }
-
-        .hero {
-          max-width: 1440px;
-          margin: 0 auto;
-          padding: 48px 32px 64px;
-          display: grid;
-          grid-template-columns: 0.95fr 1fr;
-          gap: 28px;
-          align-items: stretch;
-        }
-
-        .heroCard {
-          background: rgba(255, 255, 255, 0.9);
-          border: 1px solid #dbe7f5;
-          border-radius: 34px;
-          padding: 52px 46px;
-          box-shadow: 0 24px 70px rgba(15, 23, 42, 0.08);
-        }
-
-        .menuButton {
-  display: none;
-  width: 46px;
-  height: 46px;
-  border: 1px solid #cbd8ea;
-  border-radius: 14px;
-  background: #fff;
-  color: #07122f;
-  font-size: 24px;
-  font-weight: 900;
-  cursor: pointer;
-}
-
-        .pill {
-          display: inline-flex;
-          align-items: center;
-          gap: 10px;
-          background: #eaf2ff;
-          color: #0f3f9f;
-          padding: 10px 18px;
-          border-radius: 999px;
-          font-weight: 900;
-          margin-bottom: 44px;
-        }
-
-        .pill span {
-          color: #2457e6;
-        }
-
-        .mainLogo {
-          width: 100%;
-          max-width: 520px;
-          height: auto;
-          display: block;
-          margin-bottom: 44px;
-        }
-
-        .heroText {
-          font-size: 25px;
-          line-height: 1.55;
-          color: #4f6685;
-          max-width: 690px;
-          margin: 0;
-        }
-
-        .buttons {
-          display: flex;
-          gap: 16px;
-          flex-wrap: wrap;
-          margin-top: 42px;
-        }
-
-        .miniGrid {
-          margin-top: 42px;
-          padding-top: 34px;
-          border-top: 1px solid #e2e8f0;
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 26px;
-        }
-
-        .legalArea {
-          margin-top: 40px;
-          padding-top: 30px;
-          border-top: 1px solid #e2e8f0;
-          display: flex;
-          gap: 26px;
-          flex-wrap: wrap;
-          align-items: center;
-        }
-
-        .legalArea span {
-          color: #cbd5e1;
-        }
-
-        .featuresGrid {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 18px;
-        }
-
-        .featureCard {
-          background: rgba(255, 255, 255, 0.9);
-          border: 1px solid #dbe7f5;
-          border-radius: 26px;
-          padding: 30px;
-          min-height: 210px;
-          box-shadow: 0 18px 45px rgba(15, 23, 42, 0.055);
-        }
-
-        .featureIcon {
-          width: 66px;
-          height: 66px;
-          border-radius: 20px;
-          background: #eaf2ff;
-          color: #2457e6;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 31px;
-          margin-bottom: 22px;
-          font-weight: 900;
-        }
-
-        .featureCard h3 {
-          margin: 0 0 12px;
-          font-size: 22px;
-          color: #07122f;
-          font-weight: 950;
-        }
-
-        .featureCard p {
-          margin: 0;
-          color: #526987;
-          font-size: 17px;
-          line-height: 1.55;
-        }
-
-        .blueCard {
-          grid-column: 1 / -1;
-          background: linear-gradient(135deg, #2457e6 0%, #0f49d8 100%);
-          border-radius: 28px;
-          padding: 34px 40px;
-          color: #fff;
-          min-height: 190px;
-          display: grid;
-          grid-template-columns: 170px 1fr;
-          gap: 30px;
-          align-items: center;
-          box-shadow: 0 24px 50px rgba(36, 87, 230, 0.28);
-        }
-
-        .blueIcon {
-          width: 150px;
-          height: 110px;
-          border-radius: 22px;
-          background: rgba(255, 255, 255, 0.18);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 64px;
-        }
-
-        .blueCard h2 {
-          margin: 0 0 12px;
-          font-size: 31px;
-          line-height: 1.15;
-          font-weight: 950;
-        }
-
-        .blueCard p {
-          margin: 0;
-          font-size: 18px;
-          line-height: 1.55;
-          opacity: 0.92;
-        }
-
-        @media (max-width: 1100px) {
-          .header {
-            flex-direction: column;
-            align-items: center;
-          }
-
-          .nav {
-            justify-content: center;
-            flex-wrap: wrap;
-            gap: 16px;
-          }
-
-          .hero {
-            grid-template-columns: 1fr;
-            padding: 34px 22px 52px;
-          }
-
-          .heroCard {
-            padding: 42px 34px;
-          }
-
-          .mainLogo {
-            max-width: 460px;
-          }
-        }
-
-        @media (max-width: 760px) {
-          .header {
-            min-height: auto;
-            padding: 18px 20px;
-          }
-
-          .topLogo {
-            width: 86px;
-          }
-
-          .menuButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.header {
-  flex-direction: row;
-  position: relative;
-}
-
-.nav {
-  position: absolute;
-  top: calc(100% + 10px);
-  left: 14px;
-  right: 14px;
-  display: none;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 12px;
-  padding: 18px;
-  background: rgba(255, 255, 255, 0.98);
-  border: 1px solid #dbe7f5;
-  border-radius: 22px;
-  box-shadow: 0 24px 50px rgba(15, 23, 42, 0.16);
-  z-index: 50;
-}
-
-.navOpen {
-  display: flex;
-}
-
-.nav a {
-  width: 100%;
-  text-align: center;
-  box-sizing: border-box;
-}
-
-          .hero {
-            padding: 24px 14px 42px;
-          }
-
-          .heroCard {
-            border-radius: 26px;
-            padding: 30px 22px;
-          }
-
-          .pill {
-            font-size: 13px;
-            line-height: 1.35;
-            margin-bottom: 28px;
-          }
-
-          .mainLogo {
-            max-width: 100%;
-            margin-bottom: 28px;
-          }
-
-          .heroText {
-            font-size: 19px;
-            line-height: 1.5;
-          }
-
-          .buttons {
-            flex-direction: column;
-            margin-top: 30px;
-          }
-
-          .buttons a {
-            width: 100%;
-            text-align: center;
-            box-sizing: border-box;
-          }
-
-          .miniGrid {
-            grid-template-columns: 1fr;
-            gap: 20px;
-          }
-
-          .legalArea {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 14px;
-          }
-
-          .legalArea span {
-            display: none;
-          }
-
-          .featuresGrid {
-            grid-template-columns: 1fr;
-          }
-
-          .featureCard {
-            min-height: auto;
-            padding: 24px;
-          }
-
-          .blueCard {
-            grid-template-columns: 1fr;
-            padding: 28px 24px;
-          }
-
-          .blueIcon {
-            width: 100%;
-            height: 96px;
-            font-size: 52px;
-          }
-
-          .blueCard h2 {
-            font-size: 25px;
-          }
-
-          .blueCard p {
-            font-size: 16px;
-          }
-        }
-      `}</style>
-    </main>
-  )
-}
-
-function MiniInfo({
-  icon,
-  title,
-  text,
-}: {
-  icon: string
-  title: string
-  text: string
-}) {
-  return (
-    <div
+    <main
       style={{
-        display: 'grid',
-        gridTemplateColumns: '64px 1fr',
-        gap: 18,
-        alignItems: 'center',
+        minHeight: '100vh',
+        background:
+          'linear-gradient(135deg, #eef2ff 0%, #f8fafc 45%, #e0f2fe 100%)',
+        color: '#0f172a',
+        fontFamily: 'Arial, Helvetica, sans-serif',
       }}
     >
-      <div
+      <section
         style={{
-          width: 64,
-          height: 64,
-          borderRadius: 18,
-          background: '#eaf2ff',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 28,
+          maxWidth: 1180,
+          margin: '0 auto',
+          padding: '0px 20px 70px',
         }}
       >
-        {icon}
-      </div>
+        <header
+  style={{
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 16,
+    marginBottom: 54,
+  }}
+>
+  <div
+    style={{
+      display: 'flex',
+      alignItems: 'center',
+    }}
+  >
+    <img
+      src="/logocompleta5.png"
+      alt="SchoolOS"
+      style={{
+        height: 220,
+        width: 'auto',
+        objectFit: 'contain',
+      }}
+    />
+  </div>
 
-      <div>
-        <strong
+          <Link
+            href="/login"
+            style={{
+              textDecoration: 'none',
+              background: '#0f172a',
+              color: '#fff',
+              padding: '12px 18px',
+              borderRadius: 999,
+              fontWeight: 800,
+              fontSize: 14,
+              boxShadow: '0 16px 35px rgba(15, 23, 42, 0.25)',
+            }}
+          >
+            Acessar sistema
+          </Link>
+        </header>
+
+        <section
           style={{
-            display: 'block',
-            color: '#07122f',
-            fontSize: 17,
-            marginBottom: 6,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+            alignItems: 'center',
+            gap: 36,
+            marginBottom: 72,
           }}
         >
-          {title}
-        </strong>
+          <div>
+            <span
+              style={{
+                display: 'inline-flex',
+                padding: '8px 12px',
+                borderRadius: 999,
+                background: 'rgba(37, 99, 235, 0.10)',
+                color: '#1d4ed8',
+                fontWeight: 800,
+                fontSize: 13,
+                marginBottom: 18,
+              }}
+            >
+              Ferramenta escolar moderna e integrada
+            </span>
 
+            <h1
+              style={{
+                fontSize: 'clamp(38px, 6vw, 68px)',
+                lineHeight: 1,
+                letterSpacing: -2.6,
+                margin: '0 0 20px',
+                color: '#0f172a',
+              }}
+            >
+              Tudo que sua escola precisa em um só painel.
+            </h1>
+
+            <p
+              style={{
+                fontSize: 18,
+                lineHeight: 1.7,
+                color: '#475569',
+                maxWidth: 580,
+                margin: '0 0 28px',
+              }}
+            >
+              Organize alunos, professores, turmas, frequência, ocorrências,
+              atividades e relatórios com uma experiência simples, bonita e
+              preparada para o dia a dia da gestão escolar.
+            </p>
+
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <Link
+                href="/login"
+                style={{
+                  textDecoration: 'none',
+                  background: 'linear-gradient(135deg, #2563eb, #06b6d4)',
+                  color: '#fff',
+                  padding: '15px 22px',
+                  borderRadius: 16,
+                  fontWeight: 900,
+                  boxShadow: '0 18px 40px rgba(37, 99, 235, 0.30)',
+                }}
+              >
+                Começar agora
+              </Link>
+
+              <a
+                href="#modulos"
+                style={{
+                  textDecoration: 'none',
+                  background: 'rgba(255,255,255,0.80)',
+                  color: '#0f172a',
+                  padding: '15px 22px',
+                  borderRadius: 16,
+                  fontWeight: 900,
+                  border: '1px solid rgba(148,163,184,0.35)',
+                }}
+              >
+                Ver módulos
+              </a>
+            </div>
+          </div>
+
+          <div
+            style={{
+              background: 'rgba(255,255,255,0.78)',
+              border: '1px solid rgba(148,163,184,0.28)',
+              borderRadius: 30,
+              padding: 14,
+              boxShadow: '0 30px 80px rgba(15, 23, 42, 0.16)',
+              backdropFilter: 'blur(18px)',
+            }}
+          >
+            <Image
+              src="/modulos/dashboard2.png"
+              alt="Painel principal do SchoolOS"
+              width={900}
+              height={560}
+              priority
+              style={{
+                width: '100%',
+                height: 'auto',
+                borderRadius: 22,
+                display: 'block',
+              }}
+            />
+          </div>
+        </section>
+
+        <section id="modulos">
+          <div style={{ textAlign: 'center', marginBottom: 34 }}>
+            <h2
+              style={{
+                fontSize: 'clamp(30px, 4vw, 46px)',
+                letterSpacing: -1.4,
+                margin: 0,
+              }}
+            >
+              Veja por dentro os módulos da aplicação
+            </h2>
+
+            <p
+              style={{
+                color: '#64748b',
+                fontSize: 17,
+                lineHeight: 1.6,
+                maxWidth: 720,
+                margin: '14px auto 0',
+              }}
+            >
+              Uma experiência visual pensada para gestores, professores,
+              responsáveis e equipes escolares.
+            </p>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+              gap: 22,
+            }}
+          >
+            {modules.map((module) => (
+              <article
+                key={module.title}
+                style={{
+                  background: 'rgba(255,255,255,0.82)',
+                  border: '1px solid rgba(148,163,184,0.28)',
+                  borderRadius: 26,
+                  overflow: 'hidden',
+                  boxShadow: '0 22px 55px rgba(15, 23, 42, 0.10)',
+                }}
+              >
+                <div
+                  style={{
+                    padding: 10,
+                    background:
+                      'linear-gradient(135deg, rgba(37,99,235,0.10), rgba(6,182,212,0.10))',
+                  }}
+                >
+                  <Image
+                    src={module.image}
+                    alt={module.title}
+                    width={900}
+                    height={560}
+                    style={{
+                      width: '100%',
+                      height: 220,
+                      objectFit: 'cover',
+                      borderRadius: 20,
+                      display: 'block',
+                    }}
+                  />
+                </div>
+
+                <div style={{ padding: 22 }}>
+                  <h3
+                    style={{
+                      margin: '0 0 10px',
+                      fontSize: 22,
+                      letterSpacing: -0.5,
+                      color: '#0f172a',
+                    }}
+                  >
+                    {module.title}
+                  </h3>
+
+                  <p
+                    style={{
+                      margin: 0,
+                      color: '#64748b',
+                      lineHeight: 1.6,
+                      fontSize: 15.5,
+                    }}
+                  >
+                    {module.description}
+                  </p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section
+          style={{
+            marginTop: 70,
+            padding: 34,
+            borderRadius: 30,
+            background: 'linear-gradient(135deg, #0f172a, #1e3a8a)',
+            color: '#fff',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+            alignItems: 'center',
+            gap: 24,
+            boxShadow: '0 28px 70px rgba(15, 23, 42, 0.28)',
+          }}
+        >
+          <div>
+            <h2
+              style={{
+                fontSize: 'clamp(28px, 4vw, 42px)',
+                margin: '0 0 12px',
+                letterSpacing: -1.2,
+              }}
+            >
+              Pronto para modernizar sua escola?
+            </h2>
+
+            <p
+              style={{
+                margin: 0,
+                color: '#dbeafe',
+                fontSize: 17,
+                lineHeight: 1.6,
+              }}
+            >
+              Centralize a gestão escolar e acompanhe tudo com mais clareza,
+              segurança e organização.
+            </p>
+          </div>
+
+          <div style={{ textAlign: 'right' }}>
+            <Link
+              href="/login"
+              style={{
+                display: 'inline-block',
+                textDecoration: 'none',
+                background: '#fff',
+                color: '#1d4ed8',
+                padding: '15px 24px',
+                borderRadius: 16,
+                fontWeight: 900,
+              }}
+            >
+              Criar escola
+            </Link>
+          </div>
+        </section>
+      </section>
+      <a
+        href="https://wa.me/5588921826192?text=Olá!%20Tenho%20dúvidas%20sobre%20o%20SchoolOS."
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          position: 'fixed',
+          left: isMobile ? 16 : 24,
+          bottom: isMobile ? 16 : 24,
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          maxWidth: isMobile ? 280 : 360,
+          padding: isMobile ? '12px 14px' : '14px 18px',
+          borderRadius: 999,
+          background: 'linear-gradient(135deg, #25D366, #16a34a)',
+          color: '#ffffff',
+          textDecoration: 'none',
+          boxShadow: '0 18px 40px rgba(37, 211, 102, 0.35)',
+          border: '1px solid rgba(255,255,255,0.25)',
+          fontWeight: 600,
+        }}
+      >
         <span
           style={{
-            color: '#526987',
-            fontSize: 15,
-            lineHeight: 1.45,
+            width: 38,
+            height: 38,
+            borderRadius: '50%',
+            background: 'rgba(255,255,255,0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 14,
+            flexShrink: 0,
           }}
         >
-          {text}
+          <svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="22"
+  height="22"
+  viewBox="0 0 24 24"
+  fill="currentColor"
+>
+  <path d="M20.52 3.48A11.78 11.78 0 0012.04 0C5.52 0 .24 5.28.24 11.76c0 2.08.56 4.12 1.6 5.92L0 24l6.52-1.72a11.8 11.8 0 005.52 1.4h.04c6.48 0 11.76-5.28 11.76-11.76 0-3.12-1.2-6.04-3.32-8.44zm-8.48 18.2a9.8 9.8 0 01-5-1.36l-.36-.2-3.88 1.04 1.04-3.8-.24-.4a9.78 9.78 0 01-1.52-5.2c0-5.4 4.4-9.8 9.84-9.8 2.6 0 5.08 1 6.92 2.88a9.7 9.7 0 012.88 6.92c0 5.44-4.4 9.84-9.84 9.84zm5.4-7.36c-.28-.16-1.68-.84-1.92-.92-.28-.12-.44-.16-.64.16-.2.28-.72.92-.88 1.12-.16.2-.32.24-.6.08-.28-.16-1.16-.44-2.2-1.4-.8-.72-1.36-1.64-1.52-1.92-.16-.28-.04-.44.12-.6.12-.12.28-.32.4-.48.12-.16.16-.28.24-.48.08-.16.04-.36-.04-.52-.08-.16-.64-1.56-.88-2.12-.24-.6-.48-.52-.64-.52h-.56c-.2 0-.52.08-.8.36-.28.28-1.04 1-.96 2.4.08 1.4 1 2.76 1.16 2.96.16.2 2 3.08 4.88 4.2.68.28 1.24.44 1.68.56.72.24 1.36.2 1.88.12.56-.08 1.68-.68 1.92-1.36.24-.64.24-1.24.16-1.36-.08-.08-.24-.16-.52-.28z"/>
+</svg>
         </span>
-      </div>
-    </div>
+
+        <span style={{ fontSize: isMobile ? 12 : 14, lineHeight: 1.35 }}>
+          Alguma dúvida? Clique aqui. Nossa meta é te ajudar!
+        </span>
+      </a>
+    </main>
   )
-}
-
-const navLink: CSSProperties = {
-  color: '#07122f',
-  textDecoration: 'none',
-}
-
-const loginTopButton: CSSProperties = {
-  background: '#2457e6',
-  color: '#fff',
-  padding: '15px 24px',
-  borderRadius: 15,
-  textDecoration: 'none',
-  fontWeight: 900,
-  boxShadow: '0 14px 30px rgba(36, 87, 230, 0.24)',
-}
-
-const primaryButton: CSSProperties = {
-  background: '#2457e6',
-  color: '#fff',
-  padding: '18px 28px',
-  borderRadius: 16,
-  textDecoration: 'none',
-  fontWeight: 950,
-  boxShadow: '0 18px 35px rgba(36, 87, 230, 0.25)',
-}
-
-const secondaryButton: CSSProperties = {
-  background: '#fff',
-  color: '#07122f',
-  padding: '18px 28px',
-  borderRadius: 16,
-  textDecoration: 'none',
-  fontWeight: 950,
-  border: '1px solid #cbd8ea',
-}
-
-const legalLink: CSSProperties = {
-  color: '#526987',
-  textDecoration: 'none',
-  fontWeight: 900,
 }
