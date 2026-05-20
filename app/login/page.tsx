@@ -77,14 +77,14 @@ const isTablet = windowWidth >= 768 && windowWidth < 1024
     router.replace('/access')
   }
 
-  async function handleGoogleLogin() {
+ async function handleGoogleLogin() {
   setLoading(true)
   setMessage('Redirecionando para o Google...')
 
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: 'http://localhost:3000/auth/callback'
+      redirectTo: 'https://schoolosapp.com/auth/callback',
     },
   })
 
