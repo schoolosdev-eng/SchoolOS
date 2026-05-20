@@ -3942,6 +3942,7 @@ onClick={() => {
           </div>
 
           <AttendanceReportsSection
+            schoolId={schoolId}
             schoolName={schoolName}
             students={students.map((student) => ({
   id: student.id,

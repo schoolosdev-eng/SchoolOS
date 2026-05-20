@@ -1,5 +1,6 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { supabase } from '@/lib/supabase'
 
 type Student = {
   id: string
@@ -34,7 +35,43 @@ type EarlyExitRecord = {
   authorized_by_name?: string | null
 }
 
+type DailyEvolutionItem = {
+  attendance_date: string
+  total_records: number
+  presentes: number
+  faltosos: number
+  frequency_rate: number
+}
+
+type MonthComparisonItem = {
+  month_number: number
+  month_label: string
+  total_records: number
+  presentes: number
+  faltosos: number
+  frequency_rate: number
+}
+
+type ClassRankingItem = {
+  class_id: string
+  class_name: string
+  total_records: number
+  presentes: number
+  faltosos: number
+  frequency_rate: number
+}
+
+type WeekdaySummaryItem = {
+  weekday_number: number
+  weekday_label: string
+  total_records: number
+  presentes: number
+  faltosos: number
+  frequency_rate: number
+}
+
 type AttendanceReportsSectionProps = {
+  schoolId: string
   schoolName: string
   students: Student[]
   classes: SchoolClass[]
@@ -56,6 +93,7 @@ type AttendanceReportsSectionProps = {
 }
 
 export default function AttendanceReportsSection({
+  schoolId,
   schoolName,
   students,
   classes,
@@ -89,6 +127,66 @@ useEffect(() => {
 
 const isMobile = windowWidth < 768
 const isTablet = windowWidth >= 768 && windowWidth < 1024
+
+const [analyticsOpen, setAnalyticsOpen] = useState(false)
+const [analyticsLoading, setAnalyticsLoading] = useState(false)
+const [analyticsYear, setAnalyticsYear] = useState(new Date().getFullYear())
+
+const [dailyEvolution, setDailyEvolution] = useState<DailyEvolutionItem[]>([])
+const [monthComparison, setMonthComparison] = useState<MonthComparisonItem[]>([])
+const [classRanking, setClassRanking] = useState<ClassRankingItem[]>([])
+const [weekdaySummary, setWeekdaySummary] = useState<WeekdaySummaryItem[]>([])
+
+const [chartTooltip, setChartTooltip] = useState<{
+  x: number
+  y: number
+  date: string
+  rate: number
+  presentes: number
+  faltosos: number
+} | null>(null)
+
+const mostPresentClasses = useMemo(() => {
+  return [...classRanking]
+    .sort((a, b) => b.frequency_rate - a.frequency_rate)
+    .slice(0, 5)
+}, [classRanking])
+
+const mostAbsentClasses = useMemo(() => {
+  return [...classRanking]
+    .sort((a, b) => a.frequency_rate - b.frequency_rate)
+    .slice(0, 5)
+}, [classRanking])
+
+const bestWeekday = weekdaySummary[0]
+
+const dailyChartPoints = useMemo(() => {
+  if (dailyEvolution.length === 0) return ''
+
+  const width = 720
+  const height = 220
+  const padding = 24
+
+  return dailyEvolution
+    .map((item, index) => {
+      const x =
+        dailyEvolution.length === 1
+          ? width / 2
+          : padding +
+            (index * (width - padding * 2)) /
+              (dailyEvolution.length - 1)
+
+      const rate = Number(item.frequency_rate || 0)
+      const y =
+        height -
+        padding -
+        (rate / 100) * (height - padding * 2)
+
+      return `${x},${y}`
+    })
+    .join(' ')
+}, [dailyEvolution])
+
 const thStyle: React.CSSProperties = {
   textAlign: 'left',
   padding: isMobile ? '10px 8px' : '14px 12px',
@@ -171,6 +269,164 @@ const earlyExitMap = new Map(
   ])
 )
 
+async function loadAttendanceAnalytics() {
+  if (!schoolId) {
+    showMessage('Escola não identificada.')
+    return
+  }
+
+  setAnalyticsLoading(true)
+
+  const [
+    dailyResult,
+    monthResult,
+    rankingResult,
+    weekdayResult,
+  ] = await Promise.all([
+    supabase.rpc('get_attendance_daily_evolution', {
+      p_school_id: schoolId,
+      p_year: analyticsYear,
+    }),
+    supabase.rpc('get_attendance_month_comparison', {
+      p_school_id: schoolId,
+      p_year: analyticsYear,
+    }),
+    supabase.rpc('get_class_attendance_ranking', {
+      p_school_id: schoolId,
+      p_year: analyticsYear,
+    }),
+    supabase.rpc('get_attendance_weekday_summary', {
+      p_school_id: schoolId,
+      p_year: analyticsYear,
+    }),
+  ])
+
+  setAnalyticsLoading(false)
+
+  const firstError =
+    dailyResult.error ||
+    monthResult.error ||
+    rankingResult.error ||
+    weekdayResult.error
+
+  if (firstError) {
+    showMessage(`Erro ao carregar análises: ${firstError.message}`)
+    return
+  }
+
+  setDailyEvolution((dailyResult.data || []) as DailyEvolutionItem[])
+  setMonthComparison((monthResult.data || []) as MonthComparisonItem[])
+  setClassRanking((rankingResult.data || []) as ClassRankingItem[])
+  setWeekdaySummary((weekdayResult.data || []) as WeekdaySummaryItem[])
+}
+
+async function handleOpenAnalytics() {
+  setAnalyticsOpen(true)
+  await loadAttendanceAnalytics()
+}
+
+function handleExportAnalyticsPdf() {
+  const printContents = document.getElementById('attendance-analytics-print')
+
+  if (!printContents) {
+    showMessage('Área de análises não encontrada.')
+    return
+  }
+
+  const printWindow = window.open('', '_blank', 'width=1200,height=900')
+
+  if (!printWindow) {
+    showMessage('Não foi possível abrir a janela de impressão.')
+    return
+  }
+
+  printWindow.document.write(`
+    <html>
+      <head>
+        <title>Análises de Frequência</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            color: #0f172a;
+          }
+
+          .header {
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+          }
+
+          .school-name {
+            font-size: 24px;
+            font-weight: 900;
+          }
+
+          .report-title {
+            margin-top: 6px;
+            color: #475569;
+            font-weight: 700;
+          }
+
+          .footer {
+            position: fixed;
+            bottom: 14px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 12px;
+            color: #94a3b8;
+            font-weight: 700;
+          }
+
+          .analytics-print-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+@media print {
+  .analytics-print-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  svg {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  body {
+    zoom: 0.92;
+  }
+}
+
+          @page {
+            margin: 8mm;
+          }
+        </style>
+      </head>
+
+      <body>
+        <div class="header">
+          <div class="school-name">${schoolName}</div>
+          <div class="report-title">Análises de Frequência - ${analyticsYear}</div>
+        </div>
+
+        ${printContents.innerHTML}
+
+        <div class="footer">SchoolOS</div>
+      </body>
+    </html>
+  `)
+
+  printWindow.document.close()
+
+  setTimeout(() => {
+    printWindow.focus()
+    printWindow.print()
+  }, 800)
+}
+
   return (
   <section
     style={{
@@ -212,43 +468,67 @@ const earlyExitMap = new Map(
         </p>
       </div>
 
-      <button
-  onClick={() => {
-    if (!isSubscriptionActive) {
-      showMessage(
-        'Sua assinatura expirou. Renove para gerar relatórios.'
-      )
-      return
-    }
-
-    onGenerate()
+      <div
+  style={{
+    display: 'flex',
+    gap: 12,
+    flexWrap: 'wrap',
+    justifyContent: isMobile ? 'stretch' : 'flex-end',
   }}
-  disabled={loading || !isSubscriptionActive}
-        style={{
-  padding: '14px 18px',
-  borderRadius: 16,
-  border: 'none',
-  background: !isSubscriptionActive
-  ? '#cbd5e1'
-  : loading
-    ? '#94a3b8'
-    : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-  color: '#fff',
-  fontWeight: 800,
-  cursor:
-  loading || !isSubscriptionActive
-    ? 'not-allowed'
-    : 'pointer',
-  boxShadow: '0 14px 30px rgba(37,99,235,0.25)',
-  width: isMobile ? '100%' : 'auto',
+>
+  <button
+    onClick={() => {
+      if (!isSubscriptionActive) {
+        showMessage('Sua assinatura expirou. Renove para gerar relatórios.')
+        return
+      }
+
+      onGenerate()
+    }}
+    disabled={loading || !isSubscriptionActive}
+    style={{
+      padding: '14px 18px',
+      borderRadius: 16,
+      border: 'none',
+      background: !isSubscriptionActive
+        ? '#cbd5e1'
+        : loading
+        ? '#94a3b8'
+        : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+      color: '#fff',
+      fontWeight: 800,
+      cursor: loading || !isSubscriptionActive ? 'not-allowed' : 'pointer',
+      boxShadow: '0 14px 30px rgba(37, 99, 235, 0.22)',
+      width: isMobile ? '100%' : 'auto',
+    }}
+  >
+    {loading ? 'Gerando...' : 'Gerar relatório'}
+  </button>
+
+  <button
+    onClick={() => {
+  if (!isSubscriptionActive) {
+    showMessage('Sua assinatura expirou. Renove para acessar as análises.')
+    return
+  }
+
+  handleOpenAnalytics()
 }}
-      >
-        {!isSubscriptionActive
-  ? 'Assinatura expirada'
-  : loading
-  ? 'Gerando...'
-  : 'Gerar relatório'}
-      </button>
+disabled={analyticsLoading || !isSubscriptionActive}
+    style={{
+      padding: '14px 18px',
+      borderRadius: 16,
+      border: '1px solid #cbd5e1',
+      background: !isSubscriptionActive ? '#f1f5f9' : '#ffffff',
+      color: !isSubscriptionActive ? '#94a3b8' : '#0f172a',
+      fontWeight: 800,
+      cursor: analyticsLoading || !isSubscriptionActive ? 'not-allowed' : 'pointer',
+      width: isMobile ? '100%' : 'auto',
+    }}
+  >
+    {analyticsLoading ? 'Carregando...' : 'Ver análises'}
+  </button>
+</div>
     </div>
 
     {/* FILTROS */}
@@ -727,6 +1007,38 @@ const earlyExitMap = new Map(
     }. Motivo: ${earlyExit.reason}.${authorizedText}`
   )
 
+  useEffect(() => {
+  const style = document.createElement('style')
+
+  style.innerHTML = `
+    @keyframes spin {
+      from {
+        transform: rotate(0deg);
+      }
+
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes drawLine {
+      from {
+        stroke-dashoffset: 1200;
+      }
+
+      to {
+        stroke-dashoffset: 0;
+      }
+    }
+  `
+
+  document.head.appendChild(style)
+
+  return () => {
+    document.head.removeChild(style)
+  }
+}, [])
+
   return (
     <button
       onClick={() =>
@@ -798,6 +1110,714 @@ const earlyExitMap = new Map(
 >
   SchoolOS
 </div>
+
+{analyticsOpen && (
+  <div
+    onClick={() => setAnalyticsOpen(false)}
+    style={{
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(15, 23, 42, 0.55)',
+      zIndex: 9998,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: isMobile ? 12 : 24,
+    }}
+  >
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        width: '100%',
+        maxWidth: 1380,
+        maxHeight: '94vh',
+        overflowY: 'auto',
+        background: '#ffffff',
+        borderRadius: isMobile ? 20 : 28,
+        padding: isMobile ? 18 : 34,
+        boxShadow: '0 30px 90px rgba(0,0,0,0.35)',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: 16,
+          flexWrap: 'wrap',
+          alignItems: 'flex-start',
+          marginBottom: 22,
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 900,
+              color: '#2563eb',
+              textTransform: 'uppercase',
+              letterSpacing: 0.8,
+              marginBottom: 6,
+            }}
+          >
+            Análises avançadas
+          </div>
+
+          <h2
+            style={{
+              margin: 0,
+              fontSize: isMobile ? 24 : 32,
+              color: '#0f172a',
+              fontWeight: 900,
+            }}
+          >
+            Frequência escolar
+          </h2>
+
+          <p style={{ margin: '8px 0 0', color: '#64748b' }}>
+            Evolução diária, comparativo mensal e ranking por turma.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <input
+            type="number"
+            value={analyticsYear}
+            onChange={(e) => setAnalyticsYear(Number(e.target.value))}
+            style={{
+              width: 110,
+              padding: '12px 14px',
+              borderRadius: 14,
+              border: '1px solid #cbd5e1',
+              fontWeight: 800,
+              color: '#0f172a',
+            }}
+          />
+
+          <button
+            onClick={loadAttendanceAnalytics}
+            style={{
+              padding: '12px 16px',
+              borderRadius: 14,
+              border: 'none',
+              background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+              color: '#fff',
+              fontWeight: 800,
+              cursor: 'pointer',
+            }}
+          >
+            Atualizar
+          </button>
+
+          <button
+            onClick={handleExportAnalyticsPdf}
+            style={{
+              padding: '12px 16px',
+              borderRadius: 14,
+              border: '1px solid #cbd5e1',
+              background: '#ffffff',
+              color: '#0f172a',
+              fontWeight: 800,
+              cursor: 'pointer',
+            }}
+          >
+            Exportar PDF
+          </button>
+
+          <button
+            onClick={() => setAnalyticsOpen(false)}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 14,
+              border: 'none',
+              background: '#f1f5f9',
+              color: '#334155',
+              fontWeight: 900,
+              cursor: 'pointer',
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+
+      <div id="attendance-analytics-print">
+
+  {analyticsLoading && (
+    <div
+      style={{
+        minHeight: 420,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 18,
+      }}
+    >
+      <div
+        style={{
+          width: 64,
+          height: 64,
+          borderRadius: '50%',
+          border: '6px solid #dbeafe',
+          borderTop: '6px solid #2563eb',
+          animation: 'spin 0.9s linear infinite',
+        }}
+      />
+
+      <div
+        style={{
+          fontSize: 20,
+          fontWeight: 900,
+          color: '#0f172a',
+          textAlign: 'center',
+        }}
+      >
+        Carregando análises...
+      </div>
+
+      <div
+        style={{
+          color: '#64748b',
+          fontWeight: 600,
+          textAlign: 'center',
+          maxWidth: 420,
+          lineHeight: 1.6,
+        }}
+      >
+        Estamos processando os dados de frequência,
+        rankings e evolução anual da escola.
+      </div>
+    </div>
+  )}
+
+  {!analyticsLoading && (
+    <>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile
+              ? '1fr'
+              : 'repeat(3, minmax(0, 1fr))',
+            gap: 14,
+            marginBottom: 18,
+          }}
+        >
+          <div
+            style={{
+              padding: 18,
+              borderRadius: 20,
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
+            }}
+          >
+            <div style={{ color: '#1d4ed8', fontWeight: 900 }}>
+              Dias analisados
+            </div>
+            <div style={{ fontSize: 34, fontWeight: 900, color: '#0f172a' }}>
+              {dailyEvolution.length}
+            </div>
+          </div>
+
+          <div
+            style={{
+              padding: 18,
+              borderRadius: 20,
+              background: '#dcfce7',
+              border: '1px solid #bbf7d0',
+            }}
+          >
+            <div style={{ color: '#15803d', fontWeight: 900 }}>
+              Melhor dia da semana
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a' }}>
+              {bestWeekday
+                ? `${bestWeekday.weekday_label} (${bestWeekday.frequency_rate}%)`
+                : 'Sem dados'}
+            </div>
+          </div>
+
+          <div
+            style={{
+              padding: 18,
+              borderRadius: 20,
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+            }}
+          >
+            <div style={{ color: '#475569', fontWeight: 900 }}>
+              Ano letivo
+            </div>
+            <div style={{ fontSize: 34, fontWeight: 900, color: '#0f172a' }}>
+              {analyticsYear}
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            padding: 18,
+            borderRadius: 22,
+            border: '1px solid #e2e8f0',
+            marginBottom: 18,
+          }}
+        >
+          <h3 style={{ margin: '0 0 14px', color: '#0f172a' }}>
+            Evolução diária da frequência
+          </h3>
+
+          {dailyEvolution.length === 0 ? (
+            <div style={{ color: '#64748b', fontWeight: 700 }}>
+              Nenhum dado encontrado para o ano selecionado.
+            </div>
+          ) : (
+            <div style={{ position: 'relative' }}>
+  {chartTooltip && (
+    <div
+      style={{
+        position: 'absolute',
+        left: chartTooltip.x,
+        top: chartTooltip.y,
+        transform: 'translate(-50%, -115%)',
+        background: '#0f172a',
+        color: '#ffffff',
+        padding: '10px 12px',
+        borderRadius: 12,
+        fontSize: 12,
+        fontWeight: 800,
+        pointerEvents: 'none',
+        boxShadow: '0 12px 30px rgba(15, 23, 42, 0.25)',
+        zIndex: 5,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <div>{formatDateBR(chartTooltip.date)}</div>
+      <div>Frequência: {chartTooltip.rate}%</div>
+      <div>Presentes: {chartTooltip.presentes}</div>
+      <div>Faltosos: {chartTooltip.faltosos}</div>
+    </div>
+  )}
+
+  <svg
+    viewBox="0 0 820 300"
+    onMouseLeave={() => setChartTooltip(null)}
+    style={{
+      width: '100%',
+      height: 340,
+      background: '#f8fafc',
+      borderRadius: 18,
+      overflow: 'visible',
+    }}
+  >
+    <line x1="54" y1="34" x2="54" y2="238" stroke="#cbd5e1" />
+    <line x1="54" y1="238" x2="790" y2="238" stroke="#cbd5e1" />
+
+    {[100, 75, 50, 25, 0].map((value) => {
+      const y = 238 - (value / 100) * 204
+
+      return (
+        <g key={value}>
+          <text
+            x="16"
+            y={y + 4}
+            fontSize="12"
+            fill="#475569"
+            fontWeight="800"
+          >
+            {value}%
+          </text>
+          <line
+            x1="54"
+            y1={y}
+            x2="790"
+            y2={y}
+            stroke="#e2e8f0"
+          />
+        </g>
+      )
+    })}
+
+    <polyline
+      points={dailyEvolution
+        .map((item, index) => {
+          const x =
+            dailyEvolution.length === 1
+              ? 410
+              : 54 + (index * 736) / (dailyEvolution.length - 1)
+
+          const y = 238 - (Number(item.frequency_rate || 0) / 100) * 204
+
+          return `${x},${y}`
+        })
+        .join(' ')}
+      fill="none"
+      stroke="#2563eb"
+      strokeWidth="4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{
+        strokeDasharray: 1200,
+        strokeDashoffset: 0,
+        animation: 'drawLine 1.1s ease forwards',
+      }}
+    />
+
+    {dailyEvolution.map((item, index) => {
+      const x =
+        dailyEvolution.length === 1
+          ? 410
+          : 54 + (index * 736) / (dailyEvolution.length - 1)
+
+      const y = 238 - (Number(item.frequency_rate || 0) / 100) * 204
+
+      const showDateLabel =
+        dailyEvolution.length <= 12 ||
+        index === 0 ||
+        index === dailyEvolution.length - 1 ||
+        index % Math.ceil(dailyEvolution.length / 8) === 0
+
+      return (
+        <g key={item.attendance_date}>
+          {showDateLabel && (
+            <text
+              x={x}
+              y="272"
+              textAnchor="middle"
+              fontSize="11"
+              fill="#475569"
+              fontWeight="800"
+            >
+              {formatDateBR(item.attendance_date).slice(0, 5)}
+            </text>
+          )}
+
+          <circle
+            cx={x}
+            cy={y}
+            r="13"
+            fill="transparent"
+            onMouseEnter={(e) => {
+              const rect = e.currentTarget.ownerSVGElement?.getBoundingClientRect()
+
+              if (!rect) return
+
+              setChartTooltip({
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top,
+                date: item.attendance_date,
+                rate: Number(item.frequency_rate || 0),
+                presentes: Number(item.presentes || 0),
+                faltosos: Number(item.faltosos || 0),
+              })
+            }}
+          />
+
+          <circle
+            cx={x}
+            cy={y}
+            r="5"
+            fill="#1d4ed8"
+            stroke="#ffffff"
+            strokeWidth="2"
+          />
+        </g>
+      )
+    })}
+  </svg>
+</div>
+          )}
+        </div>
+
+        <div
+  className="analytics-print-grid"
+  style={{
+    display: 'grid',
+    gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+            gap: 18,
+            marginBottom: 18,
+          }}
+        >
+          <div
+            style={{
+              padding: 18,
+              borderRadius: 22,
+              border: '1px solid #e2e8f0',
+            }}
+          >
+            <h3 style={{ margin: '0 0 14px', color: '#0f172a' }}>
+              Comparativo mês a mês
+            </h3>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+  {monthComparison.map((month) => (
+    <div key={month.month_number}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          fontWeight: 900,
+          color: '#0f172a',
+          marginBottom: 6,
+        }}
+      >
+        <span>{month.month_label}</span>
+        <span>{month.frequency_rate}%</span>
+      </div>
+
+      <div
+        style={{
+          height: 22,
+          borderRadius: 999,
+          background: '#e2e8f0',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            width: `${month.frequency_rate}%`,
+            height: '100%',
+            borderRadius: 999,
+            background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+            transition: 'width 0.8s ease',
+          }}
+        />
+      </div>
+
+      <div
+        style={{
+          marginTop: 4,
+          fontSize: 12,
+          color: '#64748b',
+          fontWeight: 700,
+        }}
+      >
+        {month.presentes} presentes • {month.faltosos} faltosos
+      </div>
+    </div>
+  ))}
+</div>
+          </div>
+
+          <div
+            style={{
+              padding: 18,
+              borderRadius: 22,
+              border: '1px solid #e2e8f0',
+            }}
+          >
+            <h3 style={{ margin: '0 0 14px', color: '#0f172a' }}>
+              Melhor dia da semana
+            </h3>
+
+            {weekdaySummary.map((day) => (
+              <div key={day.weekday_number} style={{ marginBottom: 12 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontWeight: 800,
+                    color: '#334155',
+                    marginBottom: 6,
+                  }}
+                >
+                  <span>{day.weekday_label}</span>
+                  <span>{day.frequency_rate}%</span>
+                </div>
+
+                <div
+                  style={{
+                    height: 10,
+                    borderRadius: 999,
+                    background: '#e2e8f0',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${day.frequency_rate}%`,
+                      height: '100%',
+                      background: '#22c55e',
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div
+  className="analytics-print-grid"
+  style={{
+    display: 'grid',
+    gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+            gap: 18,
+          }}
+        >
+          <div
+            style={{
+              padding: 18,
+              borderRadius: 22,
+              border: '1px solid #bbf7d0',
+              background: '#ecfdf5',
+            }}
+          >
+            <h3 style={{ margin: '0 0 14px', color: '#14532d' }}>
+              Turmas mais presentes
+            </h3>
+
+            {mostPresentClasses.map((item, index) => (
+              <div
+  key={item.class_id}
+  style={{
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    padding: '14px 16px',
+    marginBottom: 10,
+    borderRadius: 14,
+    background: '#ffffff',
+    border: '1px solid #bbf7d0',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+  }}
+>
+  <div
+    style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 12,
+      minWidth: 0,
+    }}
+  >
+    <div
+      style={{
+        width: 34,
+        height: 34,
+        borderRadius: '50%',
+        background: '#22c55e',
+        color: '#ffffff',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontWeight: 900,
+        fontSize: 15,
+        flexShrink: 0,
+      }}
+    >
+      {index + 1}
+    </div>
+
+    <span
+      style={{
+        color: '#14532d',
+        fontWeight: 900,
+        fontSize: 16,
+      }}
+    >
+      {item.class_name}
+    </span>
+  </div>
+
+  <span
+    style={{
+      color: '#166534',
+      fontWeight: 900,
+      fontSize: 18,
+      flexShrink: 0,
+    }}
+  >
+    {item.frequency_rate}%
+  </span>
+</div>
+            ))}
+          </div>
+
+          <div
+            style={{
+              padding: 18,
+              borderRadius: 22,
+              border: '1px solid #fecaca',
+              background: '#fef2f2',
+            }}
+          >
+            <h3 style={{ margin: '0 0 14px', color: '#7f1d1d' }}>
+              Turmas mais faltosas
+            </h3>
+
+            {mostAbsentClasses.map((item, index) => (
+              <div
+  key={item.class_id}
+  style={{
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    padding: '14px 16px',
+    marginBottom: 10,
+    borderRadius: 14,
+    background: '#ffffff',
+    border: '1px solid #fecaca',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+  }}
+>
+  <div
+    style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 12,
+      minWidth: 0,
+    }}
+  >
+    <div
+      style={{
+        width: 34,
+        height: 34,
+        borderRadius: '50%',
+        background: '#ef4444',
+        color: '#ffffff',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontWeight: 900,
+        fontSize: 15,
+        flexShrink: 0,
+      }}
+    >
+      {index + 1}
+    </div>
+
+    <span
+      style={{
+        color: '#7f1d1d',
+        fontWeight: 900,
+        fontSize: 16,
+      }}
+    >
+      {item.class_name}
+    </span>
+  </div>
+
+  <span
+    style={{
+      color: '#991b1b',
+      fontWeight: 900,
+      fontSize: 18,
+      flexShrink: 0,
+    }}
+  >
+    {item.frequency_rate}%
+  </span>
+</div>
+            ))}
+          </div>
+        </div>
+    </>
+  )}
+      </div>
+    </div>
+  </div>
+)}
+
   </section>
 )
 }
