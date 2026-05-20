@@ -3894,8 +3894,13 @@ onClick={() => {
     ...student,
     class_name: studentClassMap[student.id]?.class_name || 'Sem turma',
   }))}
+  classes={classes}
+  schoolYears={schoolYears}
+  enrollments={enrollments}
+  onEnrollStudent={handleEnrollStudent}
   onUpdateStudent={handleUpdateStudent}
   onDeleteStudent={handleDeleteStudent}
+  onMoveEnrollment={handleMoveEnrollment}
 />
       </section>
     </div>
