@@ -17,8 +17,39 @@ type Student = {
   responsible_whatsapp?: string | null
 }
 
+type SchoolYear = {
+  id: string
+  year: number
+}
+
+type SchoolClass = {
+  id: string
+  name: string
+  year_id: string
+}
+
+type Enrollment = {
+  id: string
+  student_id: string
+  class_id: string
+  year_id: string
+}
+
 type Props = {
   students: Student[]
+  classes: SchoolClass[]
+  schoolYears: SchoolYear[]
+  enrollments: Enrollment[]
+  onMoveEnrollment: (
+  enrollmentId: string,
+  targetClassId: string
+) => Promise<void>
+
+  onEnrollStudent: (
+    studentId: string,
+    classId: string,
+    yearId: string
+  ) => Promise<void>
   onDeleteStudent: (studentId: string) => Promise<void>
   onUpdateStudent: (
     studentId: string,
@@ -34,6 +65,11 @@ type Props = {
 
 export default function StudentsListSection({
   students,
+  classes,
+  schoolYears,
+  enrollments,
+  onMoveEnrollment,
+  onEnrollStudent,
   onUpdateStudent,
   onDeleteStudent,
 }: Props) {
@@ -55,6 +91,13 @@ const [editPhotoZoom, setEditPhotoZoom] = useState(1)
 const [editPhotoInputKey, setEditPhotoInputKey] = useState(0)
 const [photoUrls, setPhotoUrls] = useState<Record<string, string | null>>({})
 const [selectedQrStudentIds, setSelectedQrStudentIds] = useState<string[]>([])
+const [enrollingStudentId, setEnrollingStudentId] = useState<string | null>(null)
+
+const [selectedEnrollmentYearId, setSelectedEnrollmentYearId] = useState('')
+
+const [selectedEnrollmentClassId, setSelectedEnrollmentClassId] = useState('')
+
+const [enrollingLoading, setEnrollingLoading] = useState(false)
 
   const availableClasses = useMemo(() => {
     const classNames = students
@@ -113,6 +156,65 @@ function selectAllFilteredStudents() {
     const merged = new Set([...prev, ...filteredIds])
     return Array.from(merged)
   })
+}
+
+async function handleConfirmEnrollment() {
+  if (!enrollingStudentId) {
+    alert('Aluno não identificado.')
+    return
+  }
+
+  if (!selectedEnrollmentYearId) {
+    alert('Selecione o ano letivo.')
+    return
+  }
+
+  if (!selectedEnrollmentClassId) {
+    alert('Selecione a turma.')
+    return
+  }
+
+  const existingEnrollment = enrollments.find(
+    (item) => item.student_id === enrollingStudentId
+  )
+
+  try {
+    setEnrollingLoading(true)
+
+    if (existingEnrollment) {
+      if (existingEnrollment.class_id === selectedEnrollmentClassId) {
+        alert('O aluno já está nessa turma.')
+        return
+      }
+
+      await onMoveEnrollment(
+        existingEnrollment.id,
+        selectedEnrollmentClassId
+      )
+    } else {
+      await onEnrollStudent(
+        enrollingStudentId,
+        selectedEnrollmentClassId,
+        selectedEnrollmentYearId
+      )
+    }
+
+    setEnrollingStudentId(null)
+    setSelectedEnrollmentYearId('')
+    setSelectedEnrollmentClassId('')
+  } finally {
+    setEnrollingLoading(false)
+  }
+}
+
+const filteredEnrollmentClasses = classes.filter(
+  (item) => item.year_id === selectedEnrollmentYearId
+)
+
+function getStudentEnrollment(studentId: string) {
+  return enrollments.find(
+    (item) => item.student_id === studentId
+  )
 }
 
   function handlePrintFilteredQRCodes() {
@@ -766,6 +868,29 @@ setEditPhotoInputKey((prev) => prev + 1)
       Editar
     </button>
 
+    <button
+  onClick={() => {
+    setEnrollingStudentId(student.id)
+    setSelectedEnrollmentYearId('')
+    setSelectedEnrollmentClassId('')
+  }}
+  style={{
+    padding: '10px 14px',
+    borderRadius: 12,
+    border: 'none',
+    background: '#2563eb',
+    color: '#fff',
+    fontWeight: 700,
+    cursor: 'pointer',
+  }}
+>
+  {
+  getStudentEnrollment(student.id)
+    ? 'Mover de turma'
+    : 'Matricular'
+}
+</button>
+
 <button
   onClick={() => setStudentToDelete(student)}
   style={deleteButtonStyle}
@@ -874,6 +999,137 @@ const message = encodeURIComponent(
           disabled={deletingStudent}
         >
           {deletingStudent ? 'Deletando...' : 'Sim, deletar'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+{enrollingStudentId && (
+  <div
+    onClick={() => setEnrollingStudentId(null)}
+    style={{
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(15,23,42,0.45)',
+      zIndex: 9999,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 20,
+    }}
+  >
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        width: '100%',
+        maxWidth: 420,
+        background: '#fff',
+        borderRadius: 24,
+        padding: 24,
+      }}
+    >
+      <h2
+  style={{
+    marginTop: 0,
+    marginBottom: 18,
+    fontSize: 24,
+    fontWeight: 900,
+    color: '#0f172a',
+  }}
+>
+  Matricular aluno
+</h2>
+
+      <select
+        value={selectedEnrollmentYearId}
+        onChange={(e) => {
+          setSelectedEnrollmentYearId(e.target.value)
+          setSelectedEnrollmentClassId('')
+        }}
+        style={{
+  width: '100%',
+  padding: '14px 16px',
+  marginBottom: 12,
+  borderRadius: 14,
+  border: '1px solid #cbd5e1',
+  background: '#ffffff',
+  color: '#0f172a',
+  fontSize: 15,
+  fontWeight: 700,
+  outline: 'none',
+}}
+      >
+        <option value="" style={{ color: '#64748b' }}>
+  Selecione o ano letivo
+</option>
+
+        {schoolYears.map((year) => (
+          <option key={year.id} value={year.id}>
+            {year.year}
+          </option>
+        ))}
+      </select>
+
+      <select
+        value={selectedEnrollmentClassId}
+        onChange={(e) => setSelectedEnrollmentClassId(e.target.value)}
+        disabled={!selectedEnrollmentYearId}
+        style={{
+  width: '100%',
+  padding: '14px 16px',
+  marginBottom: 12,
+  borderRadius: 14,
+  border: '1px solid #cbd5e1',
+  background: '#ffffff',
+  color: '#0f172a',
+  fontSize: 15,
+  fontWeight: 700,
+  outline: 'none',
+}}
+      >
+        <option value="" style={{ color: '#64748b' }}>
+  Selecione a turma
+</option>
+
+        {filteredEnrollmentClasses.map((item) => (
+          <option key={item.id} value={item.id}>
+            {item.name}
+          </option>
+        ))}
+      </select>
+
+      <div style={{ display: 'flex', gap: 12 }}>
+        <button
+          onClick={handleConfirmEnrollment}
+          disabled={enrollingLoading}
+          style={{
+            flex: 1,
+            padding: '14px 18px',
+            borderRadius: 14,
+            border: 'none',
+            background: '#2563eb',
+            color: '#fff',
+            fontWeight: 800,
+            cursor: 'pointer',
+          }}
+        >
+          {enrollingLoading ? 'Matriculando...' : 'Confirmar'}
+        </button>
+
+        <button
+          onClick={() => setEnrollingStudentId(null)}
+          style={{
+  flex: 1,
+  padding: '14px 18px',
+  borderRadius: 14,
+  border: '1px solid #cbd5e1',
+  background: '#ffffff',
+  color: '#0f172a',
+  fontWeight: 800,
+  cursor: 'pointer',
+}}
+        >
+          Cancelar
         </button>
       </div>
     </div>
