@@ -3075,6 +3075,7 @@ function handleChangeSection(
     | 'class-map'
     | 'attendance'
     | 'reports'
+    | 'rankings'
     | 'assessments'
     | 'plans'
 ) {
