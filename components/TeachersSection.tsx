@@ -12,6 +12,7 @@ type TeachersSectionProps = {
   setTeacherName: (value: string) => void
   setTeacherEmail: (value: string) => void
   handleCreateTeacher: () => void
+  handleDeleteTeacher: (teacherId: string) => void
   teachers: Teacher[]
 }
 
@@ -21,6 +22,7 @@ export default function TeachersSection({
   setTeacherName,
   setTeacherEmail,
   handleCreateTeacher,
+  handleDeleteTeacher,
   teachers,
 }: TeachersSectionProps) {
   const sectionStyle: React.CSSProperties = {
@@ -141,8 +143,37 @@ export default function TeachersSection({
       ) : (
         <div style={listStyle}>
           {teachers.map((teacher) => (
-            <div key={teacher.id} style={itemCardStyle}>
+            <div
+  key={teacher.id}
+  style={{
+    ...itemCardStyle,
+    position: 'relative',
+  }}
+>
               <div>
+                <button
+  onClick={() => handleDeleteTeacher(teacher.id)}
+  style={{
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 34,
+    height: 34,
+    borderRadius: '50%',
+    border: 'none',
+    background: '#fee2e2',
+    color: '#dc2626',
+    fontSize: 20,
+    fontWeight: 900,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  }}
+  title="Deletar professor"
+>
+  ×
+</button>
                 <div style={itemTitleStyle}>{teacher.full_name}</div>
 
                 <div style={itemSubtitleStyle}>
