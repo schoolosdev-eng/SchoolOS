@@ -14,6 +14,7 @@
     "@supabase/supabase-js": "^2.103.3",
     "@techstark/opencv-js": "^4.12.0-release.1",
     "dexie": "^4.4.2",
+    "html-to-image": "^1.11.13",
     "html2pdf.js": "^0.14.0",
     "html5-qrcode": "^2.3.8",
     "katex": "^0.16.45",

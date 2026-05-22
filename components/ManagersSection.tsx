@@ -15,6 +15,7 @@ type ManagersSectionProps = {
   setManagerEmail: (value: string) => void
   setManagerArea: (value: string) => void
   handleCreateManager: () => void
+  handleDeleteManager: (managerId: string) => void
   managers: Manager[]
 }
 
@@ -26,6 +27,7 @@ export default function ManagersSection({
   setManagerEmail,
   setManagerArea,
   handleCreateManager,
+  handleDeleteManager,
   managers,
 }: ManagersSectionProps) {
   const sectionStyle: React.CSSProperties = {
@@ -156,8 +158,37 @@ export default function ManagersSection({
           {[...managers]
   .sort((a, b) => a.full_name.localeCompare(b.full_name, 'pt-BR'))
   .map((manager) => (
-            <div key={manager.id} style={itemCardStyle}>
+            <div
+  key={manager.id}
+  style={{
+    ...itemCardStyle,
+    position: 'relative',
+  }}
+>
               <div>
+                <button
+  onClick={() => handleDeleteManager(manager.id)}
+  style={{
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    borderRadius: '50%',
+    border: 'none',
+    background: '#fee2e2',
+    color: '#dc2626',
+    fontWeight: 900,
+    fontSize: 18,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  }}
+  title="Deletar gestor"
+>
+  ×
+</button>
                 <div style={itemTitleStyle}>{manager.full_name}</div>
 
                 <div style={itemSubtitleStyle}>

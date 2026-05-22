@@ -252,6 +252,7 @@ const [activeSection, setActiveSection] = useState<
   | 'class-map'
   | 'attendance'
   | 'reports'
+  | 'rankings'
   | 'assessments'
   | 'plans'
 >('overview')
@@ -2217,6 +2218,36 @@ async function fetchSchoolName(currentSchoolId?: string | null) {
     showMessage('Professor cadastrado com sucesso.')
   }
 
+  async function handleDeleteTeacher(teacherId: string) {
+  if (!isAdmin) {
+    showMessage('Apenas administradores podem deletar professores.')
+    return
+  }
+
+  const confirmDelete = window.confirm(
+    'Tem certeza que deseja deletar este professor?'
+  )
+
+  if (!confirmDelete) return
+
+  const { error } = await supabase
+    .from('teachers')
+    .delete()
+    .eq('id', teacherId)
+    .eq('school_id', schoolId)
+
+  if (error) {
+    showMessage(`Erro ao deletar professor: ${error.message}`)
+    return
+  }
+
+  setTeachers((prev) =>
+    prev.filter((teacher) => teacher.id !== teacherId)
+  )
+
+  showMessage('Professor deletado com sucesso.')
+}
+
   async function handleCreateManager() {
     if (!canManage) {
       showMessage('Você não tem permissão para cadastrar gestor.')
@@ -2270,6 +2301,36 @@ async function fetchSchoolName(currentSchoolId?: string | null) {
     await fetchManagers()
     showMessage('Gestor cadastrado com sucesso.')
   }
+
+  async function handleDeleteManager(managerId: string) {
+  if (!isAdmin) {
+    showMessage('Apenas administradores podem deletar gestores.')
+    return
+  }
+
+  const confirmDelete = window.confirm(
+    'Tem certeza que deseja deletar este gestor?'
+  )
+
+  if (!confirmDelete) return
+
+  const { error } = await supabase
+    .from('managers')
+    .delete()
+    .eq('id', managerId)
+    .eq('school_id', schoolId)
+
+  if (error) {
+    showMessage(`Erro ao deletar gestor: ${error.message}`)
+    return
+  }
+
+  setManagers((prev) =>
+    prev.filter((manager) => manager.id !== managerId)
+  )
+
+  showMessage('Gestor deletado com sucesso.')
+}
 
   async function handleEnrollStudent(
   studentId: string,
@@ -3019,9 +3080,9 @@ function handleChangeSection(
 ) {
   setActiveSection(section)
 
-  if (section === 'reports') {
-    fetchAnnualRankingRecords()
-  }
+  if (section === 'rankings') {
+  fetchAnnualRankingRecords()
+}
 
   if (isMobile) {
     setSidebarOpen(false)
@@ -3163,6 +3224,18 @@ style={{
   >
     Relatórios
   </button>
+
+  <button
+  onClick={() => handleChangeSection('rankings')}
+  style={
+    activeSection === 'rankings'
+      ? dashboardNavButtonActiveStyle
+      : dashboardNavButtonStyle
+  }
+>
+  Rankings
+</button>
+
   <button
   onClick={() => handleChangeSection('assessments')}
   style={
@@ -3707,6 +3780,7 @@ onClick={() => {
             setTeacherName={setTeacherName}
             setTeacherEmail={setTeacherEmail}
             handleCreateTeacher={handleCreateTeacher}
+            handleDeleteTeacher={handleDeleteTeacher}
             teachers={teachers}
           />
 
@@ -3720,6 +3794,7 @@ onClick={() => {
             setManagerEmail={setManagerEmail}
             setManagerArea={setManagerArea}
             handleCreateManager={handleCreateManager}
+            handleDeleteManager={handleDeleteManager}
             managers={managers}
           />
         </section>
@@ -3932,7 +4007,7 @@ onClick={() => {
 )}
 
 {activeSection === 'reports' && (
-  <section style={dashboardMainGridStyle}>
+  <section style={{ display: 'block' }}>
     <div style={dashboardMainColumnStyle}>
       {(isAdmin || isManager) && (
         <section style={dashboardCardStyle}>
@@ -4029,29 +4104,28 @@ onClick={() => {
   </section>
 )}
     </div>
+  </section>
+)}
 
-    <div style={dashboardSideColumnStyle}>
-      {(isAdmin || isManager) && (
-        <section style={dashboardCardStyle}>
-          <div style={dashboardCardHeaderStyle}>
-            <div>
-              <div style={dashboardCardEyebrowStyle}>Frequência</div>
-<h2 style={dashboardCardTitleStyle}>Ranking escolar</h2>
-<p style={dashboardCardTextStyle}>
-  Ranking anual de frequência dos alunos no ano letivo atual.
-</p>
+{activeSection === 'rankings' && (isAdmin || isManager) && (
+  <section style={dashboardCardStyle}>
+    <div style={dashboardCardHeaderStyle}>
+      <div>
+        <div style={dashboardCardEyebrowStyle}>Frequência</div>
+        <h2 style={dashboardCardTitleStyle}>Ranking escolar</h2>
+        <p style={dashboardCardTextStyle}>
+          Ranking anual de frequência dos alunos no ano letivo atual.
+        </p>
+      </div>
+    </div>
 
-<div style={{ marginTop: 18 }}>
-  <AttendanceFrequencyRanking
+    <AttendanceFrequencyRanking
   students={students}
   ranking={annualRankingData}
+  schoolYears={schoolYears}
+  classes={classes}
+  schoolName={school?.name || 'SchoolOS'}
 />
-</div>
-            </div>
-          </div>
-        </section>
-      )}
-    </div>
   </section>
 )}
 

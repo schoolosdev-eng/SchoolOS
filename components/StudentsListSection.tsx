@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
 import { supabase } from '@/lib/supabase'
+import * as htmlToImage from 'html-to-image'
 
 type Student = {
   id: string
@@ -92,6 +93,7 @@ const [editPhotoInputKey, setEditPhotoInputKey] = useState(0)
 const [photoUrls, setPhotoUrls] = useState<Record<string, string | null>>({})
 const [selectedQrStudentIds, setSelectedQrStudentIds] = useState<string[]>([])
 const [enrollingStudentId, setEnrollingStudentId] = useState<string | null>(null)
+const [qrPngMessage, setQrPngMessage] = useState('')
 
 const [selectedEnrollmentYearId, setSelectedEnrollmentYearId] = useState('')
 
@@ -384,6 +386,161 @@ const qrCards = studentsToPrint
     }, 1500)
   }
 
+  async function handleDownloadSelectedQRCodePNG() {
+  if (selectedQrStudentIds.length !== 1) {
+    setQrPngMessage('Selecione exatamente 01 aluno para baixar o QR Code em PNG.')
+
+    setTimeout(() => {
+      setQrPngMessage('')
+    }, 3500)
+
+    return
+  }
+
+  const studentId = selectedQrStudentIds[0]
+  const student = students.find((item) => item.id === studentId)
+
+  if (!student?.qr_code_token) {
+    setQrPngMessage('Esse aluno não possui QR Code gerado.')
+
+    setTimeout(() => {
+      setQrPngMessage('')
+    }, 3500)
+
+    return
+  }
+
+  const qrContainer = document.getElementById(`student-qr-${student.id}`)
+  const canvas = qrContainer?.querySelector('canvas') as HTMLCanvasElement | null
+
+  if (!canvas) {
+    setQrPngMessage('QR Code não encontrado na tela.')
+
+    setTimeout(() => {
+      setQrPngMessage('')
+    }, 3500)
+
+    return
+  }
+
+  const qrImage = canvas.toDataURL('image/png')
+  const studentName = student.full_name || student.name || 'Aluno'
+  const studentClass = student.class_name || 'Sem turma'
+  const studentPhoto = photoUrls[student.id]
+
+  const tempCard = document.createElement('div')
+
+  tempCard.style.width = '420px'
+  tempCard.style.padding = '28px'
+  tempCard.style.background = '#ffffff'
+  tempCard.style.border = '1px solid #cbd5e1'
+  tempCard.style.borderRadius = '22px'
+  tempCard.style.fontFamily = 'Arial, sans-serif'
+  tempCard.style.textAlign = 'center'
+  tempCard.style.boxSizing = 'border-box'
+
+  tempCard.innerHTML = `
+    <img 
+      src="${qrImage}" 
+      style="
+        width: 280px;
+        height: 280px;
+        object-fit: contain;
+        image-rendering: pixelated;
+        display: block;
+        margin: 0 auto 14px;
+      "
+    />
+
+    <div style="
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 8px;
+    ">
+      ${
+        studentPhoto
+          ? `<img 
+              src="${studentPhoto}" 
+              style="
+                width: 72px;
+                height: 72px;
+                border-radius: 50%;
+                object-fit: cover;
+                border: 3px solid #cbd5e1;
+              "
+            />`
+          : `<div style="
+              width: 72px;
+              height: 72px;
+              border-radius: 50%;
+              background: #dbeafe;
+              color: #1d4ed8;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 28px;
+              font-weight: 900;
+              border: 3px solid #bfdbfe;
+            ">
+              ${studentName[0]}
+            </div>`
+      }
+
+      <div style="
+        flex: 1;
+        text-align: center;
+      ">
+        <div style="
+          font-size: 17px;
+          font-weight: 900;
+          color: #020617;
+          line-height: 1.2;
+          text-transform: uppercase;
+        ">
+          ${studentName}
+        </div>
+
+        <div style="
+          margin-top: 6px;
+          font-size: 15px;
+          font-weight: 700;
+          color: #334155;
+        ">
+          ${studentClass}
+        </div>
+      </div>
+    </div>
+  `
+
+  document.body.appendChild(tempCard)
+
+  try {
+    const dataUrl = await htmlToImage.toPng(tempCard, {
+      cacheBust: true,
+      pixelRatio: 3,
+      backgroundColor: '#ffffff',
+    })
+
+    const link = document.createElement('a')
+    link.href = dataUrl
+    link.download = `qrcode-${studentName.replace(/\s+/g, '-').toLowerCase()}.png`
+    link.click()
+
+    setQrPngMessage('QR Code baixado em PNG com sucesso.')
+
+    setTimeout(() => {
+      setQrPngMessage('')
+    }, 3000)
+  } catch (error) {
+    console.error(error)
+    setQrPngMessage('Erro ao gerar PNG. Tente novamente.')
+  } finally {
+    document.body.removeChild(tempCard)
+  }
+}
+
   function formatDateBR(date: string) {
   if (!date) return 'Não informado'
 
@@ -500,13 +657,8 @@ async function createAdjustedEditPhotoFile() {
           </p>
         </div>
 
-        <button onClick={handlePrintFilteredQRCodes} style={secondaryButtonStyle}>
-          {selectedQrStudentIds.length > 0
-  ? `Imprimir ${selectedQrStudentIds.length} QR Code(s) selecionado(s)`
-  : 'Imprimir QR Codes filtrados'}
-        </button>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-  <button
+          <button
     type="button"
     onClick={selectAllFilteredStudents}
     style={{
@@ -522,6 +674,46 @@ async function createAdjustedEditPhotoFile() {
   >
     Selecionar filtrados
   </button>
+  <button onClick={handlePrintFilteredQRCodes} style={secondaryButtonStyle}>
+    {selectedQrStudentIds.length > 0
+      ? `Imprimir ${selectedQrStudentIds.length} QR Code(s) selecionado(s)`
+      : 'Imprimir QR Codes filtrados'}
+  </button>
+
+  <button
+    type="button"
+    onClick={handleDownloadSelectedQRCodePNG}
+    style={{
+      ...secondaryButtonStyle,
+      background: selectedQrStudentIds.length === 1 ? '#eff6ff' : '#f8fafc',
+      color: selectedQrStudentIds.length === 1 ? '#1d4ed8' : '#94a3b8',
+      border: selectedQrStudentIds.length === 1
+        ? '1px solid #bfdbfe'
+        : '1px solid #e2e8f0',
+    }}
+  >
+    Baixar Imagem
+  </button>
+</div>
+{qrPngMessage && (
+  <div
+    style={{
+      marginTop: 12,
+      padding: '12px 14px',
+      borderRadius: 14,
+      background: qrPngMessage.includes('sucesso') ? '#ecfdf5' : '#fff7ed',
+      border: qrPngMessage.includes('sucesso')
+        ? '1px solid #bbf7d0'
+        : '1px solid #fed7aa',
+      color: qrPngMessage.includes('sucesso') ? '#047857' : '#c2410c',
+      fontWeight: 800,
+      fontSize: 13,
+    }}
+  >
+    {qrPngMessage}
+  </div>
+)}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
 
   {selectedQrStudentIds.length > 0 && (
     <button
