@@ -1189,6 +1189,13 @@ await offlineAttendanceDb.faceCapturesTemp.bulkDelete(
   let bestDistance = Infinity
 
   for (const stored of allEmbeddings) {
+    if (
+      !stored.embedding ||
+      stored.embedding.length !== embedding.length
+    ) {
+      continue
+    }
+
     const distance = calculateFaceDistance(
       embedding,
       stored.embedding
@@ -1200,10 +1207,19 @@ await offlineAttendanceDb.faceCapturesTemp.bulkDelete(
     }
   }
 
-  // limite facial
-  if (bestDistance > 0.68) {
+  // limite facial mais rígido
+  const FACE_MATCH_THRESHOLD = 0.42
+
+  if (!bestMatch || bestDistance > FACE_MATCH_THRESHOLD) {
     return null
   }
+
+  console.log(
+  'FACE MATCH:',
+  bestMatch?.student_id,
+  'DISTANCE:',
+  bestDistance
+)
 
   return {
     student_id: bestMatch.student_id,
@@ -1218,123 +1234,136 @@ await offlineAttendanceDb.faceCapturesTemp.bulkDelete(
   }
 
   facialProcessingRef.current = true
+
   try {
     setResultWithTimeout({
       status: 'success',
       message: 'Processando rosto...',
     })
 
-    const embedding =
-      await generateFaceEmbeddingFromBlob(imageBlob)
+    const embedding = await generateFaceEmbeddingFromBlob(imageBlob)
 
     if (!embedding) {
       setResultWithTimeout({
         status: 'error',
         message: 'Nenhum rosto válido encontrado.',
       })
-
       return
-    }    
+    }
 
-const match = await findBestFaceMatch(embedding)
+    const match = await findBestFaceMatch(embedding)
 
-if (!match) {
-  setResultWithTimeout({
-    status: 'error',
-    message: 'Rosto não reconhecido.',
-  })
+    if (!match) {
+      setResultWithTimeout({
+        status: 'error',
+        message: 'Rosto não reconhecido.',
+      })
+      return
+    }
 
-  return
-}
+    const MAX_MATCH_DISTANCE = 0.42
 
-const student =
-  await offlineAttendanceDb.students.get(match.student_id)
+    if (
+      typeof match.distance === 'number' &&
+      match.distance > MAX_MATCH_DISTANCE
+    ) {
+      setResultWithTimeout({
+        status: 'error',
+        message: 'Rosto detectado, mas sem confiança suficiente para registrar presença.',
+      })
+      return
+    }
 
-  if (!student) {
-  setResultWithTimeout({
-    status: 'error',
-    message: 'Aluno não encontrado.',
-  })
+    const student = await offlineAttendanceDb.students.get(match.student_id)
 
-  return
-}
+    if (!student) {
+      setResultWithTimeout({
+        status: 'error',
+        message: 'Aluno não encontrado.',
+      })
+      return
+    }
 
-let photoUrl: string | null = null
+    let photoUrl: string | null = null
 
-if (navigator.onLine && student.profile_photo_path) {
-  const { data } = await supabase.storage
-    .from('student-profile-photos')
-    .createSignedUrl(student.profile_photo_path, 3600)
+    if (navigator.onLine && student.profile_photo_path) {
+      const { data } = await supabase.storage
+        .from('student-profile-photos')
+        .createSignedUrl(student.profile_photo_path, 3600)
 
-  photoUrl = data?.signedUrl || null
-}
+      photoUrl = data?.signedUrl || null
+    }
 
     const today = new Date().toISOString().split('T')[0]
 
-const existingAttendance =
-  await offlineAttendanceDb.attendance
-    .where('[student_id+attendance_date]')
-    .equals([student.id, today])
-    .first()
+    const existingAttendance = await offlineAttendanceDb.attendance
+      .where('[student_id+attendance_date]')
+      .equals([student.id, today])
+      .first()
 
-if (!existingAttendance) {
-  await offlineAttendanceDb.attendance.add({
-    id: crypto.randomUUID(),
-    school_id: student.school_id,
-    student_id: student.id,
-    class_id: student.class_id,
-    attendance_date: today,
-    status: 'present',
-    source: 'facial',
-    recorded_at: new Date().toISOString(),
-    synced: false,
-  })
-}
+    if (!existingAttendance) {
+      await offlineAttendanceDb.attendance.add({
+        id: crypto.randomUUID(),
+        school_id: student.school_id,
+        student_id: student.id,
+        class_id: student.class_id,
+        attendance_date: today,
+        status: 'present',
+        source: 'facial',
+        recorded_at: new Date().toISOString(),
+        synced: false,
+      })
+    }
 
-await offlineAttendanceDb.faceCapturesTemp.add({
-  id: crypto.randomUUID(),
-  school_id: schoolId,
-  student_id: student.id,
-  class_id: student.class_id,
-  image_blob: imageBlob,
-  captured_at: new Date().toISOString(),
-  processed: false,
-})
+    // IMPORTANTE:
+    // Não salvar nova captura facial automaticamente durante a presença.
+    // Isso evita contaminar a base com vetores ruins ou de outro aluno.
+    /*
+    await offlineAttendanceDb.faceCapturesTemp.add({
+      id: crypto.randomUUID(),
+      school_id: schoolId,
+      student_id: student.id,
+      class_id: student.class_id,
+      image_blob: imageBlob,
+      captured_at: new Date().toISOString(),
+      processed: false,
+    })
+    */
 
-setRecentScans((prev) => [
-  {
-    id: crypto.randomUUID(),
-    status: existingAttendance ? 'duplicate' : 'success',
-    message: existingAttendance
+    const finalStatus = existingAttendance ? 'duplicate' : 'success'
+    const finalMessage = existingAttendance
       ? 'Aluno já possuía presença registrada anteriormente.'
-      : 'Presença facial registrada com sucesso.',
-    studentName: student.full_name,
-    className: student.class_name,
-    photo: photoUrl,
-    time: new Date().toLocaleTimeString('pt-BR', {
+      : 'Presença facial registrada com sucesso.'
+
+    const finalTime = new Date().toLocaleTimeString('pt-BR', {
       hour: '2-digit',
       minute: '2-digit',
-    }),
-  },
-  ...prev.slice(0, 9),
-])
+    })
 
-setResultWithTimeout({
-  status: existingAttendance ? 'duplicate' : 'success',
-  message: existingAttendance
-    ? 'Aluno já possuía presença registrada anteriormente.'
-    : 'Presença facial registrada com sucesso.',
-  student: {
-    name: student.full_name,
-    className: student.class_name,
-    photo: photoUrl,
-  },
-  time: new Date().toLocaleTimeString('pt-BR', {
-    hour: '2-digit',
-    minute: '2-digit',
-  }),
-})
-    } catch (error) {
+    setRecentScans((prev) => [
+      {
+        id: crypto.randomUUID(),
+        status: finalStatus,
+        message: finalMessage,
+        studentName: student.full_name,
+        className: student.class_name,
+        photo: photoUrl,
+        time: finalTime,
+      },
+      ...prev.slice(0, 9),
+    ])
+
+    setResultWithTimeout({
+      status: finalStatus,
+      message: finalMessage,
+      student: {
+        name: student.full_name,
+        className: student.class_name,
+        photo: photoUrl,
+      },
+      time: finalTime,
+    })
+  } catch (error) {
     console.error('ERRO FACIAL COMPLETO:', error)
 
     setResultWithTimeout({
@@ -1350,7 +1379,7 @@ setResultWithTimeout({
 
     setTimeout(() => {
       facialCooldownRef.current = false
-    }, 1000)
+    }, 2000)
   }
 }
 

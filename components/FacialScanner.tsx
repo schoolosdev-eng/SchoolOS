@@ -65,14 +65,19 @@ export default function FacialScanner({
 
       faceDetection.setOptions({
         model: 'short',
-        minDetectionConfidence: 0.75,
+        minDetectionConfidence: 0.85,
       })
 
       faceDetection.onResults((results: any) => {
   if (captureInProgressRef.current) return
 
   const detections = results.detections || []
-  if (detections.length === 0) return
+  if (detections.length !== 1) return
+
+  const detection = detections[0]
+const score = detection.score?.[0] ?? 0
+
+if (score < 0.85) return
 
   const now = Date.now()
   if (now - lastCaptureRef.current < 4000) return
