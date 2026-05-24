@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { FaceDetection } from '@mediapipe/face_detection'
+import { Camera } from '@mediapipe/camera_utils'
 
 type Props = {
   isActive: boolean
@@ -17,39 +19,71 @@ export default function FacialScanner({
   const streamRef = useRef<MediaStream | null>(null)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
+    const faceDetectionRef = useRef<FaceDetection | null>(null)
+    const cameraRef = useRef<Camera | null>(null)
+    const lastCaptureRef = useRef<number>(0)
+
   async function startCamera() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'user',
-        },
-        audio: false,
-      })
+  try {
+    if (!videoRef.current) return
 
-      streamRef.current = stream
+    const faceDetection = new FaceDetection({
+      locateFile: (file) =>
+        `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`,
+    })
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-      }
+    faceDetection.setOptions({
+      model: 'short',
+      minDetectionConfidence: 0.7,
+    })
 
-      intervalRef.current = setInterval(async () => {
-        captureFrame()
-      }, 4000)
-    } catch (error) {
-      console.error('Erro ao acessar câmera:', error)
-      onNoCamera?.()
-    }
+    faceDetection.onResults(async (results) => {
+      const detections = results.detections || []
+
+      if (detections.length === 0) return
+
+      const now = Date.now()
+
+      // evita capturas excessivas
+      if (now - lastCaptureRef.current < 4000) return
+
+      lastCaptureRef.current = now
+
+      captureFrame()
+    })
+
+    faceDetectionRef.current = faceDetection
+
+    const camera = new Camera(videoRef.current, {
+      onFrame: async () => {
+        if (!videoRef.current) return
+
+        await faceDetection.send({
+          image: videoRef.current,
+        })
+      },
+      width: 640,
+      height: 480,
+    })
+
+    cameraRef.current = camera
+
+    await camera.start()
+  } catch (error) {
+    console.error('Erro ao acessar câmera:', error)
+    onNoCamera?.()
   }
+}
 
   function stopCamera() {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-    }
-
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop())
-    }
+  if (cameraRef.current) {
+    cameraRef.current.stop()
   }
+
+  if (streamRef.current) {
+    streamRef.current.getTracks().forEach((track) => track.stop())
+  }
+}
 
   async function captureFrame() {
     if (!videoRef.current) return
