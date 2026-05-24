@@ -77,27 +77,17 @@ export default function FacialScanner({
         captureFrame()
       })
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-  video: {
-    facingMode,
-  },
-  audio: false,
-})
-
-if (videoRef.current) {
-  videoRef.current.srcObject = stream
-}
-
       faceDetectionRef.current = faceDetection
 
       const camera = new CameraClass(videoRef.current, {
-        onFrame: async () => {
-          if (!videoRef.current) return
-          await faceDetection.send({ image: videoRef.current })
-        },
-        width: 640,
-        height: 480,
-      })
+  onFrame: async () => {
+    if (!videoRef.current) return
+    await faceDetection.send({ image: videoRef.current })
+  },
+  width: 640,
+  height: 480,
+  facingMode,
+})
 
       cameraRef.current = camera
       await camera.start()
@@ -114,23 +104,13 @@ if (videoRef.current) {
 }
 
   function stopCamera() {
-    if (cameraRef.current) {
-      cameraRef.current.stop()
-      cameraRef.current = null
-    }
-
-    const stream = videoRef.current?.srcObject as MediaStream | null
-
-if (stream) {
-  stream.getTracks().forEach((track) => track.stop())
-}
-
-if (videoRef.current) {
-  videoRef.current.srcObject = null
-}
-
-    faceDetectionRef.current = null
+  if (cameraRef.current) {
+    cameraRef.current.stop()
+    cameraRef.current = null
   }
+
+  faceDetectionRef.current = null
+}
 
   function captureFrame() {
     if (!videoRef.current) return
