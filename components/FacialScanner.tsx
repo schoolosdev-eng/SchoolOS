@@ -129,7 +129,7 @@ if (typeof score === 'number' && score > 0 && score < 0.60) {
 
       console.log('[FACIAL] tempo desde última captura:', elapsed)
 
-      if (elapsed < 2000) {
+      if (elapsed < 1000) {
         console.log('[FACIAL] bloqueado por cooldown')
         return
       }
@@ -235,7 +235,7 @@ if (typeof score === 'number' && score > 0 && score < 0.60) {
 
     setTimeout(() => {
       captureInProgressRef.current = false
-    }, 4000)
+    }, 2000)
   }, 'image/jpeg', 0.92)
 }
 
