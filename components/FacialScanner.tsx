@@ -107,16 +107,10 @@ if (videoRef.current) {
     }
   }
 
-  async function handleSwitchCamera() {
-  stopCamera()
-
+  function handleSwitchCamera() {
   setFacingMode((prev) =>
     prev === 'user' ? 'environment' : 'user'
   )
-
-  setTimeout(() => {
-    startCamera()
-  }, 300)
 }
 
   function stopCamera() {
@@ -160,22 +154,37 @@ if (videoRef.current) {
   }
 
   useEffect(() => {
-    if (!isActive) {
-      stopCamera()
-      return
-    }
+  if (!isActive) {
+    stopCamera()
+    return
+  }
 
-    startCamera()
+  startCamera()
 
-    return () => {
-      stopCamera()
-    }
-  }, [isActive])
+  return () => {
+    stopCamera()
+  }
+}, [isActive, facingMode])
 
   if (!isActive) return null
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <button
+  type="button"
+  onClick={handleSwitchCamera}
+  style={{
+    padding: '10px 14px',
+    borderRadius: 12,
+    border: '1px solid #cbd5e1',
+    background: '#ffffff',
+    color: '#0f172a',
+    fontWeight: 800,
+    cursor: 'pointer',
+  }}
+>
+  Alternar câmera
+</button>
       <div
         style={{
           width: '100%',
@@ -195,22 +204,6 @@ if (videoRef.current) {
             display: 'block',
           }}
         />
-
-        <button
-  type="button"
-  onClick={handleSwitchCamera}
-  style={{
-    padding: '10px 14px',
-    borderRadius: 12,
-    border: '1px solid #cbd5e1',
-    background: '#ffffff',
-    color: '#0f172a',
-    fontWeight: 800,
-    cursor: 'pointer',
-  }}
->
-  Alternar câmera
-</button>
       </div>
 
       <div
