@@ -1135,6 +1135,16 @@ const student =
   return
 }
 
+let photoUrl: string | null = null
+
+if (navigator.onLine && student.profile_photo_path) {
+  const { data } = await supabase.storage
+    .from('student-profile-photos')
+    .createSignedUrl(student.profile_photo_path, 3600)
+
+  photoUrl = data?.signedUrl || null
+}
+
     const today = new Date().toISOString().split('T')[0]
 
 const existingAttendance =
@@ -1176,7 +1186,7 @@ setRecentScans((prev) => [
       : 'Presença facial registrada com sucesso.',
     studentName: student.full_name,
     className: student.class_name,
-    photo: null,
+    photo: photoUrl,
     time: new Date().toLocaleTimeString('pt-BR', {
       hour: '2-digit',
       minute: '2-digit',
@@ -1193,7 +1203,7 @@ setResultWithTimeout({
   student: {
     name: student.full_name,
     className: student.class_name,
-    photo: null,
+    photo: photoUrl,
   },
   time: new Date().toLocaleTimeString('pt-BR', {
     hour: '2-digit',
