@@ -1058,41 +1058,109 @@ async function handleStartReading() {
   setIsScannerActive(true)
 }
 
+function averageEmbeddings(embeddings: number[][]) {
+  const length = embeddings[0].length
+
+  return Array.from({ length }, (_, index) => {
+    const sum = embeddings.reduce((total, embedding) => {
+      return total + embedding[index]
+    }, 0)
+
+    return sum / embeddings.length
+  })
+}
+
+function areEmbeddingsConsistent(embeddings: number[][]) {
+  const MAX_INTERNAL_DISTANCE = 0.35
+
+  for (let i = 0; i < embeddings.length; i++) {
+    for (let j = i + 1; j < embeddings.length; j++) {
+      const distance = calculateFaceDistance(embeddings[i], embeddings[j])
+
+      if (distance > MAX_INTERNAL_DISTANCE) {
+        return false
+      }
+    }
+  }
+
+  return true
+}
+
 async function processFaceCapturesAfterReading() {
   const captures = await offlineAttendanceDb.faceCapturesTemp
-  .filter((capture) => capture.processed === false)
-  .toArray()
+    .filter((capture) => capture.processed === false)
+    .toArray()
 
   if (captures.length === 0) return 0
 
+  const validCaptures = captures.filter((capture) => {
+    return capture.student_id !== 'pending' && capture.class_id !== 'pending'
+  })
+
+  const capturesByStudent = validCaptures.reduce((acc, capture) => {
+    if (!acc[capture.student_id]) {
+      acc[capture.student_id] = []
+    }
+
+    acc[capture.student_id].push(capture)
+
+    return acc
+  }, {} as Record<string, typeof validCaptures>)
+
   let generated = 0
 
-  for (const capture of captures) {
-    if (capture.student_id === 'pending') continue
-    if (capture.class_id === 'pending') continue
+  for (const [studentId, studentCaptures] of Object.entries(capturesByStudent)) {
+    if (studentCaptures.length < 3) {
+      continue
+    }
 
-    const embedding = await generateFaceEmbeddingFromBlob(capture.image_blob)
+    const selectedCaptures = studentCaptures.slice(0, 3)
 
-    if (!embedding) continue
+    const embeddings: number[][] = []
+
+    for (const capture of selectedCaptures) {
+      const embedding = await generateFaceEmbeddingFromBlob(capture.image_blob)
+
+      if (!embedding) continue
+
+      embeddings.push(embedding)
+    }
+
+    if (embeddings.length < 3) {
+      continue
+    }
+
+    if (!areEmbeddingsConsistent(embeddings)) {
+      console.log(
+        '[FACIAL] capturas inconsistentes para aluno:',
+        studentId
+      )
+
+      continue
+    }
+
+    const averagedEmbedding = averageEmbeddings(embeddings)
+
+    const referenceCapture = selectedCaptures[0]
 
     await offlineAttendanceDb.faceEmbeddings.add({
       id: crypto.randomUUID(),
-      school_id: capture.school_id,
-      student_id: capture.student_id,
-      class_id: capture.class_id,
-      embedding,
-      source: 'capture',
-      quality_score: null,
-      captured_at: capture.captured_at,
-      expires_at: new Date(
-        Date.now() + 90 * 24 * 60 * 60 * 1000
-      ).toISOString(),
-      synced: false,
+      school_id: referenceCapture.school_id,
+      student_id: referenceCapture.student_id,
+      class_id: referenceCapture.class_id,
+      embedding: averagedEmbedding,
+      source: 'profile_photo',
+quality_score: null,
+captured_at: new Date().toISOString(),
+expires_at: new Date(
+  Date.now() + 3650 * 24 * 60 * 60 * 1000
+).toISOString(),
+synced: false,
     })
 
-    await offlineAttendanceDb.faceCapturesTemp.update(capture.id, {
-      processed: true,
-    })
+    await offlineAttendanceDb.faceCapturesTemp.bulkDelete(
+      selectedCaptures.map((capture) => capture.id)
+    )
 
     generated++
   }
@@ -1101,14 +1169,6 @@ async function processFaceCapturesAfterReading() {
     .where('expires_at')
     .below(new Date().toISOString())
     .delete()
-
-  const processedCaptures = await offlineAttendanceDb.faceCapturesTemp
-  .filter((capture) => capture.processed === true)
-  .toArray()
-
-await offlineAttendanceDb.faceCapturesTemp.bulkDelete(
-  processedCaptures.map((capture) => capture.id)
-)
 
   return generated
 }
@@ -1179,52 +1239,59 @@ await offlineAttendanceDb.faceCapturesTemp.bulkDelete(
     setManualMode(true)
   }
 
-  async function findBestFaceMatch(
-  embedding: number[]
-) {
-  const allEmbeddings =
-    await offlineAttendanceDb.faceEmbeddings.toArray()
+  async function findBestFaceMatch(embedding: number[]) {
+  const allEmbeddings = await offlineAttendanceDb.faceEmbeddings.toArray()
+
+  const FACE_MATCH_THRESHOLD = 0.55
+  const MIN_DISTANCE_GAP = 0.08
 
   let bestMatch: any = null
   let bestDistance = Infinity
 
+  let secondBestMatch: any = null
+  let secondBestDistance = Infinity
+
   for (const stored of allEmbeddings) {
-    if (
-      !stored.embedding ||
-      stored.embedding.length !== embedding.length
-    ) {
+    if (!stored.embedding || stored.embedding.length !== embedding.length) {
       continue
     }
 
-    const distance = calculateFaceDistance(
-      embedding,
-      stored.embedding
-    )
+    const distance = calculateFaceDistance(embedding, stored.embedding)
 
     if (distance < bestDistance) {
+      secondBestDistance = bestDistance
+      secondBestMatch = bestMatch
+
       bestDistance = distance
       bestMatch = stored
+    } else if (distance < secondBestDistance) {
+      secondBestDistance = distance
+      secondBestMatch = stored
     }
   }
 
-  // limite facial mais rígido
-  const FACE_MATCH_THRESHOLD = 0.55
+  console.log('[FACIAL] melhor distância:', bestDistance)
+  console.log('[FACIAL] segunda melhor distância:', secondBestDistance)
+  console.log('[FACIAL] diferença:', secondBestDistance - bestDistance)
 
   if (!bestMatch || bestDistance > FACE_MATCH_THRESHOLD) {
     return null
   }
 
-  console.log(
-  'FACE MATCH:',
-  bestMatch?.student_id,
-  'DISTANCE:',
-  bestDistance
-)
+  const hasSecondMatch = !!secondBestMatch && Number.isFinite(secondBestDistance)
+
+  if (hasSecondMatch && secondBestDistance - bestDistance < MIN_DISTANCE_GAP) {
+    console.log('[FACIAL] bloqueado: rosto parecido com outro aluno')
+
+    return null
+  }
 
   return {
     student_id: bestMatch.student_id,
     class_id: bestMatch.class_id,
     distance: bestDistance,
+    secondDistance: secondBestDistance,
+    distanceGap: secondBestDistance - bestDistance,
   }
 }
 
