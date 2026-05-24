@@ -1,8 +1,6 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import '@mediapipe/face_detection'
-import '@mediapipe/camera_utils'
 
 type Props = {
   isActive: boolean
@@ -16,105 +14,112 @@ export default function FacialScanner({
   onFaceCapture,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const faceDetectionRef = useRef<any>(null)
+  const cameraRef = useRef<any>(null)
+  const lastCaptureRef = useRef<number>(0)
 
-    const faceDetectionRef = useRef<any>(null)
-const cameraRef = useRef<any>(null)
-    const lastCaptureRef = useRef<number>(0)
+  function loadScript(src: string) {
+    return new Promise<void>((resolve, reject) => {
+      if (document.querySelector(`script[src="${src}"]`)) {
+        resolve()
+        return
+      }
+
+      const script = document.createElement('script')
+      script.src = src
+      script.async = true
+      script.onload = () => resolve()
+      script.onerror = () => reject(new Error(`Erro ao carregar ${src}`))
+
+      document.body.appendChild(script)
+    })
+  }
 
   async function startCamera() {
-  try {
-    if (!videoRef.current) return
+    try {
+      if (!videoRef.current) return
 
-    const FaceDetectionClass = (window as any).FaceDetection
+      await loadScript(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js'
+      )
 
-if (!FaceDetectionClass) {
-  throw new Error('FaceDetection não carregado.')
-}
+      await loadScript(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js'
+      )
 
-const faceDetection = new FaceDetectionClass({
-      locateFile: (file: String) =>
-        `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`,
-    })
+      const FaceDetectionClass = (window as any).FaceDetection
+      const CameraClass = (window as any).Camera
 
-    faceDetection.setOptions({
-      model: 'short',
-      minDetectionConfidence: 0.7,
-    })
+      if (!FaceDetectionClass || !CameraClass) {
+        throw new Error('MediaPipe não carregado.')
+      }
 
-    faceDetection.onResults(async (results: any) => {
-      const detections = results.detections || []
+      const faceDetection = new FaceDetectionClass({
+        locateFile: (file: string) =>
+          `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`,
+      })
 
-      if (detections.length === 0) return
+      faceDetection.setOptions({
+        model: 'short',
+        minDetectionConfidence: 0.75,
+      })
 
-      const now = Date.now()
+      faceDetection.onResults((results: any) => {
+        const detections = results.detections || []
+        if (detections.length === 0) return
 
-      // evita capturas excessivas
-      if (now - lastCaptureRef.current < 4000) return
+        const now = Date.now()
+        if (now - lastCaptureRef.current < 4000) return
 
-      lastCaptureRef.current = now
+        lastCaptureRef.current = now
+        captureFrame()
+      })
 
-      captureFrame()
-    })
+      faceDetectionRef.current = faceDetection
 
-    faceDetectionRef.current = faceDetection
+      const camera = new CameraClass(videoRef.current, {
+        onFrame: async () => {
+          if (!videoRef.current) return
+          await faceDetection.send({ image: videoRef.current })
+        },
+        width: 640,
+        height: 480,
+      })
 
-    const CameraClass = (window as any).Camera
-
-if (!CameraClass) {
-  throw new Error('Camera Utils não carregado.')
-}
-
-const camera = new CameraClass(videoRef.current, {
-      onFrame: async () => {
-        if (!videoRef.current) return
-
-        await faceDetection.send({
-          image: videoRef.current,
-        })
-      },
-      width: 640,
-      height: 480,
-    })
-
-    cameraRef.current = camera
-
-    await camera.start()
-  } catch (error) {
-    console.error('Erro ao acessar câmera:', error)
-    onNoCamera?.()
+      cameraRef.current = camera
+      await camera.start()
+    } catch (error) {
+      console.error('Erro ao acessar câmera facial:', error)
+      onNoCamera?.()
+    }
   }
-}
 
   function stopCamera() {
-  if (cameraRef.current) {
-    cameraRef.current.stop()
+    if (cameraRef.current) {
+      cameraRef.current.stop()
+      cameraRef.current = null
+    }
+
+    faceDetectionRef.current = null
   }
 
-  if (streamRef.current) {
-    streamRef.current.getTracks().forEach((track) => track.stop())
-  }
-}
-
-  async function captureFrame() {
+  function captureFrame() {
     if (!videoRef.current) return
 
     const video = videoRef.current
+    if (!video.videoWidth || !video.videoHeight) return
 
     const canvas = document.createElement('canvas')
     canvas.width = video.videoWidth
     canvas.height = video.videoHeight
 
     const ctx = canvas.getContext('2d')
-
     if (!ctx) return
 
     ctx.drawImage(video, 0, 0)
 
     canvas.toBlob((blob) => {
       if (!blob) return
-
       onFaceCapture(blob)
     }, 'image/jpeg', 0.8)
   }
@@ -135,13 +140,7 @@ const camera = new CameraClass(videoRef.current, {
   if (!isActive) return null
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 12,
-      }}
-    >
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div
         style={{
           width: '100%',
@@ -171,7 +170,7 @@ const camera = new CameraClass(videoRef.current, {
           fontWeight: 600,
         }}
       >
-        Câmera facial ativa.
+        Câmera facial ativa. Capturas serão armazenadas apenas quando houver rosto detectado.
       </div>
     </div>
   )
