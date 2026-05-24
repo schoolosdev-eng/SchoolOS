@@ -115,6 +115,8 @@ const [faceMessage, setFaceMessage] = useState('')
 const [savingFace, setSavingFace] = useState(false)
 const [faceCaptureLocked, setFaceCaptureLocked] = useState(false)
 
+const [studentsWithFace, setStudentsWithFace] = useState<Record<string, string>>({})
+
   const availableClasses = useMemo(() => {
     const classNames = students
       .map((student) => student.class_name?.trim())
@@ -730,6 +732,11 @@ async function handleFaceEnrollmentCapture(imageBlob: Blob) {
 
     const enrollment = getStudentEnrollment(faceStudent.id)
 
+    await offlineAttendanceDb.faceEmbeddings
+  .where('student_id')
+  .equals(faceStudent.id)
+  .delete()
+
     await offlineAttendanceDb.faceEmbeddings.add({
       id: crypto.randomUUID(),
       school_id: schoolId,
@@ -744,6 +751,41 @@ async function handleFaceEnrollmentCapture(imageBlob: Blob) {
       ).toISOString(),
       synced: false,
     })
+
+    if (navigator.onLine) {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    await supabase
+  .from('face_embeddings')
+  .upsert(
+    {
+      school_id: schoolId,
+      student_id: faceStudent.id,
+      class_id: enrollment?.class_id || null,
+      embedding: averagedEmbedding,
+      source: 'manual_average',
+      quality_score: null,
+      captured_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      created_by_user_id: user?.id || null,
+      active: true,
+    },
+    {
+      onConflict: 'student_id,source',
+    }
+  )
+  } catch (error) {
+    console.error(
+      '[FACIAL] erro ao sincronizar embedding:',
+      error
+    )
+  }
+}
+
+    await loadStudentsWithFace()
 
     setFaceMessage('Cadastro facial concluído com sucesso.')
 
@@ -766,6 +808,22 @@ async function handleFaceEnrollmentCapture(imageBlob: Blob) {
     }, 1200)
   }
 }
+
+async function loadStudentsWithFace() {
+  const embeddings = await offlineAttendanceDb.faceEmbeddings.toArray()
+
+  const map: Record<string, string> = {}
+
+  embeddings.forEach((embedding) => {
+    map[embedding.student_id] = embedding.captured_at
+  })
+
+  setStudentsWithFace(map)
+}
+
+useEffect(() => {
+  loadStudentsWithFace()
+}, [students])
 
   return (
     <div style={cardStyle}>
@@ -1094,6 +1152,26 @@ async function handleFaceEnrollmentCapture(imageBlob: Blob) {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
+          <div
+  style={{
+    marginTop: 8,
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '6px 10px',
+    borderRadius: 999,
+    background: studentsWithFace[student.id] ? '#dcfce7' : '#fef3c7',
+    color: studentsWithFace[student.id] ? '#166534' : '#92400e',
+    fontSize: 12,
+    fontWeight: 900,
+  }}
+>
+  {studentsWithFace[student.id]
+    ? `Face cadastrada • ${new Date(
+        studentsWithFace[student.id]
+      ).toLocaleDateString('pt-BR')}`
+    : 'Sem face cadastrada'}
+</div>
           {student.qr_code_token && (
             <>
               <div id={`student-qr-${student.id}`}>
@@ -1221,7 +1299,7 @@ setEditPhotoInputKey((prev) => prev + 1)
     cursor: 'pointer',
   }}
 >
-  Cadastrar face
+  {studentsWithFace[student.id] ? 'Atualizar face' : 'Cadastrar face'}
 </button>
 
 <button

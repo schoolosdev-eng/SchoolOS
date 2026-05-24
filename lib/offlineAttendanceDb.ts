@@ -53,7 +53,7 @@ export type OfflineFaceEmbedding = {
   student_id: string
   class_id: string
   embedding: number[]
-  source: 'profile_photo' | 'capture'
+  source: 'profile_photo' | 'capture' | 'manual_average'
   quality_score: number | null
   captured_at: string
   expires_at: string

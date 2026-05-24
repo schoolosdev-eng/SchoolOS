@@ -166,6 +166,8 @@ async function downloadOfflineData() {
     await offlineAttendanceDb.students.clear()
     await offlineAttendanceDb.students.bulkPut(offlineStudents as any[])
 
+    await syncFaceEmbeddingsFromSupabase()
+
     const studentsWithFace = (offlineStudents as any[]).filter(
       (student) => student.profile_photo_path
     )
@@ -187,6 +189,20 @@ async function downloadOfflineData() {
         status: 'success',
         message: `Preparando reconhecimento facial... ${progress}% (${processedFaces}/${totalFaces})`,
       })
+
+      const existingManualEmbedding =
+  await offlineAttendanceDb.faceEmbeddings
+    .filter(
+      (item) =>
+        item.student_id === student.id &&
+        item.source === 'manual_average'
+    )
+    .first()
+
+if (existingManualEmbedding) {
+  skippedFaces++
+  continue
+}
 
       const existingProfileEmbedding =
         await offlineAttendanceDb.faceEmbeddings.get(`profile-${student.id}`)
@@ -1248,41 +1264,56 @@ synced: false,
   let bestMatch: any = null
   let bestDistance = Infinity
 
-  let secondBestMatch: any = null
-  let secondBestDistance = Infinity
+  let secondBestDifferentStudent: any = null
+  let secondBestDifferentStudentDistance = Infinity
 
   for (const stored of allEmbeddings) {
     if (!stored.embedding || stored.embedding.length !== embedding.length) {
       continue
     }
 
-    const distance = calculateFaceDistance(embedding, stored.embedding)
+    const distance = calculateFaceDistance(
+  embedding,
+  stored.embedding
+)
+
+let adjustedDistance = distance
+
+if (stored.source === 'manual_average') {
+  adjustedDistance -= 0.03
+}
 
     if (distance < bestDistance) {
-      secondBestDistance = bestDistance
-      secondBestMatch = bestMatch
+      if (bestMatch && bestMatch.student_id !== stored.student_id) {
+        secondBestDifferentStudent = bestMatch
+        secondBestDifferentStudentDistance = bestDistance
+      }
 
       bestDistance = distance
       bestMatch = stored
-    } else if (distance < secondBestDistance) {
-      secondBestDistance = distance
-      secondBestMatch = stored
+    } else if (
+      bestMatch &&
+      stored.student_id !== bestMatch.student_id &&
+      distance < secondBestDifferentStudentDistance
+    ) {
+      secondBestDifferentStudent = stored
+      secondBestDifferentStudentDistance = distance
     }
   }
 
-  console.log('[FACIAL] melhor distância:', bestDistance)
-  console.log('[FACIAL] segunda melhor distância:', secondBestDistance)
-  console.log('[FACIAL] diferença:', secondBestDistance - bestDistance)
+  console.log('[FACIAL] melhor:', bestMatch?.student_id, bestMatch?.source, bestDistance)
+  console.log('[FACIAL] segundo outro aluno:', secondBestDifferentStudent?.student_id, secondBestDifferentStudentDistance)
+  console.log('[FACIAL] diferença:', secondBestDifferentStudentDistance - bestDistance)
 
   if (!bestMatch || bestDistance > FACE_MATCH_THRESHOLD) {
     return null
   }
 
-  const hasSecondMatch = !!secondBestMatch && Number.isFinite(secondBestDistance)
-
-  if (hasSecondMatch && secondBestDistance - bestDistance < MIN_DISTANCE_GAP) {
-    console.log('[FACIAL] bloqueado: rosto parecido com outro aluno')
-
+  if (
+    secondBestDifferentStudent &&
+    secondBestDifferentStudentDistance - bestDistance < MIN_DISTANCE_GAP
+  ) {
+    console.log('[FACIAL] bloqueado: parecido com outro aluno')
     return null
   }
 
@@ -1290,8 +1321,9 @@ synced: false,
     student_id: bestMatch.student_id,
     class_id: bestMatch.class_id,
     distance: bestDistance,
-    secondDistance: secondBestDistance,
-    distanceGap: secondBestDistance - bestDistance,
+    source: bestMatch.source,
+    secondDistance: secondBestDifferentStudentDistance,
+    distanceGap: secondBestDifferentStudentDistance - bestDistance,
   }
 }
 
@@ -1536,6 +1568,59 @@ synced: false,
       </main>
     )
   }
+
+  async function syncFaceEmbeddingsFromSupabase() {
+  try {
+    console.log('[FACIAL] sincronizando embeddings...')
+
+    const { data, error } = await supabase
+      .from('face_embeddings')
+      .select('*')
+      .eq('school_id', schoolId)
+      .eq('active', true)
+
+    if (error) {
+      throw error
+    }
+
+    if (!data) return
+
+    for (const item of data) {
+      const existing = await offlineAttendanceDb.faceEmbeddings.get(item.id)
+
+      if (existing) {
+        await offlineAttendanceDb.faceEmbeddings.update(existing.id, {
+          embedding: item.embedding,
+          class_id: item.class_id || 'pending',
+          captured_at: item.captured_at,
+          synced: true,
+        })
+      } else {
+        await offlineAttendanceDb.faceEmbeddings.add({
+          id: item.id,
+          school_id: item.school_id,
+          student_id: item.student_id,
+          class_id: item.class_id || 'pending',
+          embedding: item.embedding,
+          source: item.source || 'manual_average',
+          quality_score: item.quality_score,
+          captured_at: item.captured_at,
+          expires_at: new Date(
+            Date.now() + 3650 * 24 * 60 * 60 * 1000
+          ).toISOString(),
+          synced: true,
+        })
+      }
+    }
+
+    console.log('[FACIAL] embeddings sincronizados')
+  } catch (error) {
+    console.error(
+      '[FACIAL] erro ao baixar embeddings:',
+      error
+    )
+  }
+}
 
   return (
     <main style={pageStyle} className="gate-page">
