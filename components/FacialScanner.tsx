@@ -40,71 +40,152 @@ export default function FacialScanner({
   }
 
   async function startCamera() {
-    try {
-      if (!videoRef.current) return
+  try {
+    console.log('[FACIAL] iniciando câmera...')
 
-      await loadScript(
-        'https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js'
-      )
+    if (!videoRef.current) {
+      console.log('[FACIAL] videoRef não encontrado')
+      return
+    }
 
-      await loadScript(
-        'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js'
-      )
+    console.log('[FACIAL] carregando scripts MediaPipe...')
 
-      const FaceDetectionClass = (window as any).FaceDetection
-      const CameraClass = (window as any).Camera
+    await loadScript(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js'
+    )
 
-      if (!FaceDetectionClass || !CameraClass) {
-        throw new Error('MediaPipe não carregado.')
+    await loadScript(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js'
+    )
+
+    console.log('[FACIAL] scripts carregados')
+
+    const FaceDetectionClass = (window as any).FaceDetection
+    const CameraClass = (window as any).Camera
+
+    console.log(
+      '[FACIAL] classes:',
+      !!FaceDetectionClass,
+      !!CameraClass
+    )
+
+    if (!FaceDetectionClass || !CameraClass) {
+      throw new Error('MediaPipe não carregado.')
+    }
+
+    const faceDetection = new FaceDetectionClass({
+      locateFile: (file: string) =>
+        `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`,
+    })
+
+    console.log('[FACIAL] FaceDetection criado')
+
+    faceDetection.setOptions({
+      model: 'short',
+      minDetectionConfidence: 0.75,
+    })
+
+    console.log('[FACIAL] opções configuradas')
+
+    faceDetection.onResults((results: any) => {
+      console.log('[FACIAL] onResults chamado')
+
+      if (captureInProgressRef.current) {
+        console.log('[FACIAL] bloqueado: captureInProgress')
+        return
       }
 
-      const faceDetection = new FaceDetectionClass({
-        locateFile: (file: string) =>
-          `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`,
-      })
+      const detections = results.detections || []
 
-      faceDetection.setOptions({
-        model: 'short',
-        minDetectionConfidence: 0.75,
-      })
+      console.log(
+        '[FACIAL] rostos detectados:',
+        detections.length
+      )
 
-      faceDetection.onResults((results: any) => {
-  if (captureInProgressRef.current) return
+      if (detections.length === 0) {
+        console.log('[FACIAL] nenhum rosto detectado')
+        return
+      }
 
-  const detections = results.detections || []
-  if (detections.length === 0) return
+      const detection = detections[0]
 
-  const detection = detections[0]
-const score = detection.score?.[0] ?? 0
+      const score = detection.score?.[0] ?? 0
 
-if (score < 0.60) return
+      console.log('[FACIAL] score:', score)
 
-  const now = Date.now()
-  if (now - lastCaptureRef.current < 2000) return
+      if (score < 0.60) {
+        console.log(
+          '[FACIAL] bloqueado por score baixo:',
+          score
+        )
+        return
+      }
 
-  lastCaptureRef.current = now
-  captureFrame()
-})
+      const now = Date.now()
 
-      faceDetectionRef.current = faceDetection
+      const elapsed = now - lastCaptureRef.current
 
-      const camera = new CameraClass(videoRef.current, {
-  onFrame: async () => {
-    if (!videoRef.current) return
-    await faceDetection.send({ image: videoRef.current })
-  },
-  width: 640,
-  height: 480,
-  facingMode,
-})
+      console.log('[FACIAL] tempo desde última captura:', elapsed)
 
-      cameraRef.current = camera
-      await camera.start()
-    } catch (error) {
-      console.error('Erro ao acessar câmera facial:', error)
-      onNoCamera?.()
-    }
+      if (elapsed < 2000) {
+        console.log('[FACIAL] bloqueado por cooldown')
+        return
+      }
+
+      console.log('[FACIAL] capturando frame...')
+
+      lastCaptureRef.current = now
+
+      captureFrame()
+    })
+
+    faceDetectionRef.current = faceDetection
+
+    console.log('[FACIAL] criando câmera...')
+
+    const camera = new CameraClass(videoRef.current, {
+      onFrame: async () => {
+        try {
+          if (!videoRef.current) {
+            console.log('[FACIAL] onFrame sem videoRef')
+            return
+          }
+
+          console.log('[FACIAL] enviando frame para MediaPipe')
+
+          await faceDetection.send({
+            image: videoRef.current,
+          })
+
+          console.log('[FACIAL] frame processado')
+        } catch (error) {
+          console.error(
+            '[FACIAL] erro no onFrame:',
+            error
+          )
+        }
+      },
+      width: 640,
+      height: 480,
+      facingMode,
+    })
+
+    cameraRef.current = camera
+
+    console.log('[FACIAL] iniciando câmera física...')
+
+    await camera.start()
+
+    console.log('[FACIAL] câmera iniciada com sucesso')
+  } catch (error) {
+    console.error(
+      '[FACIAL] erro ao acessar câmera facial:',
+      error
+    )
+
+    onNoCamera?.()
   }
+}
 
   function handleSwitchCamera() {
   setFacingMode((prev) =>
