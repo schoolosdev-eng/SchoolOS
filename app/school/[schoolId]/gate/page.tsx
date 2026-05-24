@@ -1208,7 +1208,7 @@ await offlineAttendanceDb.faceCapturesTemp.bulkDelete(
   }
 
   // limite facial mais rígido
-  const FACE_MATCH_THRESHOLD = 0.42
+  const FACE_MATCH_THRESHOLD = 0.50
 
   if (!bestMatch || bestDistance > FACE_MATCH_THRESHOLD) {
     return null
