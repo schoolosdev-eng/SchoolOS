@@ -1,20 +1,41 @@
 let faceapi: any = null
-
 let modelsLoaded = false
+
+function loadScript(src: string) {
+  return new Promise<void>((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) {
+      resolve()
+      return
+    }
+
+    const script = document.createElement('script')
+    script.src = src
+    script.async = true
+    script.onload = () => resolve()
+    script.onerror = () => reject(new Error(`Erro ao carregar ${src}`))
+
+    document.body.appendChild(script)
+  })
+}
 
 export async function loadFaceModels() {
   if (modelsLoaded) return
 
-  if (typeof window === 'undefined') {
-    return
-  }
+  if (typeof window === 'undefined') return
+
+  await loadScript(
+    'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js'
+  )
+
+  faceapi = (window as any).faceapi
 
   if (!faceapi) {
-    faceapi = await import('face-api.js')
+    throw new Error('face-api.js não carregado.')
   }
 
   await faceapi.nets.tinyFaceDetector.loadFromUri('/models')
   await faceapi.nets.faceRecognitionNet.loadFromUri('/models')
+  await faceapi.nets.faceLandmark68Net.loadFromUri('/models')
 
   modelsLoaded = true
 }
@@ -34,15 +55,16 @@ export async function generateFaceEmbeddingFromBlob(
       image.src = imageUrl
     })
 
-    const detection = await (
-  faceapi.detectSingleFace(
-    img,
-    new faceapi.TinyFaceDetectorOptions({
-      inputSize: 320,
-      scoreThreshold: 0.5,
-    })
-  ) as any
-).withFaceDescriptor()
+    const detection = await faceapi
+      .detectSingleFace(
+        img,
+        new faceapi.TinyFaceDetectorOptions({
+          inputSize: 320,
+          scoreThreshold: 0.5,
+        })
+      )
+      .withFaceLandmarks()
+      .withFaceDescriptor()
 
     if (!detection) return null
 
