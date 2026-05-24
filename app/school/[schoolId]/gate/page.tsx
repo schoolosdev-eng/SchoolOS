@@ -1350,7 +1350,7 @@ setResultWithTimeout({
 
     setTimeout(() => {
       facialCooldownRef.current = false
-    }, 2000)
+    }, 1000)
   }
 }
 
