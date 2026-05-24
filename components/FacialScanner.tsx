@@ -167,8 +167,8 @@ if (typeof score === 'number' && score > 0 && score < 0.60) {
           )
         }
       },
-      width: 640,
-      height: 480,
+      width: 1280,
+        height: 720,
       facingMode,
     })
 
@@ -236,7 +236,7 @@ if (typeof score === 'number' && score > 0 && score < 0.60) {
     setTimeout(() => {
       captureInProgressRef.current = false
     }, 4000)
-  }, 'image/jpeg', 0.8)
+  }, 'image/jpeg', 0.92)
 }
 
   useEffect(() => {
