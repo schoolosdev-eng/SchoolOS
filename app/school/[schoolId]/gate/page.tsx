@@ -1027,9 +1027,98 @@ async function handleStartReading() {
   setIsScannerActive(true)
 }
 
-  function handleStopReading() {
-    setIsScannerActive(false)
+async function processFaceCapturesAfterReading() {
+  const captures = await offlineAttendanceDb.faceCapturesTemp
+    .where('processed')
+    .equals(false)
+    .toArray()
+
+  if (captures.length === 0) return 0
+
+  let generated = 0
+
+  for (const capture of captures) {
+    if (capture.student_id === 'pending') continue
+    if (capture.class_id === 'pending') continue
+
+    const embedding = await generateFaceEmbeddingFromBlob(capture.image_blob)
+
+    if (!embedding) continue
+
+    await offlineAttendanceDb.faceEmbeddings.add({
+      id: crypto.randomUUID(),
+      school_id: capture.school_id,
+      student_id: capture.student_id,
+      class_id: capture.class_id,
+      embedding,
+      source: 'capture',
+      quality_score: null,
+      captured_at: capture.captured_at,
+      expires_at: new Date(
+        Date.now() + 90 * 24 * 60 * 60 * 1000
+      ).toISOString(),
+      synced: false,
+    })
+
+    await offlineAttendanceDb.faceCapturesTemp.update(capture.id, {
+      processed: true,
+    })
+
+    generated++
   }
+
+  await offlineAttendanceDb.faceEmbeddings
+    .where('expires_at')
+    .below(new Date().toISOString())
+    .delete()
+
+  const processedCaptures = await offlineAttendanceDb.faceCapturesTemp
+  .filter((capture) => capture.processed === true)
+  .toArray()
+
+await offlineAttendanceDb.faceCapturesTemp.bulkDelete(
+  processedCaptures.map((capture) => capture.id)
+)
+
+  return generated
+}
+
+  async function handleStopReading() {
+  setIsScannerActive(false)
+
+  if (readingMethod === 'facial') {
+    setResultWithTimeout({
+      status: 'success',
+      message: 'Processando capturas faciais...',
+    })
+
+    try {
+      const generated = await processFaceCapturesAfterReading()
+
+      setResultWithTimeout({
+        status: 'success',
+        message:
+          generated > 0
+            ? `Leitura encerrada. ${generated} novo(s) vetor(es) facial(is) gerado(s).`
+            : 'Leitura encerrada. Nenhuma nova captura facial para processar.',
+      })
+    } catch (error) {
+      console.error('Erro ao processar capturas faciais:', error)
+
+      setResultWithTimeout({
+        status: 'error',
+        message: 'Erro ao processar capturas faciais.',
+      })
+    }
+
+    return
+  }
+
+  setResultWithTimeout({
+    status: 'success',
+    message: 'Leitura encerrada.',
+  })
+}
 
   async function handleCloseGateMode() {
   if (closingGateMode) return
