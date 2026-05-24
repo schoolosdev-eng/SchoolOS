@@ -106,10 +106,24 @@ class OfflineAttendanceDb extends Dexie {
       faceCapturesTemp:
         'id, school_id, student_id, class_id, captured_at, processed',
       faceEmbeddings:
-        'id, school_id, student_id, class_id, captured_at, expires_at, synced',
+        'id, school_id, student_id, class_id, source, captured_at, expires_at, synced',
       faceAttendanceAttempts:
         'id, school_id, student_id, class_id, attendance_date, result, synced',
     })
+
+    this.version(4).stores({
+  students: 'id, school_id, qr_code_token, class_id',
+  attendance:
+    'id, school_id, student_id, class_id, attendance_date, synced',
+  earlyExits:
+    'id, school_id, student_id, class_id, exit_date, synced',
+  faceCapturesTemp:
+    'id, school_id, student_id, class_id, captured_at, processed',
+  faceEmbeddings:
+    'id, school_id, student_id, class_id, source, captured_at, expires_at, synced',
+  faceAttendanceAttempts:
+    'id, school_id, student_id, class_id, attendance_date, result, synced',
+})
   }
 }
 
