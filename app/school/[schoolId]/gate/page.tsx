@@ -95,6 +95,12 @@ async function downloadOfflineData() {
 
   setLoadingOffline(true)
 
+  setResultWithTimeout({
+  status: 'success',
+  message:
+    'Atualizando dados offline e preparando reconhecimento facial...',
+})
+
   try {
     const { data, error } = await supabase
       .from('enrollments')
@@ -1213,6 +1219,7 @@ setResultWithTimeout({
   async function init() {
     try {
       const accessOk = await ensureAccess()
+
       if (!accessOk) return
 
       await fetchSchoolName()
@@ -1221,6 +1228,17 @@ setResultWithTimeout({
       console.error('Erro ao iniciar modo portaria:', error)
     } finally {
       setLoading(false)
+
+      setTimeout(async () => {
+        try {
+          await downloadOfflineData()
+        } catch (error) {
+          console.error(
+            'Erro ao atualizar dados offline:',
+            error
+          )
+        }
+      }, 800)
     }
   }
 
