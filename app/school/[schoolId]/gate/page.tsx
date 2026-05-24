@@ -91,15 +91,20 @@ const [todayEarlyExits, setTodayEarlyExits] = useState<any[]>([])
   }
 
 async function downloadOfflineData() {
-  if (loadingOffline) return
+  if (loadingOffline) {
+    setResultWithTimeout({
+      status: 'duplicate',
+      message: 'A atualização offline já está em andamento.',
+    })
+    return
+  }
 
   setLoadingOffline(true)
 
   setResultWithTimeout({
-  status: 'success',
-  message:
-    'Atualizando dados offline e preparando reconhecimento facial...',
-})
+    status: 'success',
+    message: 'Atualizando dados offline e preparando reconhecimento facial...',
+  })
 
   try {
     const { data, error } = await supabase
@@ -157,55 +162,78 @@ async function downloadOfflineData() {
 
     await offlineAttendanceDb.students.clear()
     await offlineAttendanceDb.students.bulkPut(offlineStudents as any[])
-    await offlineAttendanceDb.faceEmbeddings
-  .where('source')
-  .equals('profile_photo')
-  .delete()
 
-for (const student of offlineStudents as any[]) {
-  if (!student.profile_photo_path) continue
+    const studentsWithFace = (offlineStudents as any[]).filter(
+      (student) => student.profile_photo_path
+    )
 
-  const { data: signedData } = await supabase.storage
-    .from('student-profile-photos')
-    .createSignedUrl(student.profile_photo_path, 3600)
+    let processedFaces = 0
+    let generatedFaces = 0
+    let skippedFaces = 0
+    const totalFaces = studentsWithFace.length
 
-  if (!signedData?.signedUrl) continue
+    for (const student of studentsWithFace) {
+      processedFaces++
 
-  const response = await fetch(signedData.signedUrl)
-  const imageBlob = await response.blob()
+      const progress =
+        totalFaces > 0
+          ? Math.round((processedFaces / totalFaces) * 100)
+          : 100
 
-  const embedding = await generateFaceEmbeddingFromBlob(imageBlob)
+      setResultWithTimeout({
+        status: 'success',
+        message: `Preparando reconhecimento facial... ${progress}% (${processedFaces}/${totalFaces})`,
+      })
 
-  if (!embedding) continue
+      const existingProfileEmbedding =
+        await offlineAttendanceDb.faceEmbeddings.get(`profile-${student.id}`)
 
-  await offlineAttendanceDb.faceEmbeddings.put({
-    id: `profile-${student.id}`,
-    school_id: student.school_id,
-    student_id: student.id,
-    class_id: student.class_id,
-    embedding,
-    source: 'profile_photo',
-    quality_score: null,
-    captured_at: new Date().toISOString(),
-    expires_at: new Date(
-      Date.now() + 90 * 24 * 60 * 60 * 1000
-    ).toISOString(),
-    synced: false,
-  })
-}
+      if (existingProfileEmbedding) {
+        skippedFaces++
+        continue
+      }
+
+      const { data: signedData } = await supabase.storage
+        .from('student-profile-photos')
+        .createSignedUrl(student.profile_photo_path, 3600)
+
+      if (!signedData?.signedUrl) continue
+
+      const response = await fetch(signedData.signedUrl)
+      const imageBlob = await response.blob()
+
+      const embedding = await generateFaceEmbeddingFromBlob(imageBlob)
+
+      if (!embedding) continue
+
+      await offlineAttendanceDb.faceEmbeddings.put({
+        id: `profile-${student.id}`,
+        school_id: student.school_id,
+        student_id: student.id,
+        class_id: student.class_id,
+        embedding,
+        source: 'profile_photo',
+        quality_score: null,
+        captured_at: new Date().toISOString(),
+        expires_at: new Date(
+          Date.now() + 90 * 24 * 60 * 60 * 1000
+        ).toISOString(),
+        synced: false,
+      })
+
+      generatedFaces++
+    }
 
     const profileEmbeddings = await offlineAttendanceDb.faceEmbeddings
-  .where('source')
-  .equals('profile_photo')
-  .count()
+      .where('source')
+      .equals('profile_photo')
+      .count()
 
-console.log('Embeddings de perfil gerados:', profileEmbeddings)
-
-setResultWithTimeout({
-  status: 'success',
-  message: `Dados offline atualizados. Alunos: ${offlineStudents.length}. Rostos base: ${profileEmbeddings}.`,
-})
-    } catch (error) {
+    setResultWithTimeout({
+      status: 'success',
+      message: `Dados offline atualizados. Alunos: ${offlineStudents.length}. Rostos base: ${profileEmbeddings}. Novos: ${generatedFaces}. Já existentes: ${skippedFaces}.`,
+    })
+  } catch (error) {
     console.error('ERRO AO ATUALIZAR DADOS OFFLINE:', error)
 
     setResultWithTimeout({
