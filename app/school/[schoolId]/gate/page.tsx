@@ -42,6 +42,9 @@ export default function GatePage() {
 const [loadingSync, setLoadingSync] = useState(false)
 const [closingGateMode, setClosingGateMode] = useState(false)
 
+const facialProcessingRef = useRef(false)
+const facialCooldownRef = useRef(false)
+
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [resultAnimationKey, setResultAnimationKey] = useState(0)
 
@@ -1210,6 +1213,11 @@ await offlineAttendanceDb.faceCapturesTemp.bulkDelete(
 }
 
   async function handleFaceCapture(imageBlob: Blob) {
+  if (facialProcessingRef.current || facialCooldownRef.current) {
+    return
+  }
+
+  facialProcessingRef.current = true
   try {
     setResultWithTimeout({
       status: 'success',
@@ -1326,21 +1334,23 @@ setResultWithTimeout({
     minute: '2-digit',
   }),
 })
-  } catch (error) {
+    } catch (error) {
     console.error('ERRO FACIAL COMPLETO:', error)
-
-setResultWithTimeout({
-  status: 'error',
-  message:
-    error instanceof Error
-      ? error.message
-      : 'Erro ao processar rosto.',
-})
 
     setResultWithTimeout({
       status: 'error',
-      message: 'Erro ao processar rosto.',
+      message:
+        error instanceof Error
+          ? error.message
+          : 'Erro ao processar rosto.',
     })
+  } finally {
+    facialProcessingRef.current = false
+    facialCooldownRef.current = true
+
+    setTimeout(() => {
+      facialCooldownRef.current = false
+    }, 2000)
   }
 }
 
