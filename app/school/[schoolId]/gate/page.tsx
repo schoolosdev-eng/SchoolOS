@@ -1180,7 +1180,15 @@ setResultWithTimeout({
   }),
 })
   } catch (error) {
-    console.error(error)
+    console.error('ERRO FACIAL COMPLETO:', error)
+
+setResultWithTimeout({
+  status: 'error',
+  message:
+    error instanceof Error
+      ? error.message
+      : 'Erro ao processar rosto.',
+})
 
     setResultWithTimeout({
       status: 'error',
