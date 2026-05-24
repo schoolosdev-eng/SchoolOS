@@ -109,17 +109,19 @@ export default function FacialScanner({
 
       const detection = detections[0]
 
-      const score = detection.score?.[0] ?? 0
+const score =
+  detection.score?.[0] ??
+  detection.score ??
+  detection.detectionConfidence ??
+  null
 
-      console.log('[FACIAL] score:', score)
+console.log('[FACIAL] detection completo:', detection)
+console.log('[FACIAL] score:', score)
 
-      if (score < 0.60) {
-        console.log(
-          '[FACIAL] bloqueado por score baixo:',
-          score
-        )
-        return
-      }
+if (typeof score === 'number' && score > 0 && score < 0.60) {
+  console.log('[FACIAL] bloqueado por score baixo:', score)
+  return
+}
 
       const now = Date.now()
 
