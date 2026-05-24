@@ -8,6 +8,10 @@ import AttendanceSection from '@/components/AttendanceSection'
 import { offlineAttendanceDb } from '@/lib/offlineAttendanceDb'
 import AppButton from '@/components/AppButton'
 import FacialScanner from '@/components/FacialScanner'
+import {
+  generateFaceEmbeddingFromBlob,
+  calculateFaceDistance,
+} from '@/lib/faceRecognition'
 
 type ScanResult = {
   status: 'success' | 'duplicate' | 'error'
@@ -147,11 +151,49 @@ async function downloadOfflineData() {
 
     await offlineAttendanceDb.students.clear()
     await offlineAttendanceDb.students.bulkPut(offlineStudents as any[])
+    await offlineAttendanceDb.faceEmbeddings
+  .where('source')
+  .equals('profile_photo')
+  .delete()
 
-    setResultWithTimeout({
-      status: 'success',
-      message: `Dados offline atualizados. Alunos salvos: ${offlineStudents.length}`,
-    })
+for (const student of offlineStudents as any[]) {
+  if (!student.profile_photo_path) continue
+
+  const { data: signedData } = await supabase.storage
+    .from('student-profile-photos')
+    .createSignedUrl(student.profile_photo_path, 3600)
+
+  if (!signedData?.signedUrl) continue
+
+  const response = await fetch(signedData.signedUrl)
+  const imageBlob = await response.blob()
+
+  const embedding = await generateFaceEmbeddingFromBlob(imageBlob)
+
+  if (!embedding) continue
+
+  await offlineAttendanceDb.faceEmbeddings.put({
+    id: `profile-${student.id}`,
+    school_id: student.school_id,
+    student_id: student.id,
+    class_id: student.class_id,
+    embedding,
+    source: 'profile_photo',
+    quality_score: null,
+    captured_at: new Date().toISOString(),
+    expires_at: new Date(
+      Date.now() + 90 * 24 * 60 * 60 * 1000
+    ).toISOString(),
+    synced: false,
+  })
+}
+
+    const totalEmbeddings = await offlineAttendanceDb.faceEmbeddings.count()
+
+setResultWithTimeout({
+  status: 'success',
+  message: `Dados offline atualizados. Alunos salvos: ${offlineStudents.length}. Vetores faciais: ${totalEmbeddings}`,
+})
   } finally {
     setLoadingOffline(false)
   }
@@ -997,31 +1039,152 @@ async function handleStartReading() {
     setManualMode(true)
   }
 
+  async function findBestFaceMatch(
+  embedding: number[]
+) {
+  const allEmbeddings =
+    await offlineAttendanceDb.faceEmbeddings.toArray()
+
+  let bestMatch: any = null
+  let bestDistance = Infinity
+
+  for (const stored of allEmbeddings) {
+    const distance = calculateFaceDistance(
+      embedding,
+      stored.embedding
+    )
+
+    if (distance < bestDistance) {
+      bestDistance = distance
+      bestMatch = stored
+    }
+  }
+
+  // limite facial
+  if (bestDistance > 0.58) {
+    return null
+  }
+
+  return {
+    student_id: bestMatch.student_id,
+    class_id: bestMatch.class_id,
+    distance: bestDistance,
+  }
+}
+
   async function handleFaceCapture(imageBlob: Blob) {
   try {
-    const tempId = crypto.randomUUID()
-
-    await offlineAttendanceDb.faceCapturesTemp.add({
-      id: tempId,
-      school_id: schoolId,
-      student_id: 'pending',
-      class_id: 'pending',
-      image_blob: imageBlob,
-      captured_at: new Date().toISOString(),
-      processed: false,
-    })
-
     setResultWithTimeout({
       status: 'success',
-      message:
-        'Captura facial armazenada. O processamento será feito ao encerrar as leituras.',
+      message: 'Processando rosto...',
     })
+
+    const embedding =
+      await generateFaceEmbeddingFromBlob(imageBlob)
+
+    if (!embedding) {
+      setResultWithTimeout({
+        status: 'error',
+        message: 'Nenhum rosto válido encontrado.',
+      })
+
+      return
+    }    
+
+const match = await findBestFaceMatch(embedding)
+
+if (!match) {
+  setResultWithTimeout({
+    status: 'error',
+    message: 'Rosto não reconhecido.',
+  })
+
+  return
+}
+
+const student =
+  await offlineAttendanceDb.students.get(match.student_id)
+
+  if (!student) {
+  setResultWithTimeout({
+    status: 'error',
+    message: 'Aluno não encontrado.',
+  })
+
+  return
+}
+
+    const today = new Date().toISOString().split('T')[0]
+
+const existingAttendance =
+  await offlineAttendanceDb.attendance
+    .where('[student_id+attendance_date]')
+    .equals([student.id, today])
+    .first()
+
+if (!existingAttendance) {
+  await offlineAttendanceDb.attendance.add({
+    id: crypto.randomUUID(),
+    school_id: student.school_id,
+    student_id: student.id,
+    class_id: student.class_id,
+    attendance_date: today,
+    status: 'present',
+    source: 'facial',
+    recorded_at: new Date().toISOString(),
+    synced: false,
+  })
+}
+
+await offlineAttendanceDb.faceCapturesTemp.add({
+  id: crypto.randomUUID(),
+  school_id: schoolId,
+  student_id: student.id,
+  class_id: student.class_id,
+  image_blob: imageBlob,
+  captured_at: new Date().toISOString(),
+  processed: false,
+})
+
+setRecentScans((prev) => [
+  {
+    id: crypto.randomUUID(),
+    status: existingAttendance ? 'duplicate' : 'success',
+    message: existingAttendance
+      ? 'Aluno já possuía presença registrada anteriormente.'
+      : 'Presença facial registrada com sucesso.',
+    studentName: student.full_name,
+    className: student.class_name,
+    photo: student.profile_photo_path || null,
+    time: new Date().toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+  },
+  ...prev.slice(0, 9),
+])
+
+setResultWithTimeout({
+  status: existingAttendance ? 'duplicate' : 'success',
+  message: existingAttendance
+    ? 'Aluno já possuía presença registrada anteriormente.'
+    : 'Presença facial registrada com sucesso.',
+  student: {
+    name: student.full_name,
+    className: student.class_name,
+    photo: student.profile_photo_path || null,
+  },
+  time: new Date().toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }),
+})
   } catch (error) {
     console.error(error)
 
     setResultWithTimeout({
       status: 'error',
-      message: 'Erro ao armazenar captura facial.',
+      message: 'Erro ao processar rosto.',
     })
   }
 }
