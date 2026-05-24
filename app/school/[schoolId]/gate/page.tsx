@@ -1029,9 +1029,8 @@ async function handleStartReading() {
 
 async function processFaceCapturesAfterReading() {
   const captures = await offlineAttendanceDb.faceCapturesTemp
-    .where('processed')
-    .equals(false)
-    .toArray()
+  .filter((capture) => capture.processed === false)
+  .toArray()
 
   if (captures.length === 0) return 0
 
