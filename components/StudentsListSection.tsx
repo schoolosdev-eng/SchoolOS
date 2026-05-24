@@ -4,6 +4,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
 import { supabase } from '@/lib/supabase'
 import * as htmlToImage from 'html-to-image'
+import FacialScanner from '@/components/FacialScanner'
+import { offlineAttendanceDb } from '@/lib/offlineAttendanceDb'
+import {
+  generateFaceEmbeddingFromBlob,
+  calculateFaceDistance,
+} from '@/lib/faceRecognition'
 
 type Student = {
   id: string
@@ -37,6 +43,7 @@ type Enrollment = {
 }
 
 type Props = {
+  schoolId: string
   students: Student[]
   classes: SchoolClass[]
   schoolYears: SchoolYear[]
@@ -65,6 +72,7 @@ type Props = {
 }
 
 export default function StudentsListSection({
+  schoolId,
   students,
   classes,
   schoolYears,
@@ -100,6 +108,12 @@ const [selectedEnrollmentYearId, setSelectedEnrollmentYearId] = useState('')
 const [selectedEnrollmentClassId, setSelectedEnrollmentClassId] = useState('')
 
 const [enrollingLoading, setEnrollingLoading] = useState(false)
+
+const [faceStudent, setFaceStudent] = useState<Student | null>(null)
+const [faceEmbeddings, setFaceEmbeddings] = useState<number[][]>([])
+const [faceMessage, setFaceMessage] = useState('')
+const [savingFace, setSavingFace] = useState(false)
+const [faceCaptureLocked, setFaceCaptureLocked] = useState(false)
 
   const availableClasses = useMemo(() => {
     const classNames = students
@@ -647,6 +661,112 @@ async function createAdjustedEditPhotoFile() {
   })
 }
 
+function averageEmbeddings(embeddings: number[][]) {
+  const length = embeddings[0].length
+
+  return Array.from({ length }, (_, index) => {
+    const sum = embeddings.reduce((total, embedding) => {
+      return total + embedding[index]
+    }, 0)
+
+    return sum / embeddings.length
+  })
+}
+
+function areEmbeddingsConsistent(embeddings: number[][]) {
+  const MAX_INTERNAL_DISTANCE = 0.35
+
+  for (let i = 0; i < embeddings.length; i++) {
+    for (let j = i + 1; j < embeddings.length; j++) {
+      const distance = calculateFaceDistance(embeddings[i], embeddings[j])
+
+      if (distance > MAX_INTERNAL_DISTANCE) {
+        return false
+      }
+    }
+  }
+
+  return true
+}
+
+async function handleFaceEnrollmentCapture(imageBlob: Blob) {
+  if (!faceStudent || savingFace || faceCaptureLocked) return
+
+  setFaceCaptureLocked(true)
+  setFaceMessage('Processando captura facial...')
+
+  try {
+    const embedding = await generateFaceEmbeddingFromBlob(imageBlob)
+
+    if (!embedding) {
+      setFaceMessage('Nenhum rosto válido encontrado. Tente novamente.')
+      return
+    }
+
+    const nextEmbeddings = [...faceEmbeddings, embedding]
+
+    if (nextEmbeddings.length >= 2) {
+      const isConsistent = areEmbeddingsConsistent(nextEmbeddings)
+
+      if (!isConsistent) {
+        setFaceMessage(
+          'Essa captura ficou diferente das anteriores. Reposicione o aluno e tente novamente.'
+        )
+        return
+      }
+    }
+
+    setFaceEmbeddings(nextEmbeddings)
+
+    if (nextEmbeddings.length < 3) {
+      setFaceMessage(`Captura ${nextEmbeddings.length}/3 realizada. Continue.`)
+      return
+    }
+
+    setSavingFace(true)
+    setFaceMessage('Gerando cadastro facial do aluno...')
+
+    const averagedEmbedding = averageEmbeddings(nextEmbeddings)
+
+    const enrollment = getStudentEnrollment(faceStudent.id)
+
+    await offlineAttendanceDb.faceEmbeddings.add({
+      id: crypto.randomUUID(),
+      school_id: schoolId,
+      student_id: faceStudent.id,
+      class_id: enrollment?.class_id || 'pending',
+      embedding: averagedEmbedding,
+      source: 'profile_photo',
+      quality_score: null,
+      captured_at: new Date().toISOString(),
+      expires_at: new Date(
+        Date.now() + 3650 * 24 * 60 * 60 * 1000
+      ).toISOString(),
+      synced: false,
+    })
+
+    setFaceMessage('Cadastro facial concluído com sucesso.')
+
+    setTimeout(() => {
+      setFaceStudent(null)
+      setFaceEmbeddings([])
+      setSavingFace(false)
+      setFaceCaptureLocked(false)
+    }, 1500)
+  } catch (error) {
+    console.error('Erro no cadastro facial:', error)
+    setFaceMessage(
+      error instanceof Error
+        ? error.message
+        : 'Erro ao cadastrar face do aluno.'
+    )
+  } finally {
+    setTimeout(() => {
+      setFaceCaptureLocked(false)
+    }, 1200)
+  }
+}
+
   return (
     <div style={cardStyle}>
       <div style={listHeaderStyle}>
@@ -1084,6 +1204,27 @@ setEditPhotoInputKey((prev) => prev + 1)
 </button>
 
 <button
+  onClick={() => {
+    setFaceStudent(student)
+    setFaceEmbeddings([])
+    setFaceMessage('Posicione o rosto do aluno na câmera. Capture 3 leituras.')
+    setSavingFace(false)
+    setFaceCaptureLocked(false)
+  }}
+  style={{
+    padding: '10px 14px',
+    borderRadius: 12,
+    border: 'none',
+    background: '#7c3aed',
+    color: '#fff',
+    fontWeight: 700,
+    cursor: 'pointer',
+  }}
+>
+  Cadastrar face
+</button>
+
+<button
   onClick={() => setStudentToDelete(student)}
   style={deleteButtonStyle}
 >
@@ -1320,6 +1461,133 @@ const message = encodeURIComponent(
   fontWeight: 800,
   cursor: 'pointer',
 }}
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{faceStudent && (
+  <div
+    style={{
+      position: 'fixed',
+      inset: 0,
+      zIndex: 9999,
+      background: 'rgba(15, 23, 42, 0.72)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 16,
+    }}
+  >
+    <div
+      style={{
+        width: '100%',
+        maxWidth: 560,
+        background: '#ffffff',
+        borderRadius: 24,
+        padding: 20,
+        boxShadow: '0 24px 80px rgba(15, 23, 42, 0.35)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 14,
+      }}
+    >
+      <div>
+        <h2
+          style={{
+            margin: 0,
+            fontSize: 22,
+            fontWeight: 900,
+            color: '#0f172a',
+          }}
+        >
+          Cadastro facial
+        </h2>
+
+        <p
+          style={{
+            margin: '6px 0 0',
+            fontSize: 14,
+            color: '#64748b',
+            fontWeight: 600,
+          }}
+        >
+          {faceStudent.full_name || faceStudent.name}
+        </p>
+      </div>
+
+      <div
+        style={{
+          padding: 12,
+          borderRadius: 16,
+          background: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          color: '#334155',
+          fontSize: 14,
+          fontWeight: 700,
+          textAlign: 'center',
+        }}
+      >
+        {faceMessage || 'Posicione o rosto do aluno na câmera.'}
+      </div>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: 8,
+        }}
+      >
+        {[0, 1, 2].map((index) => (
+          <div
+            key={index}
+            style={{
+              height: 10,
+              borderRadius: 999,
+              background:
+                faceEmbeddings.length > index ? '#22c55e' : '#e2e8f0',
+            }}
+          />
+        ))}
+      </div>
+
+      <FacialScanner
+        isActive={!!faceStudent && !savingFace}
+        onFaceCapture={handleFaceEnrollmentCapture}
+        onNoCamera={() => {
+          setFaceMessage('Não foi possível acessar a câmera.')
+        }}
+      />
+
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          gap: 10,
+          flexWrap: 'wrap',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            setFaceStudent(null)
+            setFaceEmbeddings([])
+            setFaceMessage('')
+            setSavingFace(false)
+            setFaceCaptureLocked(false)
+          }}
+          style={{
+            padding: '10px 14px',
+            borderRadius: 12,
+            border: '1px solid #cbd5e1',
+            background: '#ffffff',
+            color: '#334155',
+            fontWeight: 800,
+            cursor: 'pointer',
+          }}
         >
           Cancelar
         </button>

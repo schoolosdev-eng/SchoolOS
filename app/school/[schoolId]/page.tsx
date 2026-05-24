@@ -3966,6 +3966,7 @@ onClick={() => {
         </div>
 
 <StudentsListSection
+  schoolId={schoolId}
   students={students.map((student) => ({
     ...student,
     class_name: studentClassMap[student.id]?.class_name || 'Sem turma',
