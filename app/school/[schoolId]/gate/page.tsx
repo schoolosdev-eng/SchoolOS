@@ -7,6 +7,7 @@ import QRScanner from '@/components/QRScanner'
 import AttendanceSection from '@/components/AttendanceSection'
 import { offlineAttendanceDb } from '@/lib/offlineAttendanceDb'
 import AppButton from '@/components/AppButton'
+import FacialScanner from '@/components/FacialScanner'
 
 type ScanResult = {
   status: 'success' | 'duplicate' | 'error'
@@ -31,6 +32,7 @@ export default function GatePage() {
   const [manualQrCode, setManualQrCode] = useState('')
   const [manualMode, setManualMode] = useState(false)
   const [gateMode, setGateMode] = useState<'entry' | 'exit'>('entry')
+  const [readingMethod, setReadingMethod] = useState<'qr' | 'facial'>('qr')
   const audioContextRef = useRef<AudioContext | null>(null)
   const [loadingOffline, setLoadingOffline] = useState(false)
 const [loadingSync, setLoadingSync] = useState(false)
@@ -534,7 +536,7 @@ const pendingRecords = await offlineAttendanceDb.attendance
         .from('attendance_records')
         .update({
           status: 'present',
-          source: 'qr',
+          source: record.source,
           recorded_by_user_id: user?.id || null,
           updated_at: record.recorded_at,
         })
@@ -995,6 +997,35 @@ async function handleStartReading() {
     setManualMode(true)
   }
 
+  async function handleFaceCapture(imageBlob: Blob) {
+  try {
+    const tempId = crypto.randomUUID()
+
+    await offlineAttendanceDb.faceCapturesTemp.add({
+      id: tempId,
+      school_id: schoolId,
+      student_id: 'pending',
+      class_id: 'pending',
+      image_blob: imageBlob,
+      captured_at: new Date().toISOString(),
+      processed: false,
+    })
+
+    setResultWithTimeout({
+      status: 'success',
+      message:
+        'Captura facial armazenada. O processamento será feito ao encerrar as leituras.',
+    })
+  } catch (error) {
+    console.error(error)
+
+    setResultWithTimeout({
+      status: 'error',
+      message: 'Erro ao armazenar captura facial.',
+    })
+  }
+}
+
   useEffect(() => {
   function handleOnline() {
     syncOfflineAttendance()
@@ -1130,6 +1161,32 @@ async function handleStartReading() {
   >
     Registrar saída
   </button>
+  <button
+  onClick={() => setReadingMethod('qr')}
+  style={{
+    ...secondaryButtonStyle,
+    background: readingMethod === 'qr' ? '#dbeafe' : '#ffffff',
+    borderColor: readingMethod === 'qr' ? '#2563eb' : '#cbd5e1',
+    color: readingMethod === 'qr' ? '#1d4ed8' : '#0f172a',
+  }}
+>
+  QR Code
+</button>
+
+<button
+  onClick={() => setReadingMethod('facial')}
+  disabled={gateMode === 'exit'}
+  style={{
+    ...secondaryButtonStyle,
+    background: readingMethod === 'facial' ? '#dcfce7' : '#ffffff',
+    borderColor: readingMethod === 'facial' ? '#16a34a' : '#cbd5e1',
+    color: readingMethod === 'facial' ? '#15803d' : '#0f172a',
+    opacity: gateMode === 'exit' ? 0.5 : 1,
+    cursor: gateMode === 'exit' ? 'not-allowed' : 'pointer',
+  }}
+>
+  Facial Premium
+</button>
 </div>
 
             <div style={scannerActionsStyle} className="scanner-actions">
@@ -1187,11 +1244,21 @@ async function handleStartReading() {
 
           {isScannerActive && (
             <div style={scannerBoxStyle}>
-<QRScanner
-  onScan={handleGateScan}
-  onNoCamera={handleNoCamera}
-  isActive={isScannerActive}
-/>
+{readingMethod === 'qr' && (
+  <QRScanner
+    onScan={handleOfflineScan}
+    onNoCamera={handleNoCamera}
+    isActive={isScannerActive}
+  />
+)}
+
+{readingMethod === 'facial' && (
+  <FacialScanner
+    isActive={isScannerActive}
+    onNoCamera={handleNoCamera}
+    onFaceCapture={handleFaceCapture}
+  />
+)}
             </div>
           )}
 
