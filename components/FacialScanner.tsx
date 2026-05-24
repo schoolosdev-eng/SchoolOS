@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 type Props = {
   isActive: boolean
@@ -17,6 +17,8 @@ export default function FacialScanner({
   const faceDetectionRef = useRef<any>(null)
   const cameraRef = useRef<any>(null)
   const lastCaptureRef = useRef<number>(0)
+
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
 
   function loadScript(src: string) {
     return new Promise<void>((resolve, reject) => {
@@ -75,6 +77,17 @@ export default function FacialScanner({
         captureFrame()
       })
 
+      const stream = await navigator.mediaDevices.getUserMedia({
+  video: {
+    facingMode,
+  },
+  audio: false,
+})
+
+if (videoRef.current) {
+  videoRef.current.srcObject = stream
+}
+
       faceDetectionRef.current = faceDetection
 
       const camera = new CameraClass(videoRef.current, {
@@ -94,11 +107,33 @@ export default function FacialScanner({
     }
   }
 
+  async function handleSwitchCamera() {
+  stopCamera()
+
+  setFacingMode((prev) =>
+    prev === 'user' ? 'environment' : 'user'
+  )
+
+  setTimeout(() => {
+    startCamera()
+  }, 300)
+}
+
   function stopCamera() {
     if (cameraRef.current) {
       cameraRef.current.stop()
       cameraRef.current = null
     }
+
+    const stream = videoRef.current?.srcObject as MediaStream | null
+
+if (stream) {
+  stream.getTracks().forEach((track) => track.stop())
+}
+
+if (videoRef.current) {
+  videoRef.current.srcObject = null
+}
 
     faceDetectionRef.current = null
   }
@@ -160,6 +195,22 @@ export default function FacialScanner({
             display: 'block',
           }}
         />
+
+        <button
+  type="button"
+  onClick={handleSwitchCamera}
+  style={{
+    padding: '10px 14px',
+    borderRadius: 12,
+    border: '1px solid #cbd5e1',
+    background: '#ffffff',
+    color: '#0f172a',
+    fontWeight: 800,
+    cursor: 'pointer',
+  }}
+>
+  Alternar câmera
+</button>
       </div>
 
       <div
