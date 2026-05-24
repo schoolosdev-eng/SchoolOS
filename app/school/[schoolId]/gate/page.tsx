@@ -194,8 +194,6 @@ for (const student of offlineStudents as any[]) {
   })
 }
 
-    const totalEmbeddings = await offlineAttendanceDb.faceEmbeddings.count()
-
     const profileEmbeddings = await offlineAttendanceDb.faceEmbeddings
   .where('source')
   .equals('profile_photo')
@@ -207,6 +205,16 @@ setResultWithTimeout({
   status: 'success',
   message: `Dados offline atualizados. Alunos: ${offlineStudents.length}. Rostos base: ${profileEmbeddings}.`,
 })
+    } catch (error) {
+    console.error('ERRO AO ATUALIZAR DADOS OFFLINE:', error)
+
+    setResultWithTimeout({
+      status: 'error',
+      message:
+        error instanceof Error
+          ? error.message
+          : 'Erro ao atualizar dados offline.',
+    })
   } finally {
     setLoadingOffline(false)
   }
