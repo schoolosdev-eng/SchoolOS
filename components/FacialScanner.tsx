@@ -77,10 +77,10 @@ export default function FacialScanner({
   const detection = detections[0]
 const score = detection.score?.[0] ?? 0
 
-if (score < 0.85) return
+if (score < 0.60) return
 
   const now = Date.now()
-  if (now - lastCaptureRef.current < 4000) return
+  if (now - lastCaptureRef.current < 2000) return
 
   lastCaptureRef.current = now
   captureFrame()
