@@ -196,9 +196,16 @@ for (const student of offlineStudents as any[]) {
 
     const totalEmbeddings = await offlineAttendanceDb.faceEmbeddings.count()
 
+    const profileEmbeddings = await offlineAttendanceDb.faceEmbeddings
+  .where('source')
+  .equals('profile_photo')
+  .count()
+
+console.log('Embeddings de perfil gerados:', profileEmbeddings)
+
 setResultWithTimeout({
   status: 'success',
-  message: `Dados offline atualizados. Alunos salvos: ${offlineStudents.length}. Vetores faciais: ${totalEmbeddings}`,
+  message: `Dados offline atualizados. Alunos: ${offlineStudents.length}. Rostos base: ${profileEmbeddings}.`,
 })
   } finally {
     setLoadingOffline(false)
@@ -1067,7 +1074,7 @@ async function handleStartReading() {
   }
 
   // limite facial
-  if (bestDistance > 0.58) {
+  if (bestDistance > 0.68) {
     return null
   }
 
