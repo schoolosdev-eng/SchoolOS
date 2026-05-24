@@ -603,7 +603,7 @@ const pendingRecords = await offlineAttendanceDb.attendance
         class_id: record.class_id,
         attendance_date: record.attendance_date,
         status: 'present',
-        source: 'qr',
+        source: record.source,
         recorded_by_user_id: user?.id || null,
         created_at: record.recorded_at,
         updated_at: record.recorded_at,
@@ -1203,14 +1203,17 @@ setResultWithTimeout({
 
   useEffect(() => {
   async function init() {
-    const accessOk = await ensureAccess()
-    if (!accessOk) return
+    try {
+      const accessOk = await ensureAccess()
+      if (!accessOk) return
 
-    await fetchSchoolName()
-    await loadTodayEarlyExits()
-    await downloadOfflineData()
-
-    setLoading(false)
+      await fetchSchoolName()
+      await loadTodayEarlyExits()
+    } catch (error) {
+      console.error('Erro ao iniciar modo portaria:', error)
+    } finally {
+      setLoading(false)
+    }
   }
 
   init()
