@@ -1176,7 +1176,7 @@ setRecentScans((prev) => [
       : 'Presença facial registrada com sucesso.',
     studentName: student.full_name,
     className: student.class_name,
-    photo: student.profile_photo_path || null,
+    photo: null,
     time: new Date().toLocaleTimeString('pt-BR', {
       hour: '2-digit',
       minute: '2-digit',
@@ -1193,7 +1193,7 @@ setResultWithTimeout({
   student: {
     name: student.full_name,
     className: student.class_name,
-    photo: student.profile_photo_path || null,
+    photo: null,
   },
   time: new Date().toLocaleTimeString('pt-BR', {
     hour: '2-digit',
