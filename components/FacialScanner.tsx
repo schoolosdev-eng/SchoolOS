@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { FaceDetection } from '@mediapipe/face_detection'
-import { Camera } from '@mediapipe/camera_utils'
+import '@mediapipe/face_detection'
+import '@mediapipe/camera_utils'
 
 type Props = {
   isActive: boolean
@@ -19,16 +19,22 @@ export default function FacialScanner({
   const streamRef = useRef<MediaStream | null>(null)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
-    const faceDetectionRef = useRef<FaceDetection | null>(null)
-    const cameraRef = useRef<Camera | null>(null)
+    const faceDetectionRef = useRef<any>(null)
+const cameraRef = useRef<any>(null)
     const lastCaptureRef = useRef<number>(0)
 
   async function startCamera() {
   try {
     if (!videoRef.current) return
 
-    const faceDetection = new FaceDetection({
-      locateFile: (file) =>
+    const FaceDetectionClass = (window as any).FaceDetection
+
+if (!FaceDetectionClass) {
+  throw new Error('FaceDetection não carregado.')
+}
+
+const faceDetection = new FaceDetectionClass({
+      locateFile: (file: String) =>
         `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`,
     })
 
@@ -37,7 +43,7 @@ export default function FacialScanner({
       minDetectionConfidence: 0.7,
     })
 
-    faceDetection.onResults(async (results) => {
+    faceDetection.onResults(async (results: any) => {
       const detections = results.detections || []
 
       if (detections.length === 0) return
@@ -54,7 +60,13 @@ export default function FacialScanner({
 
     faceDetectionRef.current = faceDetection
 
-    const camera = new Camera(videoRef.current, {
+    const CameraClass = (window as any).Camera
+
+if (!CameraClass) {
+  throw new Error('Camera Utils não carregado.')
+}
+
+const camera = new CameraClass(videoRef.current, {
       onFrame: async () => {
         if (!videoRef.current) return
 
