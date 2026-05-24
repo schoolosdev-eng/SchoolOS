@@ -20,6 +20,8 @@ export default function FacialScanner({
 
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
 
+  const captureInProgressRef = useRef(false)
+
   function loadScript(src: string) {
     return new Promise<void>((resolve, reject) => {
       if (document.querySelector(`script[src="${src}"]`)) {
@@ -67,15 +69,17 @@ export default function FacialScanner({
       })
 
       faceDetection.onResults((results: any) => {
-        const detections = results.detections || []
-        if (detections.length === 0) return
+  if (captureInProgressRef.current) return
 
-        const now = Date.now()
-        if (now - lastCaptureRef.current < 4000) return
+  const detections = results.detections || []
+  if (detections.length === 0) return
 
-        lastCaptureRef.current = now
-        captureFrame()
-      })
+  const now = Date.now()
+  if (now - lastCaptureRef.current < 4000) return
+
+  lastCaptureRef.current = now
+  captureFrame()
+})
 
       faceDetectionRef.current = faceDetection
 
@@ -113,25 +117,39 @@ export default function FacialScanner({
 }
 
   function captureFrame() {
-    if (!videoRef.current) return
+  if (!videoRef.current) return
+  if (captureInProgressRef.current) return
 
-    const video = videoRef.current
-    if (!video.videoWidth || !video.videoHeight) return
+  const video = videoRef.current
+  if (!video.videoWidth || !video.videoHeight) return
 
-    const canvas = document.createElement('canvas')
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
+  captureInProgressRef.current = true
 
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
+  const canvas = document.createElement('canvas')
+  canvas.width = video.videoWidth
+  canvas.height = video.videoHeight
 
-    ctx.drawImage(video, 0, 0)
-
-    canvas.toBlob((blob) => {
-      if (!blob) return
-      onFaceCapture(blob)
-    }, 'image/jpeg', 0.8)
+  const ctx = canvas.getContext('2d')
+  if (!ctx) {
+    captureInProgressRef.current = false
+    return
   }
+
+  ctx.drawImage(video, 0, 0)
+
+  canvas.toBlob((blob) => {
+    if (!blob) {
+      captureInProgressRef.current = false
+      return
+    }
+
+    onFaceCapture(blob)
+
+    setTimeout(() => {
+      captureInProgressRef.current = false
+    }, 4000)
+  }, 'image/jpeg', 0.8)
+}
 
   useEffect(() => {
   if (!isActive) {
