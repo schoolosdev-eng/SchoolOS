@@ -1,9 +1,17 @@
-import * as faceapi from 'face-api.js'
+let faceapi: any = null
 
 let modelsLoaded = false
 
 export async function loadFaceModels() {
   if (modelsLoaded) return
+
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  if (!faceapi) {
+    faceapi = await import('face-api.js')
+  }
 
   await faceapi.nets.tinyFaceDetector.loadFromUri('/models')
   await faceapi.nets.faceRecognitionNet.loadFromUri('/models')
