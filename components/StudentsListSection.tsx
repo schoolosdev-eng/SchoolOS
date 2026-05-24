@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
 import { supabase } from '@/lib/supabase'
 import * as htmlToImage from 'html-to-image'
-import FacialScanner from '@/components/FacialScanner'
+import ManualFacialEnrollmentScanner from '@/components/ManualFacialEnrollmentScanner'
 import { offlineAttendanceDb } from '@/lib/offlineAttendanceDb'
 import {
   generateFaceEmbeddingFromBlob,
@@ -1554,13 +1554,15 @@ const message = encodeURIComponent(
         ))}
       </div>
 
-      <FacialScanner
-        isActive={!!faceStudent && !savingFace}
-        onFaceCapture={handleFaceEnrollmentCapture}
-        onNoCamera={() => {
-          setFaceMessage('Não foi possível acessar a câmera.')
-        }}
-      />
+      <ManualFacialEnrollmentScanner
+  isActive={!!faceStudent && !savingFace}
+  disabled={faceCaptureLocked || savingFace}
+  captureLabel={`Capturar ${Math.min(faceEmbeddings.length + 1, 3)}/3`}
+  onCapture={handleFaceEnrollmentCapture}
+  onNoCamera={() => {
+    setFaceMessage('Não foi possível acessar a câmera.')
+  }}
+/>
 
       <div
         style={{
