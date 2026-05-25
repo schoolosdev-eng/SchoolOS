@@ -1094,7 +1094,7 @@ function averageEmbeddings(embeddings: number[][]) {
 }
 
 function areEmbeddingsConsistent(embeddings: number[][]) {
-  const MAX_INTERNAL_DISTANCE = 0.35
+  const MAX_INTERNAL_DISTANCE = 0.55
 
   for (let i = 0; i < embeddings.length; i++) {
     for (let j = i + 1; j < embeddings.length; j++) {
@@ -1265,26 +1265,25 @@ synced: false,
   async function findBestFaceMatch(embedding: number[]) {
   const allEmbeddings = await offlineAttendanceDb.faceEmbeddings.toArray()
 
-const profileEmbeddings = allEmbeddings.filter(
-  (item) => item.source === 'profile_photo'
-)
+console.log('[FACIAL] embeddings salvos:', allEmbeddings.map((item) => ({
+  student_id: item.student_id,
+  class_id: item.class_id,
+  source: item.source,
+  size: item.embedding?.length,
+})))
 
-const importedEmbeddings = allEmbeddings.filter(
-  (item) => item.source === 'imported_photo'
-)
-
-const embeddingsToCompare =
-  profileEmbeddings.length > 0
-    ? profileEmbeddings
-    : importedEmbeddings
+  const embeddingsToCompare = allEmbeddings.filter(
+    (item) =>
+      item.source === 'imported_photo' ||
+      item.source === 'manual_average' ||
+      item.source === 'profile_photo'
+  )
 
   const FACE_MATCH_THRESHOLD = 0.62
   const MIN_DISTANCE_GAP = 0.08
 
   let bestMatch: any = null
   let bestDistance = Infinity
-
-  let secondBestDifferentStudent: any = null
   let secondBestDifferentStudentDistance = Infinity
 
   for (const stored of embeddingsToCompare) {
@@ -1292,57 +1291,46 @@ const embeddingsToCompare =
       continue
     }
 
-    const distance = calculateFaceDistance(
-  embedding,
-  stored.embedding
-)
+    const distance = calculateFaceDistance(embedding, stored.embedding)
 
-let adjustedDistance = distance
+    console.log('[FACE COMPARE]', {
+      studentId: stored.student_id,
+      source: stored.source,
+      distance,
+    })
 
-console.log('[FACE COMPARE]', {
-  studentId: stored.student_id,
-  source: stored.source,
-  rawDistance: distance,
-  adjustedDistance,
-})
-
-    if (adjustedDistance < bestDistance) {
+    if (distance < bestDistance) {
       if (bestMatch && bestMatch.student_id !== stored.student_id) {
-        secondBestDifferentStudent = bestMatch
         secondBestDifferentStudentDistance = bestDistance
       }
 
-      bestDistance = adjustedDistance
+      bestDistance = distance
       bestMatch = stored
     } else if (
       bestMatch &&
       stored.student_id !== bestMatch.student_id &&
-      adjustedDistance < secondBestDifferentStudentDistance
+      distance < secondBestDifferentStudentDistance
     ) {
-      secondBestDifferentStudent = stored
-      secondBestDifferentStudentDistance = adjustedDistance
+      secondBestDifferentStudentDistance = distance
     }
   }
 
   console.log('[FACE RESULT]', {
-  bestDistance,
-  secondBestDifferentStudentDistance,
-  bestStudent: bestMatch?.student_id,
-})
-
-  console.log('[FACIAL] melhor:', bestMatch?.student_id, bestMatch?.source, bestDistance)
-  console.log('[FACIAL] segundo outro aluno:', secondBestDifferentStudent?.student_id, secondBestDifferentStudentDistance)
-  console.log('[FACIAL] diferença:', secondBestDifferentStudentDistance - bestDistance)
+    bestStudent: bestMatch?.student_id,
+    bestSource: bestMatch?.source,
+    bestDistance,
+    secondBestDifferentStudentDistance,
+    gap: secondBestDifferentStudentDistance - bestDistance,
+  })
 
   if (!bestMatch || bestDistance > FACE_MATCH_THRESHOLD) {
     return null
   }
 
   if (
-    secondBestDifferentStudent &&
+    Number.isFinite(secondBestDifferentStudentDistance) &&
     secondBestDifferentStudentDistance - bestDistance < MIN_DISTANCE_GAP
   ) {
-    console.log('[FACIAL] bloqueado: parecido com outro aluno')
     return null
   }
 
@@ -1351,8 +1339,6 @@ console.log('[FACE COMPARE]', {
     class_id: bestMatch.class_id,
     distance: bestDistance,
     source: bestMatch.source,
-    secondDistance: secondBestDifferentStudentDistance,
-    distanceGap: secondBestDifferentStudentDistance - bestDistance,
   }
 }
 
@@ -1622,7 +1608,7 @@ console.log('[FACE COMPARE]', {
         id: item.id,
         school_id: item.school_id,
         student_id: item.student_id,
-        class_id: 'pending',
+        class_id: item.class_id || 'pending',
         embedding: item.embedding,
         source: 'imported_photo',
         quality_score: 1,
