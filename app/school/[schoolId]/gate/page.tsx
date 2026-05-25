@@ -1263,10 +1263,12 @@ synced: false,
   }
 
   async function findBestFaceMatch(embedding: number[]) {
-  const allEmbeddings = await offlineAttendanceDb.faceEmbeddings.toArray()
+  const allEmbeddings = (
+  await offlineAttendanceDb.faceEmbeddings.toArray()
+).filter((item) => item.source === 'imported_photo')
 
-  const FACE_MATCH_THRESHOLD = 0.72
-  const MIN_DISTANCE_GAP = 0.03
+  const FACE_MATCH_THRESHOLD = 0.62
+  const MIN_DISTANCE_GAP = 0.08
 
   let bestMatch: any = null
   let bestDistance = Infinity
@@ -1285,12 +1287,6 @@ synced: false,
 )
 
 let adjustedDistance = distance
-
-if (stored.source === 'imported_photo') {
-  adjustedDistance -= 0.05
-} else if (stored.source === 'manual_average') {
-  adjustedDistance -= 0.02
-}
 
 console.log('[FACE COMPARE]', {
   studentId: stored.student_id,
@@ -1382,7 +1378,7 @@ console.log('[FACE COMPARE]', {
       return
     }
 
-    const MAX_MATCH_DISTANCE = 0.42
+    const MAX_MATCH_DISTANCE = 0.62
 
     if (
       typeof match.distance === 'number' &&

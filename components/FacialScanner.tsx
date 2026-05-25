@@ -82,7 +82,7 @@ export default function FacialScanner({
 
     faceDetection.setOptions({
       model: 'short',
-      minDetectionConfidence: 0.75,
+      minDetectionConfidence: 0.55,
     })
 
     console.log('[FACIAL] opções configuradas')
@@ -118,7 +118,7 @@ const score =
 console.log('[FACIAL] detection completo:', detection)
 console.log('[FACIAL] score:', score)
 
-if (typeof score === 'number' && score > 0 && score < 0.60) {
+if (typeof score === 'number' && score > 0 && score < 0.45) {
   console.log('[FACIAL] bloqueado por score baixo:', score)
   return
 }
