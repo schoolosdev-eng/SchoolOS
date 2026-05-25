@@ -289,11 +289,42 @@ const importedFaceEmbeddings =
 async function fetchSubscription() {
   const { data } = await supabase
     .from('school_subscriptions')
-    .select('facial_enabled')
+    .select(`
+      facial_enabled,
+      plan_id,
+      updated_at
+    `)
     .eq('school_id', schoolId)
     .maybeSingle()
 
   setFacialEnabled(Boolean(data?.facial_enabled))
+
+  if (!data) return
+
+  const cacheVersion =
+    `${data.plan_id}-${data.facial_enabled}-${data.updated_at}`
+
+  const cacheKey = `offline_cache_version_${schoolId}`
+
+  const savedVersion = localStorage.getItem(cacheKey)
+
+  // se o plano mudou
+  if (savedVersion && savedVersion !== cacheVersion) {
+    console.log('CACHE OFFLINE ANTIGO. LIMPANDO...')
+
+    await offlineAttendanceDb.students.clear()
+    await offlineAttendanceDb.attendance.clear()
+    await offlineAttendanceDb.earlyExits.clear()
+    await offlineAttendanceDb.faceEmbeddings.clear()
+
+    setResultWithTimeout({
+      status: 'error',
+      message:
+        'Seu plano foi atualizado. Atualize novamente os dados offline.',
+    })
+  }
+
+  localStorage.setItem(cacheKey, cacheVersion)
 }
 
 async function handleOfflineScan(text: string) {
