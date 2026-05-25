@@ -113,7 +113,9 @@ const [faceStudent, setFaceStudent] = useState<Student | null>(null)
 const [faceEmbeddings, setFaceEmbeddings] = useState<number[][]>([])
 const [faceMessage, setFaceMessage] = useState('')
 const [savingFace, setSavingFace] = useState(false)
-const [faceCaptureLocked, setFaceCaptureLocked] = useState(false)
+
+const [facePhotos, setFacePhotos] = useState<File[]>([])
+const [facePhotoPreviews, setFacePhotoPreviews] = useState<string[]>([])
 
 const [studentsWithFace, setStudentsWithFace] = useState<Record<string, string>>({})
 
@@ -676,7 +678,7 @@ function averageEmbeddings(embeddings: number[][]) {
 }
 
 function areEmbeddingsConsistent(embeddings: number[][]) {
-  const MAX_INTERNAL_DISTANCE = 0.35
+  const MAX_INTERNAL_DISTANCE = 0.65
 
   for (let i = 0; i < embeddings.length; i++) {
     for (let j = i + 1; j < embeddings.length; j++) {
@@ -689,124 +691,6 @@ function areEmbeddingsConsistent(embeddings: number[][]) {
   }
 
   return true
-}
-
-async function handleFaceEnrollmentCapture(imageBlob: Blob) {
-  if (!faceStudent || savingFace || faceCaptureLocked) return
-
-  setFaceCaptureLocked(true)
-  setFaceMessage('Processando captura facial...')
-
-  try {
-    const embedding = await generateFaceEmbeddingFromBlob(imageBlob)
-
-    if (!embedding) {
-      setFaceMessage('Nenhum rosto válido encontrado. Tente novamente.')
-      return
-    }
-
-    const nextEmbeddings = [...faceEmbeddings, embedding]
-
-    if (nextEmbeddings.length >= 2) {
-      const isConsistent = areEmbeddingsConsistent(nextEmbeddings)
-
-      if (!isConsistent) {
-        setFaceMessage(
-          'Essa captura ficou diferente das anteriores. Reposicione o aluno e tente novamente.'
-        )
-        return
-      }
-    }
-
-    setFaceEmbeddings(nextEmbeddings)
-
-    if (nextEmbeddings.length < 3) {
-      setFaceMessage(`Captura ${nextEmbeddings.length}/3 realizada. Continue.`)
-      return
-    }
-
-    setSavingFace(true)
-    setFaceMessage('Gerando cadastro facial do aluno...')
-
-    const averagedEmbedding = averageEmbeddings(nextEmbeddings)
-
-    const enrollment = getStudentEnrollment(faceStudent.id)
-
-    await offlineAttendanceDb.faceEmbeddings
-  .where('student_id')
-  .equals(faceStudent.id)
-  .delete()
-
-    await offlineAttendanceDb.faceEmbeddings.add({
-      id: crypto.randomUUID(),
-      school_id: schoolId,
-      student_id: faceStudent.id,
-      class_id: enrollment?.class_id || 'pending',
-      embedding: averagedEmbedding,
-      source: 'profile_photo',
-      quality_score: null,
-      captured_at: new Date().toISOString(),
-      expires_at: new Date(
-        Date.now() + 3650 * 24 * 60 * 60 * 1000
-      ).toISOString(),
-      synced: false,
-    })
-
-    if (navigator.onLine) {
-  try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    await supabase
-  .from('face_embeddings')
-  .upsert(
-    {
-      school_id: schoolId,
-      student_id: faceStudent.id,
-      class_id: enrollment?.class_id || null,
-      embedding: averagedEmbedding,
-      source: 'manual_average',
-      quality_score: null,
-      captured_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      created_by_user_id: user?.id || null,
-      active: true,
-    },
-    {
-      onConflict: 'student_id,source',
-    }
-  )
-  } catch (error) {
-    console.error(
-      '[FACIAL] erro ao sincronizar embedding:',
-      error
-    )
-  }
-}
-
-    await loadStudentsWithFace()
-
-    setFaceMessage('Cadastro facial concluído com sucesso.')
-
-    setTimeout(() => {
-      setFaceStudent(null)
-      setFaceEmbeddings([])
-      setSavingFace(false)
-      setFaceCaptureLocked(false)
-    }, 1500)
-  } catch (error) {
-    console.error('Erro no cadastro facial:', error)
-    setFaceMessage(
-      error instanceof Error
-        ? error.message
-        : 'Erro ao cadastrar face do aluno.'
-    )
-  } finally {
-    setTimeout(() => {
-      setFaceCaptureLocked(false)
-    }, 1200)
-  }
 }
 
 async function loadStudentsWithFace() {
@@ -1283,12 +1167,19 @@ setEditPhotoInputKey((prev) => prev + 1)
 
 <button
   onClick={() => {
-    setFaceStudent(student)
-    setFaceEmbeddings([])
-    setFaceMessage('Posicione o rosto do aluno na câmera. Capture 3 leituras.')
-    setSavingFace(false)
-    setFaceCaptureLocked(false)
-  }}
+  setFaceStudent(student)
+
+  setFaceEmbeddings([])
+
+  setFacePhotos([])
+  setFacePhotoPreviews([])
+
+  setFaceMessage(
+    'Selecione exatamente 3 fotos do rosto do aluno.'
+  )
+
+  setSavingFace(false)
+}}
   style={{
     padding: '10px 14px',
     borderRadius: 12,
@@ -1299,7 +1190,7 @@ setEditPhotoInputKey((prev) => prev + 1)
     cursor: 'pointer',
   }}
 >
-  {studentsWithFace[student.id] ? 'Atualizar face' : 'Cadastrar face'}
+  {studentsWithFace[student.id] ? 'Atualizar fotos faciais' : 'Importar fotos faciais'}
 </button>
 
 <button
@@ -1609,38 +1500,86 @@ const message = encodeURIComponent(
           textAlign: 'center',
         }}
       >
-        {faceMessage || 'Posicione o rosto do aluno na câmera.'}
+        {faceMessage || 'Selecione 3 fotos do rosto do aluno.'}
       </div>
 
       <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: 8,
-        }}
-      >
-        {[0, 1, 2].map((index) => (
-          <div
-            key={index}
+  style={{
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+  }}
+>
+  <input
+    type="file"
+    accept="image/*"
+    multiple
+    onChange={(event) => {
+      const files = Array.from(event.target.files || [])
+
+      if (files.length !== 3) {
+        setFaceMessage(
+          'Selecione exatamente 3 fotos.'
+        )
+
+        return
+      }
+
+      facePhotoPreviews.forEach((url) =>
+        URL.revokeObjectURL(url)
+      )
+
+      setFacePhotos(files)
+
+      setFacePhotoPreviews(
+        files.map((file) => URL.createObjectURL(file))
+      )
+
+      setFaceMessage(
+        '3 fotos selecionadas. Clique em salvar faces.'
+      )
+    }}
+    style={{
+      padding: 12,
+      borderRadius: 12,
+      border: '1px solid #cbd5e1',
+      background: '#ffffff',
+    }}
+  />
+
+  {facePhotoPreviews.length > 0 && (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: 12,
+      }}
+    >
+      {facePhotoPreviews.map((preview, index) => (
+        <div
+          key={preview}
+          style={{
+            borderRadius: 16,
+            overflow: 'hidden',
+            border: '1px solid #e2e8f0',
+            background: '#f8fafc',
+          }}
+        >
+          <img
+            src={preview}
+            alt={`Face ${index + 1}`}
             style={{
-              height: 10,
-              borderRadius: 999,
-              background:
-                faceEmbeddings.length > index ? '#22c55e' : '#e2e8f0',
+              width: '100%',
+              aspectRatio: '1 / 1',
+              objectFit: 'cover',
+              display: 'block',
             }}
           />
-        ))}
-      </div>
-
-      <ManualFacialEnrollmentScanner
-  isActive={!!faceStudent && !savingFace}
-  disabled={faceCaptureLocked || savingFace}
-  captureLabel={`Capturar ${Math.min(faceEmbeddings.length + 1, 3)}/3`}
-  onCapture={handleFaceEnrollmentCapture}
-  onNoCamera={() => {
-    setFaceMessage('Não foi possível acessar a câmera.')
-  }}
-/>
+        </div>
+      ))}
+    </div>
+  )}
+</div>
 
       <div
         style={{
@@ -1657,7 +1596,6 @@ const message = encodeURIComponent(
             setFaceEmbeddings([])
             setFaceMessage('')
             setSavingFace(false)
-            setFaceCaptureLocked(false)
           }}
           style={{
             padding: '10px 14px',
@@ -1671,6 +1609,153 @@ const message = encodeURIComponent(
         >
           Cancelar
         </button>
+
+        <button
+  type="button"
+  disabled={savingFace}
+  onClick={async () => {
+    if (!faceStudent) return
+
+    if (facePhotos.length !== 3) {
+      setFaceMessage(
+        'Selecione exatamente 3 fotos.'
+      )
+
+      return
+    }
+
+    try {
+      setSavingFace(true)
+
+      setFaceMessage(
+        'Processando fotos faciais...'
+      )
+
+      const generatedEmbeddings: number[][] = []
+
+      for (const photo of facePhotos) {
+        const embedding =
+          await generateFaceEmbeddingFromBlob(photo)
+
+        if (!embedding) {
+          setFaceMessage(
+            'Não foi possível detectar um rosto em uma das fotos.'
+          )
+
+          setSavingFace(false)
+
+          return
+        }
+
+        generatedEmbeddings.push(embedding)
+      }
+
+      if (
+        !areEmbeddingsConsistent(generatedEmbeddings)
+      ) {
+        setFaceMessage(
+          'As fotos parecem ser de pessoas diferentes.'
+        )
+
+        setSavingFace(false)
+
+        return
+      }
+
+      await offlineAttendanceDb.faceEmbeddings
+        .where('student_id')
+        .equals(faceStudent.id)
+        .delete()
+
+        const { error: deleteFaceError } = await supabase
+  .from('student_face_embeddings')
+  .delete()
+  .eq('student_id', faceStudent.id)
+
+if (deleteFaceError) {
+  setFaceMessage(deleteFaceError.message)
+  setSavingFace(false)
+  return
+}
+
+      const now = new Date()
+
+      const expiresAt = new Date()
+
+      expiresAt.setMonth(expiresAt.getMonth() + 3)
+
+      for (
+        let index = 0;
+        index < generatedEmbeddings.length;
+        index++
+      ) {
+        await offlineAttendanceDb.faceEmbeddings.add({
+          id: crypto.randomUUID(),
+          school_id: schoolId,
+          student_id: faceStudent.id,
+          class_id: '',
+          embedding: generatedEmbeddings[index],
+          source: 'imported_photo',
+          quality_score: 1,
+          captured_at: now.toISOString(),
+          expires_at: expiresAt.toISOString(),
+          synced: false,
+        })
+        const { error: insertFaceError } = await supabase
+  .from('student_face_embeddings')
+  .insert({
+    school_id: schoolId,
+    student_id: faceStudent.id,
+    embedding: generatedEmbeddings[index],
+    photo_order: index + 1,
+    source: 'imported_photo',
+  })
+
+if (insertFaceError) {
+  setFaceMessage(insertFaceError.message)
+  setSavingFace(false)
+  return
+}
+      }
+
+      setStudentsWithFace((prev) => ({
+        ...prev,
+        [faceStudent.id]: now.toISOString(),
+      }))
+
+      setFaceEmbeddings(generatedEmbeddings)
+
+      setFaceMessage(
+        'Faces cadastradas com sucesso.'
+      )
+    } catch (error) {
+      console.error(error)
+
+      setFaceMessage(
+        'Erro ao processar faces.'
+      )
+    } finally {
+      setSavingFace(false)
+    }
+  }}
+  style={{
+    padding: '10px 14px',
+    borderRadius: 12,
+    border: 'none',
+    background: savingFace
+      ? '#94a3b8'
+      : '#7c3aed',
+    color: '#ffffff',
+    fontWeight: 800,
+    cursor: savingFace
+      ? 'not-allowed'
+      : 'pointer',
+  }}
+>
+  {savingFace
+    ? 'Processando...'
+    : 'Salvar faces'}
+</button>
       </div>
     </div>
   </div>

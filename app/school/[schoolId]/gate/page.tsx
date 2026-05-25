@@ -190,16 +190,19 @@ async function downloadOfflineData() {
         message: `Preparando reconhecimento facial... ${progress}% (${processedFaces}/${totalFaces})`,
       })
 
-      const existingManualEmbedding =
+      const existingPreferredEmbedding =
   await offlineAttendanceDb.faceEmbeddings
     .filter(
       (item) =>
         item.student_id === student.id &&
-        item.source === 'manual_average'
+        (
+          item.source === 'imported_photo' ||
+          item.source === 'manual_average'
+        )
     )
     .first()
 
-if (existingManualEmbedding) {
+if (existingPreferredEmbedding) {
   skippedFaces++
   continue
 }
@@ -243,15 +246,19 @@ if (existingManualEmbedding) {
       generatedFaces++
     }
 
-    const profileEmbeddings = await offlineAttendanceDb.faceEmbeddings
-      .where('source')
-      .equals('profile_photo')
-      .count()
+    const totalFaceEmbeddings =
+  await offlineAttendanceDb.faceEmbeddings.count()
+
+const importedFaceEmbeddings =
+  await offlineAttendanceDb.faceEmbeddings
+    .where('source')
+    .equals('imported_photo')
+    .count()
 
     setResultWithTimeout({
-      status: 'success',
-      message: `Dados offline atualizados. Alunos: ${offlineStudents.length}. Rostos base: ${profileEmbeddings}. Novos: ${generatedFaces}. Já existentes: ${skippedFaces}.`,
-    })
+  status: 'success',
+  message: `Dados offline atualizados. Alunos: ${offlineStudents.length}. Embeddings faciais: ${totalFaceEmbeddings}. Importados: ${importedFaceEmbeddings}. Novos por foto de perfil: ${generatedFaces}. Já existentes: ${skippedFaces}.`,
+})
   } catch (error) {
     console.error('ERRO AO ATUALIZAR DADOS OFFLINE:', error)
 
@@ -1279,25 +1286,27 @@ synced: false,
 
 let adjustedDistance = distance
 
-if (stored.source === 'manual_average') {
-  adjustedDistance -= 0.03
+if (stored.source === 'imported_photo') {
+  adjustedDistance -= 0.05
+} else if (stored.source === 'manual_average') {
+  adjustedDistance -= 0.02
 }
 
-    if (distance < bestDistance) {
+    if (adjustedDistance < bestDistance) {
       if (bestMatch && bestMatch.student_id !== stored.student_id) {
         secondBestDifferentStudent = bestMatch
         secondBestDifferentStudentDistance = bestDistance
       }
 
-      bestDistance = distance
+      bestDistance = adjustedDistance
       bestMatch = stored
     } else if (
       bestMatch &&
       stored.student_id !== bestMatch.student_id &&
-      distance < secondBestDifferentStudentDistance
+      adjustedDistance < secondBestDifferentStudentDistance
     ) {
       secondBestDifferentStudent = stored
-      secondBestDifferentStudentDistance = distance
+      secondBestDifferentStudentDistance = adjustedDistance
     }
   }
 
@@ -1571,54 +1580,44 @@ if (stored.source === 'manual_average') {
 
   async function syncFaceEmbeddingsFromSupabase() {
   try {
-    console.log('[FACIAL] sincronizando embeddings...')
+    console.log('[FACIAL] sincronizando embeddings importados...')
 
     const { data, error } = await supabase
-      .from('face_embeddings')
+      .from('student_face_embeddings')
       .select('*')
       .eq('school_id', schoolId)
-      .eq('active', true)
 
-    if (error) {
-      throw error
-    }
+    if (error) throw error
 
-    if (!data) return
+    await offlineAttendanceDb.faceEmbeddings
+      .where('source')
+      .equals('imported_photo')
+      .delete()
 
-    for (const item of data) {
-      const existing = await offlineAttendanceDb.faceEmbeddings.get(item.id)
+    const expiresAt = new Date()
+    expiresAt.setMonth(expiresAt.getMonth() + 3)
 
-      if (existing) {
-        await offlineAttendanceDb.faceEmbeddings.update(existing.id, {
-          embedding: item.embedding,
-          class_id: item.class_id || 'pending',
-          captured_at: item.captured_at,
-          synced: true,
-        })
-      } else {
-        await offlineAttendanceDb.faceEmbeddings.add({
-          id: item.id,
-          school_id: item.school_id,
-          student_id: item.student_id,
-          class_id: item.class_id || 'pending',
-          embedding: item.embedding,
-          source: item.source || 'manual_average',
-          quality_score: item.quality_score,
-          captured_at: item.captured_at,
-          expires_at: new Date(
-            Date.now() + 3650 * 24 * 60 * 60 * 1000
-          ).toISOString(),
-          synced: true,
-        })
-      }
-    }
-
-    console.log('[FACIAL] embeddings sincronizados')
-  } catch (error) {
-    console.error(
-      '[FACIAL] erro ao baixar embeddings:',
-      error
+    await offlineAttendanceDb.faceEmbeddings.bulkPut(
+      (data || []).map((item: any) => ({
+        id: item.id,
+        school_id: item.school_id,
+        student_id: item.student_id,
+        class_id: 'pending',
+        embedding: item.embedding,
+        source: 'imported_photo',
+        quality_score: 1,
+        captured_at: item.created_at,
+        expires_at: expiresAt.toISOString(),
+        synced: true,
+      }))
     )
+
+    console.log(
+      '[FACIAL] embeddings importados sincronizados:',
+      data?.length || 0
+    )
+  } catch (error) {
+    console.error('[FACIAL] erro ao baixar embeddings:', error)
   }
 }
 
