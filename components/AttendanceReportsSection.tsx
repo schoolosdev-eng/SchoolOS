@@ -1007,38 +1007,6 @@ disabled={analyticsLoading || !isSubscriptionActive}
     }. Motivo: ${earlyExit.reason}.${authorizedText}`
   )
 
-  useEffect(() => {
-  const style = document.createElement('style')
-
-  style.innerHTML = `
-    @keyframes spin {
-      from {
-        transform: rotate(0deg);
-      }
-
-      to {
-        transform: rotate(360deg);
-      }
-    }
-
-    @keyframes drawLine {
-      from {
-        stroke-dashoffset: 1200;
-      }
-
-      to {
-        stroke-dashoffset: 0;
-      }
-    }
-  `
-
-  document.head.appendChild(style)
-
-  return () => {
-    document.head.removeChild(style)
-  }
-}, [])
-
   return (
     <button
       onClick={() =>
