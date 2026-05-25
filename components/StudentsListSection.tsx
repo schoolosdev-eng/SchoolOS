@@ -115,6 +115,8 @@ const [faceEmbeddings, setFaceEmbeddings] = useState<number[][]>([])
 const [faceMessage, setFaceMessage] = useState('')
 const [savingFace, setSavingFace] = useState(false)
 
+const [faceCaptureSuccess, setFaceCaptureSuccess] = useState(false)
+
 const [studentsWithFace, setStudentsWithFace] = useState<Record<string, string>>({})
 
   const availableClasses = useMemo(() => {
@@ -1513,6 +1515,36 @@ const message = encodeURIComponent(
         }}
       >
         {faceMessage || 'Clique em capturar automaticamente e peça para o aluno mover levemente o rosto.'}
+        {faceCaptureSuccess && (
+  <div
+    style={{
+      display: 'flex',
+      justifyContent: 'center',
+      marginTop: 16,
+    }}
+  >
+    <button
+      type="button"
+      onClick={() => {
+        setFaceCaptureSuccess(false)
+        setFaceStudent(null)
+        setFaceMessage('')
+        setFaceEmbeddings([])
+      }}
+      style={{
+        padding: '12px 18px',
+        borderRadius: 14,
+        border: 'none',
+        background: '#16a34a',
+        color: '#ffffff',
+        fontWeight: 900,
+        cursor: 'pointer',
+      }}
+    >
+      OK
+    </button>
+  </div>
+)}
       </div>
 
       <div
@@ -1530,6 +1562,7 @@ const message = encodeURIComponent(
     setFaceMessage('Use a captura automática para maior precisão.')
   }}
   onAutoCapture={async (blobs) => {
+    setFaceCaptureSuccess(false)
     if (!faceStudent) return
 
     try {
@@ -1637,9 +1670,20 @@ const bestEmbeddings = generatedEmbeddings.slice(0, 5)
   bestEmbeddings.map((item) => item.embedding)
 )
 
-      setFaceMessage(
-        `Cadastro facial concluído. ${bestEmbeddings.length} embeddings salvos.`
-      )
+      const averageQuality =
+  Math.round(
+    bestEmbeddings.reduce(
+      (sum, item) => sum + item.quality,
+      0
+    ) / bestEmbeddings.length
+  )
+
+setFaceMessage(
+  `Cadastro facial concluído. ${
+    bestEmbeddings.length
+  } embeddings salvos. Qualidade média: ${averageQuality}%`
+)
+      setFaceCaptureSuccess(true)
     } catch (error) {
       console.error(error)
       setFaceMessage('Erro ao processar captura facial.')
