@@ -9,6 +9,7 @@ import { offlineAttendanceDb } from '@/lib/offlineAttendanceDb'
 import {
   generateFaceEmbeddingFromBlob,
   calculateFaceDistance,
+  calculateFaceQuality,
 } from '@/lib/faceRecognition'
 
 type Student = {
@@ -113,9 +114,6 @@ const [faceStudent, setFaceStudent] = useState<Student | null>(null)
 const [faceEmbeddings, setFaceEmbeddings] = useState<number[][]>([])
 const [faceMessage, setFaceMessage] = useState('')
 const [savingFace, setSavingFace] = useState(false)
-
-const [facePhotos, setFacePhotos] = useState<File[]>([])
-const [facePhotoPreviews, setFacePhotoPreviews] = useState<string[]>([])
 
 const [studentsWithFace, setStudentsWithFace] = useState<Record<string, string>>({})
 
@@ -677,12 +675,29 @@ function averageEmbeddings(embeddings: number[][]) {
   })
 }
 
-function areEmbeddingsConsistent(embeddings: number[][]) {
-  const MAX_INTERNAL_DISTANCE = 0.65
+function areEmbeddingsConsistent(
+  embeddings: {
+    embedding: number[]
+    quality: number
+  }[]
+) {
+  const MAX_INTERNAL_DISTANCE = 0.52
+  const MIN_QUALITY = 55
 
-  for (let i = 0; i < embeddings.length; i++) {
-    for (let j = i + 1; j < embeddings.length; j++) {
-      const distance = calculateFaceDistance(embeddings[i], embeddings[j])
+  const validEmbeddings = embeddings.filter(
+    (item) => item.quality >= MIN_QUALITY
+  )
+
+  if (validEmbeddings.length < 3) {
+    return false
+  }
+
+  for (let i = 0; i < validEmbeddings.length; i++) {
+    for (let j = i + 1; j < validEmbeddings.length; j++) {
+      const distance = calculateFaceDistance(
+        validEmbeddings[i].embedding,
+        validEmbeddings[j].embedding
+      )
 
       if (distance > MAX_INTERNAL_DISTANCE) {
         return false
@@ -1171,12 +1186,9 @@ setEditPhotoInputKey((prev) => prev + 1)
 
   setFaceEmbeddings([])
 
-  setFacePhotos([])
-  setFacePhotoPreviews([])
-
   setFaceMessage(
-    'Selecione exatamente 3 fotos do rosto do aluno.'
-  )
+  'Clique em capturar automaticamente e peça para o aluno mover levemente o rosto.'
+)
 
   setSavingFace(false)
 }}
@@ -1190,7 +1202,7 @@ setEditPhotoInputKey((prev) => prev + 1)
     cursor: 'pointer',
   }}
 >
-  {studentsWithFace[student.id] ? 'Atualizar fotos faciais' : 'Importar fotos faciais'}
+  {studentsWithFace[student.id] ? 'Atualizar cadastro facial' : 'Cadastrar face'}
 </button>
 
 <button
@@ -1500,7 +1512,7 @@ const message = encodeURIComponent(
           textAlign: 'center',
         }}
       >
-        {faceMessage || 'Selecione 3 fotos do rosto do aluno.'}
+        {faceMessage || 'Clique em capturar automaticamente e peça para o aluno mover levemente o rosto.'}
       </div>
 
       <div
@@ -1510,75 +1522,137 @@ const message = encodeURIComponent(
     gap: 16,
   }}
 >
-  <input
-    type="file"
-    accept="image/*"
-    multiple
-    onChange={(event) => {
-      const files = Array.from(event.target.files || [])
+  <ManualFacialEnrollmentScanner
+  isActive={Boolean(faceStudent)}
+  disabled={savingFace}
+  captureLabel="Capturar foto única"
+  onCapture={() => {
+    setFaceMessage('Use a captura automática para maior precisão.')
+  }}
+  onAutoCapture={async (blobs) => {
+    if (!faceStudent) return
 
-      if (files.length !== 3) {
+    try {
+      setSavingFace(true)
+      setFaceMessage('Processando captura automática...')
+
+      const generatedEmbeddings: {
+  embedding: number[]
+  quality: number
+}[] = []
+
+      for (const blob of blobs) {
+        const embedding = await generateFaceEmbeddingFromBlob(blob)
+
+        if (embedding) {
+          const quality = await calculateFaceQuality(blob)
+
+if (quality < 55) {
+  continue
+}
+          generatedEmbeddings.push({
+  embedding,
+  quality,
+})
+        }
+
+        if (generatedEmbeddings.length >= 5) {
+          break
+        }
+      }
+
+      if (generatedEmbeddings.length < 3) {
         setFaceMessage(
-          'Selecione exatamente 3 fotos.'
+          'Poucos rostos válidos foram detectados. Tente novamente com melhor iluminação.'
         )
-
         return
       }
 
-      facePhotoPreviews.forEach((url) =>
-        URL.revokeObjectURL(url)
-      )
+      generatedEmbeddings.sort((a, b) => b.quality - a.quality)
 
-      setFacePhotos(files)
+const bestEmbeddings = generatedEmbeddings.slice(0, 5)
 
-      setFacePhotoPreviews(
-        files.map((file) => URL.createObjectURL(file))
-      )
+      if (!areEmbeddingsConsistent(generatedEmbeddings)) {
+        setFaceMessage(
+          'As capturas parecem inconsistentes. Peça para apenas o aluno ficar na câmera e tente novamente.'
+        )
+        return
+      }
+
+      await offlineAttendanceDb.faceEmbeddings
+        .where('student_id')
+        .equals(faceStudent.id)
+        .delete()
+
+      const { error: deleteFaceError } = await supabase
+        .from('student_face_embeddings')
+        .delete()
+        .eq('student_id', faceStudent.id)
+
+      if (deleteFaceError) {
+        setFaceMessage(deleteFaceError.message)
+        return
+      }
+
+      const now = new Date()
+      const expiresAt = new Date()
+      expiresAt.setMonth(expiresAt.getMonth() + 3)
+
+      for (let index = 0; index < bestEmbeddings.length; index++) {
+        await offlineAttendanceDb.faceEmbeddings.add({
+          id: crypto.randomUUID(),
+          school_id: schoolId,
+          student_id: faceStudent.id,
+          class_id: '',
+          embedding: bestEmbeddings[index].embedding,
+          source: 'capture',
+          quality_score: bestEmbeddings[index].quality,
+          captured_at: now.toISOString(),
+          expires_at: expiresAt.toISOString(),
+          synced: false,
+        })
+
+        const { error: insertFaceError } = await supabase
+          .from('student_face_embeddings')
+          .insert({
+            school_id: schoolId,
+            student_id: faceStudent.id,
+            embedding: bestEmbeddings[index].embedding,
+            photo_order: index + 1,
+            source: 'capture',
+          })
+
+        if (insertFaceError) {
+          setFaceMessage(insertFaceError.message)
+          return
+        }
+      }
+
+      setStudentsWithFace((prev) => ({
+        ...prev,
+        [faceStudent.id]: now.toISOString(),
+      }))
+
+      setFaceEmbeddings(
+  bestEmbeddings.map((item) => item.embedding)
+)
 
       setFaceMessage(
-        '3 fotos selecionadas. Clique em salvar faces.'
+        `Cadastro facial concluído. ${bestEmbeddings.length} embeddings salvos.`
       )
-    }}
-    style={{
-      padding: 12,
-      borderRadius: 12,
-      border: '1px solid #cbd5e1',
-      background: '#ffffff',
-    }}
-  />
+    } catch (error) {
+      console.error(error)
+      setFaceMessage('Erro ao processar captura facial.')
+    } finally {
+      setSavingFace(false)
+    }
+  }}
+  onNoCamera={() => {
+    setFaceMessage('Não foi possível acessar a câmera.')
+  }}
+/>
 
-  {facePhotoPreviews.length > 0 && (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: 12,
-      }}
-    >
-      {facePhotoPreviews.map((preview, index) => (
-        <div
-          key={preview}
-          style={{
-            borderRadius: 16,
-            overflow: 'hidden',
-            border: '1px solid #e2e8f0',
-            background: '#f8fafc',
-          }}
-        >
-          <img
-            src={preview}
-            alt={`Face ${index + 1}`}
-            style={{
-              width: '100%',
-              aspectRatio: '1 / 1',
-              objectFit: 'cover',
-              display: 'block',
-            }}
-          />
-        </div>
-      ))}
-    </div>
-  )}
+  
 </div>
 
       <div
@@ -1609,153 +1683,6 @@ const message = encodeURIComponent(
         >
           Cancelar
         </button>
-
-        <button
-  type="button"
-  disabled={savingFace}
-  onClick={async () => {
-    if (!faceStudent) return
-
-    if (facePhotos.length !== 3) {
-      setFaceMessage(
-        'Selecione exatamente 3 fotos.'
-      )
-
-      return
-    }
-
-    try {
-      setSavingFace(true)
-
-      setFaceMessage(
-        'Processando fotos faciais...'
-      )
-
-      const generatedEmbeddings: number[][] = []
-
-      for (const photo of facePhotos) {
-        const embedding =
-          await generateFaceEmbeddingFromBlob(photo)
-
-        if (!embedding) {
-          setFaceMessage(
-            'Não foi possível detectar um rosto em uma das fotos.'
-          )
-
-          setSavingFace(false)
-
-          return
-        }
-
-        generatedEmbeddings.push(embedding)
-      }
-
-      if (
-        !areEmbeddingsConsistent(generatedEmbeddings)
-      ) {
-        setFaceMessage(
-          'As fotos parecem ser de pessoas diferentes.'
-        )
-
-        setSavingFace(false)
-
-        return
-      }
-
-      await offlineAttendanceDb.faceEmbeddings
-        .where('student_id')
-        .equals(faceStudent.id)
-        .delete()
-
-        const { error: deleteFaceError } = await supabase
-  .from('student_face_embeddings')
-  .delete()
-  .eq('student_id', faceStudent.id)
-
-if (deleteFaceError) {
-  setFaceMessage(deleteFaceError.message)
-  setSavingFace(false)
-  return
-}
-
-      const now = new Date()
-
-      const expiresAt = new Date()
-
-      expiresAt.setMonth(expiresAt.getMonth() + 3)
-
-      for (
-        let index = 0;
-        index < generatedEmbeddings.length;
-        index++
-      ) {
-        await offlineAttendanceDb.faceEmbeddings.add({
-          id: crypto.randomUUID(),
-          school_id: schoolId,
-          student_id: faceStudent.id,
-          class_id: '',
-          embedding: generatedEmbeddings[index],
-          source: 'imported_photo',
-          quality_score: 1,
-          captured_at: now.toISOString(),
-          expires_at: expiresAt.toISOString(),
-          synced: false,
-        })
-        const { error: insertFaceError } = await supabase
-  .from('student_face_embeddings')
-  .insert({
-    school_id: schoolId,
-    student_id: faceStudent.id,
-    embedding: generatedEmbeddings[index],
-    photo_order: index + 1,
-    source: 'imported_photo',
-  })
-
-if (insertFaceError) {
-  setFaceMessage(insertFaceError.message)
-  setSavingFace(false)
-  return
-}
-      }
-
-      setStudentsWithFace((prev) => ({
-        ...prev,
-        [faceStudent.id]: now.toISOString(),
-      }))
-
-      setFaceEmbeddings(generatedEmbeddings)
-
-      setFaceMessage(
-        'Faces cadastradas com sucesso.'
-      )
-    } catch (error) {
-      console.error(error)
-
-      setFaceMessage(
-        'Erro ao processar faces.'
-      )
-    } finally {
-      setSavingFace(false)
-    }
-  }}
-  style={{
-    padding: '10px 14px',
-    borderRadius: 12,
-    border: 'none',
-    background: savingFace
-      ? '#94a3b8'
-      : '#7c3aed',
-    color: '#ffffff',
-    fontWeight: 800,
-    cursor: savingFace
-      ? 'not-allowed'
-      : 'pointer',
-  }}
->
-  {savingFace
-    ? 'Processando...'
-    : 'Salvar faces'}
-</button>
       </div>
     </div>
   </div>

@@ -131,3 +131,68 @@ export function calculateFaceDistance(a: number[], b: number[]) {
 
   return Math.sqrt(sum)
 }
+
+export async function calculateFaceQuality(
+  imageBlob: Blob
+): Promise<number> {
+  await loadFaceModels()
+
+  const imageUrl = URL.createObjectURL(imageBlob)
+
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image()
+
+      image.onload = () => resolve(image)
+      image.onerror = reject
+      image.src = imageUrl
+    })
+
+    const detection = await faceapi
+      .detectSingleFace(
+        img,
+        new faceapi.TinyFaceDetectorOptions({
+          inputSize: 416,
+          scoreThreshold: 0.4,
+        })
+      )
+      .withFaceLandmarks()
+
+    if (!detection) {
+      return 0
+    }
+
+    const box = detection.detection.box
+
+    let score = 0
+
+    // confiança da detecção
+    score += detection.detection.score * 40
+
+    // tamanho do rosto
+    const faceArea = box.width * box.height
+    const imageArea = img.width * img.height
+
+    const faceRatio = faceArea / imageArea
+
+    score += Math.min(faceRatio * 300, 30)
+
+    // centralização
+    const centerX = box.x + box.width / 2
+    const centerY = box.y + box.height / 2
+
+    const offsetX = Math.abs(centerX - img.width / 2)
+    const offsetY = Math.abs(centerY - img.height / 2)
+
+    const normalizedOffset =
+      (offsetX / img.width + offsetY / img.height) / 2
+
+    score += Math.max(0, 20 - normalizedOffset * 40)
+
+    return Math.round(score)
+  } catch {
+    return 0
+  } finally {
+    URL.revokeObjectURL(imageUrl)
+  }
+}

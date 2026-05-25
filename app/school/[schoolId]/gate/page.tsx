@@ -1444,21 +1444,15 @@ synced: false,
   async function findBestFaceMatch(embedding: number[]) {
   const allEmbeddings = await offlineAttendanceDb.faceEmbeddings.toArray()
 
-console.log('[FACIAL] embeddings salvos:', allEmbeddings.map((item) => ({
-  student_id: item.student_id,
-  class_id: item.class_id,
-  source: item.source,
-  size: item.embedding?.length,
-})))
-
   const embeddingsToCompare = allEmbeddings.filter(
     (item) =>
-      item.source === 'imported_photo' ||
+      item.source === 'capture' ||
       item.source === 'manual_average' ||
       item.source === 'profile_photo'
   )
 
   const FACE_MATCH_THRESHOLD = 0.45
+  const MIN_DISTANCE_GAP = 0.07
 
   let bestMatch: any = null
   let bestDistance = Infinity
@@ -1470,12 +1464,6 @@ console.log('[FACIAL] embeddings salvos:', allEmbeddings.map((item) => ({
     }
 
     const distance = calculateFaceDistance(embedding, stored.embedding)
-
-    console.log('[FACE COMPARE]', {
-      studentId: stored.student_id,
-      source: stored.source,
-      distance,
-    })
 
     if (distance < bestDistance) {
       if (bestMatch && bestMatch.student_id !== stored.student_id) {
@@ -1493,24 +1481,16 @@ console.log('[FACIAL] embeddings salvos:', allEmbeddings.map((item) => ({
     }
   }
 
-  console.log('[FACE RESULT]', {
-    bestStudent: bestMatch?.student_id,
-    bestSource: bestMatch?.source,
-    bestDistance,
-    secondBestDifferentStudentDistance,
-    gap: secondBestDifferentStudentDistance - bestDistance,
-  })
-
   if (!bestMatch || bestDistance > FACE_MATCH_THRESHOLD) {
     return null
   }
 
-  //if (
-  //  Number.isFinite(secondBestDifferentStudentDistance) &&
-  //  secondBestDifferentStudentDistance - bestDistance < MIN_DISTANCE_GAP
-  //) {
-  //  return null
-  //}
+  if (
+    Number.isFinite(secondBestDifferentStudentDistance) &&
+    secondBestDifferentStudentDistance - bestDistance < MIN_DISTANCE_GAP
+  ) {
+    return null
+  }
 
   return {
     student_id: bestMatch.student_id,

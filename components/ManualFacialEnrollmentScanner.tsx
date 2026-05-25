@@ -7,6 +7,7 @@ type Props = {
   disabled?: boolean
   captureLabel?: string
   onCapture: (imageBlob: Blob) => void
+  onAutoCapture?: (imageBlobs: Blob[]) => void
   onNoCamera?: () => void
 }
 
@@ -15,12 +16,15 @@ export default function ManualFacialEnrollmentScanner({
   disabled = false,
   captureLabel = 'Capturar foto',
   onCapture,
+  onAutoCapture,
   onNoCamera,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
+  const [autoCapturing, setAutoCapturing] = useState(false)
+  const [progress, setProgress] = useState(0)
 
   async function startCamera() {
     try {
@@ -29,8 +33,9 @@ export default function ManualFacialEnrollmentScanner({
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode,
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          frameRate: { ideal: 24 },
         },
         audio: false,
       })
@@ -57,33 +62,80 @@ export default function ManualFacialEnrollmentScanner({
   }
 
   function handleSwitchCamera() {
+    if (autoCapturing) return
     setFacingMode((prev) => (prev === 'user' ? 'environment' : 'user'))
   }
 
-  function handleCapture() {
-    if (!videoRef.current || disabled) return
+  function captureCurrentFrame(): Promise<Blob | null> {
+    return new Promise((resolve) => {
+      if (!videoRef.current || disabled) {
+        resolve(null)
+        return
+      }
 
-    const video = videoRef.current
+      const video = videoRef.current
 
-    if (!video.videoWidth || !video.videoHeight) return
+      if (!video.videoWidth || !video.videoHeight) {
+        resolve(null)
+        return
+      }
 
-    const canvas = document.createElement('canvas')
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
+      const canvas = document.createElement('canvas')
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
 
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        resolve(null)
+        return
+      }
 
-    ctx.drawImage(video, 0, 0)
+      ctx.drawImage(video, 0, 0)
 
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) return
-        onCapture(blob)
-      },
-      'image/jpeg',
-      0.92
-    )
+      canvas.toBlob(
+        (blob) => {
+          resolve(blob || null)
+        },
+        'image/jpeg',
+        0.9
+      )
+    })
+  }
+
+  async function handleCapture() {
+    const blob = await captureCurrentFrame()
+    if (!blob) return
+    onCapture(blob)
+  }
+
+  async function handleAutoCapture() {
+    if (disabled || autoCapturing) return
+
+    setAutoCapturing(true)
+    setProgress(0)
+
+    const blobs: Blob[] = []
+    const totalFrames = 30
+    const intervalMs = 120
+
+    try {
+      for (let i = 0; i < totalFrames; i++) {
+        const blob = await captureCurrentFrame()
+
+        if (blob) {
+          blobs.push(blob)
+        }
+
+        setProgress(Math.round(((i + 1) / totalFrames) * 100))
+
+        await new Promise((resolve) => setTimeout(resolve, intervalMs))
+      }
+
+      onAutoCapture?.(blobs)
+    } finally {
+      setAutoCapturing(false)
+      setProgress(0)
+    }
   }
 
   useEffect(() => {
@@ -106,6 +158,7 @@ export default function ManualFacialEnrollmentScanner({
       <button
         type="button"
         onClick={handleSwitchCamera}
+        disabled={autoCapturing}
         style={{
           padding: '10px 14px',
           borderRadius: 12,
@@ -113,7 +166,7 @@ export default function ManualFacialEnrollmentScanner({
           background: '#ffffff',
           color: '#0f172a',
           fontWeight: 800,
-          cursor: 'pointer',
+          cursor: autoCapturing ? 'not-allowed' : 'pointer',
         }}
       >
         Alternar câmera
@@ -126,6 +179,7 @@ export default function ManualFacialEnrollmentScanner({
           overflow: 'hidden',
           border: '1px solid #e2e8f0',
           background: '#0f172a',
+          position: 'relative',
         }}
       >
         <video
@@ -138,20 +192,58 @@ export default function ManualFacialEnrollmentScanner({
             display: 'block',
           }}
         />
+
+        {autoCapturing && (
+          <div
+            style={{
+              position: 'absolute',
+              left: 12,
+              right: 12,
+              bottom: 12,
+              padding: 12,
+              borderRadius: 14,
+              background: 'rgba(15, 23, 42, 0.82)',
+              color: '#ffffff',
+              fontWeight: 800,
+              textAlign: 'center',
+            }}
+          >
+            Movimente levemente o rosto... {progress}%
+          </div>
+        )}
       </div>
 
       <button
         type="button"
-        onClick={handleCapture}
-        disabled={disabled}
+        onClick={handleAutoCapture}
+        disabled={disabled || autoCapturing}
         style={{
           padding: '12px 16px',
           borderRadius: 14,
           border: 'none',
-          background: disabled ? '#94a3b8' : '#7c3aed',
+          background: disabled || autoCapturing ? '#94a3b8' : '#2563eb',
           color: '#ffffff',
           fontWeight: 900,
-          cursor: disabled ? 'not-allowed' : 'pointer',
+          cursor: disabled || autoCapturing ? 'not-allowed' : 'pointer',
+        }}
+      >
+        {autoCapturing
+          ? 'Capturando sequência...'
+          : 'Capturar várias fotos automaticamente'}
+      </button>
+
+      <button
+        type="button"
+        onClick={handleCapture}
+        disabled={disabled || autoCapturing}
+        style={{
+          padding: '12px 16px',
+          borderRadius: 14,
+          border: 'none',
+          background: disabled || autoCapturing ? '#94a3b8' : '#7c3aed',
+          color: '#ffffff',
+          fontWeight: 900,
+          cursor: disabled || autoCapturing ? 'not-allowed' : 'pointer',
         }}
       >
         {captureLabel}
