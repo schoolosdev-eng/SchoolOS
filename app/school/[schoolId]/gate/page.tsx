@@ -1265,8 +1265,8 @@ synced: false,
   async function findBestFaceMatch(embedding: number[]) {
   const allEmbeddings = await offlineAttendanceDb.faceEmbeddings.toArray()
 
-  const FACE_MATCH_THRESHOLD = 0.55
-  const MIN_DISTANCE_GAP = 0.08
+  const FACE_MATCH_THRESHOLD = 0.72
+  const MIN_DISTANCE_GAP = 0.03
 
   let bestMatch: any = null
   let bestDistance = Infinity
@@ -1292,6 +1292,13 @@ if (stored.source === 'imported_photo') {
   adjustedDistance -= 0.02
 }
 
+console.log('[FACE COMPARE]', {
+  studentId: stored.student_id,
+  source: stored.source,
+  rawDistance: distance,
+  adjustedDistance,
+})
+
     if (adjustedDistance < bestDistance) {
       if (bestMatch && bestMatch.student_id !== stored.student_id) {
         secondBestDifferentStudent = bestMatch
@@ -1309,6 +1316,12 @@ if (stored.source === 'imported_photo') {
       secondBestDifferentStudentDistance = adjustedDistance
     }
   }
+
+  console.log('[FACE RESULT]', {
+  bestDistance,
+  secondBestDifferentStudentDistance,
+  bestStudent: bestMatch?.student_id,
+})
 
   console.log('[FACIAL] melhor:', bestMatch?.student_id, bestMatch?.source, bestDistance)
   console.log('[FACIAL] segundo outro aluno:', secondBestDifferentStudent?.student_id, secondBestDifferentStudentDistance)
