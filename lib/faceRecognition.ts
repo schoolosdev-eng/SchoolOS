@@ -59,16 +59,61 @@ export async function generateFaceEmbeddingFromBlob(
       .detectSingleFace(
         img,
         new faceapi.TinyFaceDetectorOptions({
-          inputSize: 320,
-          scoreThreshold: 0.5,
+          inputSize: 416,
+          scoreThreshold: 0.4,
+        })
+      )
+      .withFaceLandmarks()
+
+    if (!detection) return null
+
+    const box = detection.detection.box
+
+    const padding = Math.max(box.width, box.height) * 0.35
+
+    const sx = Math.max(0, box.x - padding)
+    const sy = Math.max(0, box.y - padding)
+    const sw = Math.min(img.width - sx, box.width + padding * 2)
+    const sh = Math.min(img.height - sy, box.height + padding * 2)
+
+    const faceCanvas = document.createElement('canvas')
+    faceCanvas.width = 224
+    faceCanvas.height = 224
+
+    const ctx = faceCanvas.getContext('2d')
+    if (!ctx) return null
+
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, 224, 224)
+
+    const refinedDetection = await faceapi
+      .detectSingleFace(
+        faceCanvas,
+        new faceapi.TinyFaceDetectorOptions({
+          inputSize: 224,
+          scoreThreshold: 0.25,
         })
       )
       .withFaceLandmarks()
       .withFaceDescriptor()
 
-    if (!detection) return null
+    if (!refinedDetection) {
+      const fallbackDetection = await faceapi
+        .detectSingleFace(
+          img,
+          new faceapi.TinyFaceDetectorOptions({
+            inputSize: 416,
+            scoreThreshold: 0.4,
+          })
+        )
+        .withFaceLandmarks()
+        .withFaceDescriptor()
 
-    return Array.from(detection.descriptor)
+      if (!fallbackDetection) return null
+
+      return Array.from(fallbackDetection.descriptor)
+    }
+
+    return Array.from(refinedDetection.descriptor)
   } finally {
     URL.revokeObjectURL(imageUrl)
   }
