@@ -42,6 +42,10 @@ export default function GatePage() {
 const [loadingSync, setLoadingSync] = useState(false)
 const [closingGateMode, setClosingGateMode] = useState(false)
 
+const [manualStudentId, setManualStudentId] = useState('')
+const [manualStudentSearch, setManualStudentSearch] = useState('')
+const [manualStudents, setManualStudents] = useState<any[]>([])
+
 const [facialEnabled, setFacialEnabled] = useState(false)
 
 const facialProcessingRef = useRef(false)
@@ -290,6 +294,30 @@ const importedFaceEmbeddings =
   }
 }
 
+useEffect(() => {
+  async function loadManualStudents() {
+    if (!manualMode || manualStudentSearch.trim().length < 3) {
+      setManualStudents([])
+      return
+    }
+
+    const search = manualStudentSearch.trim().toLowerCase()
+
+    const results = await offlineAttendanceDb.students
+      .filter(
+        (student) =>
+          student.school_id === schoolId &&
+          student.full_name.toLowerCase().includes(search)
+      )
+      .limit(20)
+      .toArray()
+
+    setManualStudents(results)
+  }
+
+  loadManualStudents()
+}, [manualMode, manualStudentSearch, schoolId])
+
 async function fetchSubscription() {
   const { data, error } = await supabase
     .from('school_subscriptions')
@@ -318,6 +346,89 @@ async function fetchSubscription() {
   setFacialEnabled(enabled)
 
   return enabled
+}
+
+async function handleManualAttendance() {
+  if (!manualStudentId) {
+    setResultWithTimeout({
+      status: 'error',
+      message: 'Selecione um aluno para registrar a presença.',
+    })
+    return
+  }
+
+  const student = await offlineAttendanceDb.students.get(manualStudentId)
+
+  if (!student) {
+    setResultWithTimeout({
+      status: 'error',
+      message: 'Aluno não encontrado nos dados offline.',
+    })
+    return
+  }
+
+  if (student.school_id !== schoolId) {
+    setResultWithTimeout({
+      status: 'error',
+      message: 'Aluno não pertence a esta escola.',
+    })
+    return
+  }
+
+  const now = new Date()
+  const attendanceDate = now.toISOString().split('T')[0]
+
+  const existing = await offlineAttendanceDb.attendance
+    .where('student_id')
+    .equals(student.id)
+    .filter(
+      (record) =>
+        record.school_id === schoolId &&
+        record.class_id === student.class_id &&
+        record.attendance_date === attendanceDate
+    )
+    .first()
+
+  if (existing) {
+    setResultWithTimeout({
+      status: 'duplicate',
+      message: 'Presença já registrada hoje.',
+      student: {
+        name: student.full_name,
+        className: student.class_name,
+        photo: null,
+      },
+      time: new Date(existing.recorded_at).toLocaleTimeString(),
+    })
+    return
+  }
+
+  await offlineAttendanceDb.attendance.add({
+    id: crypto.randomUUID(),
+    school_id: schoolId,
+    student_id: student.id,
+    class_id: student.class_id,
+    attendance_date: attendanceDate,
+    status: 'present',
+    source: 'manual',
+    recorded_at: now.toISOString(),
+    synced: false,
+  })
+
+  setResultWithTimeout({
+    status: 'success',
+    message: 'Presença manual registrada com sucesso.',
+    student: {
+      name: student.full_name,
+      className: student.class_name,
+      photo: null,
+    },
+    time: now.toLocaleTimeString(),
+  })
+
+  setManualStudentId('')
+  setManualStudentSearch('')
+  setManualMode(false)
 }
 
 async function handleOfflineScan(text: string) {
@@ -1886,35 +1997,55 @@ console.log('[FACIAL] embeddings salvos:', allEmbeddings.map((item) => ({
           )}
 
           {manualMode && (
-            <div style={manualBoxStyle}>
-              <input
-                type="text"
-                placeholder="Cole o código do QR"
-                value={manualQrCode}
-                onChange={(e) => setManualQrCode(e.target.value)}
-                style={inputStyle}
-              />
+  <div style={manualBoxStyle}>
+    <input
+      type="text"
+      placeholder="Buscar aluno pelo nome..."
+      value={manualStudentSearch}
+      onChange={(e) => setManualStudentSearch(e.target.value)}
+      style={inputStyle}
+    />
 
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <button
-                  onClick={() => handleGateScan(manualQrCode)}
-                  style={primaryButtonStyle}
-                >
-                  {gateMode === 'entry' ? 'Confirmar presença' : 'Confirmar saída'}
-                </button>
+    <select
+  value={manualStudentId}
+  onChange={(e) => setManualStudentId(e.target.value)}
+  style={inputStyle}
+>
+  <option value="">
+    {manualStudentSearch.trim().length < 3
+      ? 'Digite pelo menos 3 letras'
+      : 'Selecione o aluno'}
+  </option>
 
-                <AppButton
-                  onClick={() => {
-                    setManualMode(false)
-                    setManualQrCode('')
-                  }}
-                  style={secondaryButtonStyle}
-                >
-                  Cancelar
-                </AppButton>
-              </div>
-            </div>
-          )}
+  {manualStudentSearch.trim().length >= 3 &&
+  manualStudents.map((student: any) => (
+    <option key={student.id} value={student.id}>
+      {student.full_name} - {student.class_name}
+    </option>
+  ))}
+</select>
+
+    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      <button
+        onClick={handleManualAttendance}
+        style={primaryButtonStyle}
+      >
+        Registrar presença manual
+      </button>
+
+      <button
+        onClick={() => {
+          setManualMode(false)
+          setManualStudentId('')
+          setManualStudentSearch('')
+        }}
+        style={secondaryButtonStyle}
+      >
+        Cancelar
+      </button>
+    </div>
+  </div>
+)}
 
           {!isScannerActive && !manualMode && (
             <div style={idleBoxStyle}>
