@@ -46,6 +46,9 @@ export async function POST(request: Request) {
     const schoolId = payment.metadata?.school_id
     const planId = payment.metadata?.plan_id
     const billingCycle = payment.metadata?.billing_cycle || 'monthly'
+    const studentLimit = Number(payment.metadata?.student_limit || 0)
+const facialEnabled = payment.metadata?.facial_enabled === true ||
+  payment.metadata?.facial_enabled === 'true'
 
     if (!internalPaymentId || !schoolId || !planId) {
       console.error('METADATA MERCADO PAGO INVÁLIDA:', payment)
@@ -80,22 +83,24 @@ export async function POST(request: Request) {
       .eq('id', internalPaymentId)
 
     await supabase
-      .from('school_subscriptions')
-      .upsert(
-        {
-          school_id: schoolId,
-          plan_id: planId,
-          status: 'active',
-          started_at: now.toISOString(),
-          expires_at: expiresAt.toISOString(),
-          billing_cycle: isAnnual ? 'annual' : 'monthly',
-          stripe_subscription_id: null,
-          updated_at: now.toISOString(),
-        },
-        {
-          onConflict: 'school_id',
-        }
-      )
+  .from('school_subscriptions')
+  .upsert(
+    {
+      school_id: schoolId,
+      plan_id: planId,
+      status: 'active',
+      started_at: now.toISOString(),
+      expires_at: expiresAt.toISOString(),
+      billing_cycle: isAnnual ? 'annual' : 'monthly',
+      student_limit: studentLimit,
+      facial_enabled: facialEnabled,
+      stripe_subscription_id: null,
+      updated_at: now.toISOString(),
+    },
+    {
+      onConflict: 'school_id',
+    }
+  )
 
     return NextResponse.json({ received: true })
   } catch (error) {

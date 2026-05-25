@@ -42,6 +42,8 @@ export default function GatePage() {
 const [loadingSync, setLoadingSync] = useState(false)
 const [closingGateMode, setClosingGateMode] = useState(false)
 
+const [facialEnabled, setFacialEnabled] = useState(false)
+
 const facialProcessingRef = useRef(false)
 const facialCooldownRef = useRef(false)
 
@@ -106,7 +108,9 @@ async function downloadOfflineData() {
 
   setResultWithTimeout({
     status: 'success',
-    message: 'Atualizando dados offline e preparando reconhecimento facial...',
+    message: facialEnabled
+  ? 'Atualizando dados offline e preparando reconhecimento facial...'
+  : 'Atualizando dados offline para leitura por QR Code...',
   })
 
   try {
@@ -165,6 +169,14 @@ async function downloadOfflineData() {
 
     await offlineAttendanceDb.students.clear()
     await offlineAttendanceDb.students.bulkPut(offlineStudents as any[])
+
+    if (!facialEnabled) {
+  setResultWithTimeout({
+    status: 'success',
+    message: `Dados offline atualizados. Alunos: ${offlineStudents.length}. Reconhecimento facial disponível apenas no plano Presença Inteligente.`,
+  })
+  return
+}
 
     await syncFaceEmbeddingsFromSupabase()
 
@@ -272,6 +284,16 @@ const importedFaceEmbeddings =
   } finally {
     setLoadingOffline(false)
   }
+}
+
+async function fetchSubscription() {
+  const { data } = await supabase
+    .from('school_subscriptions')
+    .select('facial_enabled')
+    .eq('school_id', schoolId)
+    .maybeSingle()
+
+  setFacialEnabled(Boolean(data?.facial_enabled))
 }
 
 async function handleOfflineScan(text: string) {
@@ -1516,6 +1538,7 @@ console.log('[FACIAL] embeddings salvos:', allEmbeddings.map((item) => ({
       if (!accessOk) return
 
       await fetchSchoolName()
+      await fetchSubscription()
       await loadTodayEarlyExits()
     } catch (error) {
       console.error('Erro ao iniciar modo portaria:', error)
@@ -1702,7 +1725,18 @@ console.log('[FACIAL] embeddings salvos:', allEmbeddings.map((item) => ({
 </button>
 
 <button
-  onClick={() => setReadingMethod('facial')}
+  onClick={() => {
+    if (!facialEnabled) {
+      setResultWithTimeout({
+        status: 'error',
+        message:
+          'Reconhecimento facial disponível apenas no plano Presença Inteligente.',
+      })
+      return
+    }
+
+    setReadingMethod('facial')
+  }}
   disabled={gateMode === 'exit'}
   style={{
     ...secondaryButtonStyle,
@@ -1713,8 +1747,21 @@ console.log('[FACIAL] embeddings salvos:', allEmbeddings.map((item) => ({
     cursor: gateMode === 'exit' ? 'not-allowed' : 'pointer',
   }}
 >
-  Facial Premium
+  {facialEnabled ? 'Facial' : 'Facial Bloqueado'}
 </button>
+
+{!facialEnabled && (
+  <div
+    style={{
+      fontSize: 12,
+      color: '#b45309',
+      fontWeight: 700,
+      marginTop: 6,
+    }}
+  >
+    Disponível no plano Presença Inteligente.
+  </div>
+)}
 </div>
 
             <div style={scannerActionsStyle} className="scanner-actions">
@@ -1780,9 +1827,9 @@ console.log('[FACIAL] embeddings salvos:', allEmbeddings.map((item) => ({
   />
 )}
 
-{readingMethod === 'facial' && (
+{readingMethod === 'facial' && facialEnabled && (
   <FacialScanner
-    isActive={isScannerActive}
+    isActive={isScannerActive && facialEnabled}
     onNoCamera={handleNoCamera}
     onFaceCapture={handleFaceCapture}
   />

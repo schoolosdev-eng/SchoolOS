@@ -10,7 +10,15 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
 
-    const { schoolId, planId, planName, price, billingCycle } = body
+    const {
+  schoolId,
+  planId,
+  planName,
+  price,
+  billingCycle,
+  studentLimit,
+  facialEnabled,
+} = body
 
     if (!schoolId || !planId || !planName || price === undefined) {
       return NextResponse.json(
@@ -33,11 +41,13 @@ export async function POST(request: Request) {
     const { data: paymentRow, error: paymentError } = await supabaseAdmin
       .from('subscription_payments')
       .insert({
-        school_id: schoolId,
-        plan_id: planId,
-        amount: Number(price),
-        status: 'pending',
-      })
+  school_id: schoolId,
+  plan_id: planId,
+  amount: Number(price),
+  status: 'pending',
+  student_limit: studentLimit,
+  facial_enabled: Boolean(facialEnabled),
+})
       .select()
       .single()
 
@@ -69,12 +79,14 @@ export async function POST(request: Request) {
         auto_return: 'approved',
         external_reference: paymentRow.id,
         metadata: {
-          school_id: schoolId,
-          plan_id: planId,
-          internal_payment_id: paymentRow.id,
-          billing_cycle: billingCycle || 'monthly',
-          payment_type: 'mercado_pago_one_time',
-        },
+  school_id: schoolId,
+  plan_id: planId,
+  internal_payment_id: paymentRow.id,
+  billing_cycle: billingCycle || 'monthly',
+  payment_type: 'mercado_pago_one_time',
+  student_limit: studentLimit,
+  facial_enabled: Boolean(facialEnabled),
+},
       },
     })
 

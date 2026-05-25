@@ -15,11 +15,14 @@ type Plan = {
   billing_cycle: 'monthly' | 'annual'
   price: number
   student_limit: number
+  facial_enabled: boolean
 }
 
 type CurrentSubscription = {
   plan_id: string
   status: string
+  student_limit: number | null
+  facial_enabled: boolean | null
 }
 
 export default function PlansSection({
@@ -56,7 +59,7 @@ export default function PlansSection({
   async function fetchCurrentSubscription() {
     const { data, error } = await supabase
       .from('school_subscriptions')
-      .select('plan_id, status')
+      .select('plan_id, status, student_limit, facial_enabled')
       .eq('school_id', schoolId)
       .maybeSingle()
 
@@ -157,6 +160,7 @@ if (currentStudents > selectedPlan.student_limit) {
       price: plan.price,
       studentLimit: plan.student_limit,
       billingCycle: plan.billing_cycle,
+      facialEnabled: plan.facial_enabled,
     }),
   })
 
@@ -199,6 +203,8 @@ async function handlePixCheckout(plan: Plan) {
   billingCycle: plan.billing_cycle,
   paymentMode: 'one_time',
   provider: 'mercado_pago',
+  studentLimit: plan.student_limit,
+  facialEnabled: plan.facial_enabled,
 }),
       }
     )
@@ -476,8 +482,7 @@ async function handlePixCheckout(plan: Plan) {
         <h1 style={titleStyle}>Planos SchoolOS</h1>
 
         <p style={subtitleStyle}>
-          Escolha o plano ideal para sua escola com base na quantidade
-          de alunos cadastrados.
+          Escolha entre os planos tradicionais ou os planos premium com presença inteligente por reconhecimento facial.
         </p>
       </section>
 
@@ -674,7 +679,7 @@ async function handlePixCheckout(plan: Plan) {
           style={switchButtonStyle(
             selectedCycle === 'annual'
           )}
-        >
+          >
           Planos Anuais
         </button>
       </div>
@@ -705,17 +710,29 @@ async function handlePixCheckout(plan: Plan) {
                 </div>
 
                 <div style={planDescriptionStyle}>
-                  Ideal para escolas com até{' '}
-                  <strong>
-                    {plan.student_limit} alunos
-                  </strong>
-                  .
-                </div>
+  {plan.facial_enabled ? (
+    <>
+      Plano premium com reconhecimento facial para até{' '}
+      <strong>{plan.student_limit} alunos</strong>.
+    </>
+  ) : (
+    <>
+      Plano tradicional via QR Code para até{' '}
+      <strong>{plan.student_limit} alunos</strong>.
+    </>
+  )}
+</div>
 
                 <div style={featureListStyle}>
                   <div style={featureItemStyle}>
                     ✅ Até {plan.student_limit} alunos
                   </div>
+
+                  <div style={featureItemStyle}>
+  {plan.facial_enabled
+    ? '✅ Reconhecimento facial incluído'
+    : '❌ Sem reconhecimento facial'}
+</div>
 
                   <div style={featureItemStyle}>
                     ✅ Gestão completa escolar
@@ -731,6 +748,23 @@ async function handlePixCheckout(plan: Plan) {
                 </div>
               </div>
 
+              {isCurrent && currentSubscription?.facial_enabled && (
+  <div
+    style={{
+      marginBottom: 12,
+      padding: '10px 14px',
+      borderRadius: 12,
+      background: 'rgba(34,197,94,0.12)',
+      color: '#15803d',
+      fontWeight: 700,
+      fontSize: 13,
+      textAlign: 'center',
+    }}
+  >
+    ✅ Reconhecimento facial ativo
+  </div>
+)}
+
               {isCurrent ? (
   <button
     disabled
@@ -741,7 +775,7 @@ async function handlePixCheckout(plan: Plan) {
 ) : plan.price <= 0 ? (
   <button
     disabled={loading}
-    onClick={() => handleCheckout(plan)}
+    onClick={() => handlePixCheckout(plan)}
     style={actionButtonStyle(false)}
   >
     Ativar Plano Gratuito
@@ -750,23 +784,12 @@ async function handlePixCheckout(plan: Plan) {
   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
     <button
       disabled={loading}
-      onClick={() => handleCheckout(plan)}
+      onClick={() => handlePixCheckout(plan)}
       style={actionButtonStyle(false)}
     >
-      Assinar com cartão
+      Pagar via PIX
     </button>
 
-    <button
-      disabled={loading}
-      onClick={() => handlePixCheckout(plan)}
-      style={{
-        ...actionButtonStyle(false),
-        background: '#16a34a',
-        boxShadow: '0 14px 30px rgba(22, 163, 74, 0.22)',
-      }}
-    >
-      PIX MERCADO TESTE 123
-    </button>
   </div>
 )}
             </div>
