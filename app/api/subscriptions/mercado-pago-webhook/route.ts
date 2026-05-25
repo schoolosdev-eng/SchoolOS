@@ -82,7 +82,13 @@ console.log('PAYMENT ID:', paymentId, typeof paymentId)
       payment.external_reference ||
       payment.metadata?.internal_payment_id
 
-    console.log('INTERNAL PAYMENT ID:', internalPaymentId)
+    const schoolId = payment.metadata?.school_id
+    const planId = payment.metadata?.plan_id
+    const billingCycle = payment.metadata?.billing_cycle || 'monthly'
+    const studentLimit = Number(payment.metadata?.student_limit || 0)
+const facialEnabled =
+  payment.metadata?.facial_enabled === true ||
+  payment.metadata?.facial_enabled === 'true'
 
     const { data: paymentRow, error: paymentRowError } = await supabase
       .from('subscription_payments')
@@ -109,12 +115,11 @@ console.log('PAYMENT ID:', paymentId, typeof paymentId)
     const now = new Date()
     const expiresAt = new Date(now)
 
-    const planId = paymentRow.plan_id as string
-
     const isAnnual =
-      planId.includes('yearly') ||
-      planId.includes('annual') ||
-      planId.includes('anual')
+  billingCycle === 'annual' ||
+  planId.includes('yearly') ||
+  planId.includes('annual') ||
+  planId.includes('anual')
 
     if (isAnnual) {
       expiresAt.setFullYear(expiresAt.getFullYear() + 1)
@@ -151,22 +156,24 @@ if (paidAmount !== expectedAmount) {
     console.log('ATUALIZANDO SCHOOL_SUBSCRIPTIONS')
 
     await supabase
-      .from('school_subscriptions')
-      .upsert(
-        {
-          school_id: paymentRow.school_id,
-          plan_id: paymentRow.plan_id,
-          status: 'active',
-          started_at: now.toISOString(),
-          expires_at: expiresAt.toISOString(),
-          billing_cycle: isAnnual ? 'annual' : 'monthly',
-          stripe_subscription_id: null,
-          updated_at: now.toISOString(),
-        },
-        {
-          onConflict: 'school_id',
-        }
-      )
+  .from('school_subscriptions')
+  .upsert(
+    {
+      school_id: schoolId,
+      plan_id: planId,
+      status: 'active',
+      started_at: now.toISOString(),
+      expires_at: expiresAt.toISOString(),
+      billing_cycle: isAnnual ? 'annual' : 'monthly',
+      student_limit: studentLimit,
+      facial_enabled: facialEnabled,
+      stripe_subscription_id: null,
+      updated_at: now.toISOString(),
+    },
+    {
+      onConflict: 'school_id',
+    }
+  )
 
     console.log('WEBHOOK MP FINALIZADO')
 
