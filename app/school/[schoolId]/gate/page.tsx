@@ -1263,9 +1263,20 @@ synced: false,
   }
 
   async function findBestFaceMatch(embedding: number[]) {
-  const allEmbeddings = (
-  await offlineAttendanceDb.faceEmbeddings.toArray()
-).filter((item) => item.source === 'imported_photo')
+  const allEmbeddings = await offlineAttendanceDb.faceEmbeddings.toArray()
+
+const profileEmbeddings = allEmbeddings.filter(
+  (item) => item.source === 'profile_photo'
+)
+
+const importedEmbeddings = allEmbeddings.filter(
+  (item) => item.source === 'imported_photo'
+)
+
+const embeddingsToCompare =
+  profileEmbeddings.length > 0
+    ? profileEmbeddings
+    : importedEmbeddings
 
   const FACE_MATCH_THRESHOLD = 0.62
   const MIN_DISTANCE_GAP = 0.08
@@ -1276,7 +1287,7 @@ synced: false,
   let secondBestDifferentStudent: any = null
   let secondBestDifferentStudentDistance = Infinity
 
-  for (const stored of allEmbeddings) {
+  for (const stored of embeddingsToCompare) {
     if (!stored.embedding || stored.embedding.length !== embedding.length) {
       continue
     }
