@@ -1327,12 +1327,12 @@ console.log('[FACIAL] embeddings salvos:', allEmbeddings.map((item) => ({
     return null
   }
 
-  if (
-    Number.isFinite(secondBestDifferentStudentDistance) &&
-    secondBestDifferentStudentDistance - bestDistance < MIN_DISTANCE_GAP
-  ) {
-    return null
-  }
+  //if (
+  //  Number.isFinite(secondBestDifferentStudentDistance) &&
+  //  secondBestDifferentStudentDistance - bestDistance < MIN_DISTANCE_GAP
+  //) {
+  //  return null
+  //}
 
   return {
     student_id: bestMatch.student_id,
