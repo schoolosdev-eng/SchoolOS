@@ -1821,7 +1821,7 @@ console.log('[FACIAL] embeddings salvos:', allEmbeddings.map((item) => ({
             <div style={scannerBoxStyle}>
 {readingMethod === 'qr' && (
   <QRScanner
-    onScan={handleOfflineScan}
+    onScan={handleGateScan}
     onNoCamera={handleNoCamera}
     isActive={isScannerActive}
   />
