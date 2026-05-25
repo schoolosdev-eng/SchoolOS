@@ -203,7 +203,9 @@ const today = new Date().toISOString().split('T')[0]
 const [reportStartDate, setReportStartDate] = useState(today)
 const [reportEndDate, setReportEndDate] = useState(today)
 const [reportClassId, setReportClassId] = useState('')
-const [reportStatus, setReportStatus] = useState<'all' | 'present' | 'absent'>('all')
+const [reportStatus, setReportStatus] = useState<
+  'all' | 'present' | 'absent' | 'early_exit'
+>('all')
 const [reportLoading, setReportLoading] = useState(false)
 const [reportRecords, setReportRecords] = useState<
   {

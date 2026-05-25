@@ -78,8 +78,8 @@ type AttendanceReportsSectionProps = {
   records: AttendanceRecord[]
   selectedClassId: string
   setSelectedClassId: (value: string) => void
-  filterStatus: 'all' | 'present' | 'absent'
-  setFilterStatus: (value: 'all' | 'present' | 'absent') => void
+  filterStatus: 'all' | 'present' | 'absent' | 'early_exit'
+  setFilterStatus: (value: 'all' | 'present' | 'absent' | 'early_exit') => void
   startDate: string
   setStartDate: (value: string) => void
   endDate: string
@@ -212,18 +212,36 @@ const tdNameStyle: React.CSSProperties = {
 }
   const selectedClass = classes.find((item) => item.id === selectedClassId)
 
-  const groupedByClass = records.reduce<Record<string, AttendanceRecord[]>>(
+  const reportRecords =
+  filterStatus === 'early_exit'
+    ? records.filter((record) =>
+        earlyExitMap.has(
+          `${record.student_id}_${record.attendance_date}`
+        )
+      )
+    : records
+
+const groupedByClass =
+  reportRecords.reduce<Record<string, AttendanceRecord[]>>(
     (acc, record) => {
       if (!acc[record.class_id]) acc[record.class_id] = []
+
       acc[record.class_id].push(record)
+
       return acc
     },
     {}
   )
 
-  const totalRecords = records.length
-  const totalPresent = records.filter((item) => item.status === 'present').length
-  const totalAbsent = records.filter((item) => item.status === 'absent').length
+const totalRecords = reportRecords.length
+
+const totalPresent = reportRecords.filter(
+  (item) => item.status === 'present'
+).length
+
+const totalAbsent = reportRecords.filter(
+  (item) => item.status === 'absent'
+).length
   const attendanceRate =
     totalRecords > 0 ? ((totalPresent / totalRecords) * 100).toFixed(1) : '0.0'
 
@@ -578,13 +596,16 @@ disabled={analyticsLoading || !isSubscriptionActive}
         <select
           value={filterStatus}
           onChange={(e) =>
-            setFilterStatus(e.target.value as 'all' | 'present' | 'absent')
+            setFilterStatus(
+  e.target.value as 'all' | 'present' | 'absent' | 'early_exit'
+)
           }
           style={inputStyle}
         >
           <option value="all">Todos</option>
           <option value="present">Presentes</option>
           <option value="absent">Faltosos</option>
+          <option value="early_exit">Saída antecipada</option>
         </select>
       </div>
     </div>
@@ -745,10 +766,12 @@ disabled={analyticsLoading || !isSubscriptionActive}
     Período: {startDate || '---'} até {endDate || '---'} | Turma:{' '}
     {selectedClass?.name || 'Todas'} | Tipo:{' '}
     {filterStatus === 'all'
-      ? 'Todos'
-      : filterStatus === 'present'
-      ? 'Presentes'
-      : 'Faltosos'}
+  ? 'Todos'
+  : filterStatus === 'present'
+  ? 'Presentes'
+  : filterStatus === 'absent'
+  ? 'Faltosos'
+  : 'Saída antecipada'}
   </div>
 </div>
 
@@ -862,7 +885,7 @@ disabled={analyticsLoading || !isSubscriptionActive}
     Frequência geral: {attendanceRate}%
   </div>
 </div>
-      {records.length === 0 ? (
+      {reportRecords.length === 0 ? (
         <div style={emptyStyle}>
           Nenhum registro encontrado
         </div>
