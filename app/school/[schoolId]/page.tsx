@@ -1075,9 +1075,9 @@ async function handleGenerateAttendanceReport() {
   }
 
   if (studentsLoading) {
-  showMessage('Aguarde o carregamento dos alunos antes de gerar o relatório.')
-  return
-}
+    showMessage('Aguarde o carregamento dos alunos antes de gerar o relatório.')
+    return
+  }
 
   setReportLoading(true)
   showMessage('Gerando relatório...')
@@ -1090,45 +1090,65 @@ async function handleGenerateAttendanceReport() {
     .lte('attendance_date', reportEndDate)
     .order('attendance_date', { ascending: true })
 
-  if (reportClassId) {
+  if (reportClassId && reportClassId !== 'all') {
     query = query.eq('class_id', reportClassId)
   }
 
-  if (reportStatus !== 'all') {
+  if (reportStatus !== 'all' && reportStatus !== 'early_exit') {
     query = query.eq('status', reportStatus)
   }
 
   const { data, error } = await query
 
-if (error) {
+  if (error) {
+    setReportLoading(false)
+    showMessage(`Erro ao gerar relatório: ${error.message}`)
+    return
+  }
+
+  let earlyExitQuery = supabase
+    .from('student_early_exits')
+    .select('id, student_id, class_id, exit_date, exit_time, reason, authorized_by_name')
+    .eq('school_id', schoolId)
+    .gte('exit_date', reportStartDate)
+    .lte('exit_date', reportEndDate)
+
+  if (reportClassId && reportClassId !== 'all') {
+    earlyExitQuery = earlyExitQuery.eq('class_id', reportClassId)
+  }
+
+  const { data: earlyExitData, error: earlyExitError } = await earlyExitQuery
+
+  if (earlyExitError) {
+    setReportLoading(false)
+    console.error('Erro ao buscar saídas antecipadas:', earlyExitError)
+    showMessage(`Erro ao buscar saídas antecipadas: ${earlyExitError.message}`)
+    return
+  }
+
+  const exits = (earlyExitData || []) as EarlyExitRecord[]
+
+  setEarlyExits(exits)
+
+  if (reportStatus === 'early_exit') {
+    const exitKeys = new Set(
+      exits.map((exit) => `${exit.student_id}_${exit.exit_date}`)
+    )
+
+    const filteredAttendance = (data || []).filter((record) =>
+      exitKeys.has(`${record.student_id}_${record.attendance_date}`)
+    )
+
+    setReportRecords(filteredAttendance as typeof reportRecords)
+  } else {
+    setReportRecords((data || []) as typeof reportRecords)
+  }
+
   setReportLoading(false)
-  showMessage(`Erro ao gerar relatório: ${error.message}`)
-  return
-}
 
-const { data: earlyExitData, error: earlyExitError } = await supabase
-  .from('student_early_exits')
-  .select(
-    'id, student_id, class_id, exit_date, exit_time, reason, authorized_by_name'
-  )
-  .eq('school_id', schoolId)
-  .gte('exit_date', reportStartDate)
-  .lte('exit_date', reportEndDate)
+  await fetchAnnualRankingRecords()
 
-setReportLoading(false)
-
-if (earlyExitError) {
-  console.error('Erro ao buscar saídas antecipadas:', earlyExitError)
-  setEarlyExits([])
-} else {
-  setEarlyExits((earlyExitData || []) as EarlyExitRecord[])
-}
-
-setReportRecords((data || []) as typeof reportRecords)
-
-await fetchAnnualRankingRecords()
-
-showMessage('Relatório gerado com sucesso.')
+  showMessage('Relatório gerado com sucesso.')
 }
 
 async function handleUpdateStudent(
