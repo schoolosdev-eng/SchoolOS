@@ -84,7 +84,7 @@ const isTablet = windowWidth >= 768 && windowWidth < 1024
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: 'http://localhost:3000/auth/callback',
+      redirectTo: 'https://schoolosapp.com/auth/callback',
     },
   })
 
