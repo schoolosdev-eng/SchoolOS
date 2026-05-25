@@ -450,11 +450,33 @@ async function handleEarlyExitScan(text: string) {
 
   const today = new Date().toISOString().split('T')[0]
 
-const todayAttendance = await offlineAttendanceDb.attendance
+let todayAttendance = await offlineAttendanceDb.attendance
   .where('student_id')
   .equals(student.id)
-  .filter((record) => record.attendance_date === today && record.status === 'present')
+  .filter(
+    (record) =>
+      record.school_id === schoolId &&
+      record.class_id === student.class_id &&
+      record.attendance_date === today &&
+      record.status === 'present'
+  )
   .first()
+
+if (!todayAttendance && navigator.onLine) {
+  const { data } = await supabase
+    .from('attendance_records')
+    .select('id')
+    .eq('school_id', schoolId)
+    .eq('student_id', student.id)
+    .eq('class_id', student.class_id)
+    .eq('attendance_date', today)
+    .eq('status', 'present')
+    .maybeSingle()
+
+  if (data) {
+    todayAttendance = data as any
+  }
+}
 
 if (!todayAttendance) {
   setResultWithTimeout({
