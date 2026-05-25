@@ -263,6 +263,18 @@ if (existingPreferredEmbedding) {
         synced: false,
       })
 
+      await supabase
+  .from('student_face_embeddings')
+  .upsert({
+    id: `profile-${student.id}`,
+    school_id: student.school_id,
+    student_id: student.id,
+    class_id: student.class_id,
+    embedding,
+    source: 'profile_photo',
+    created_at: new Date().toISOString(),
+  })
+
       generatedFaces++
     }
 
@@ -1447,8 +1459,9 @@ synced: false,
   const embeddingsToCompare = allEmbeddings.filter(
     (item) =>
       item.source === 'capture' ||
-      item.source === 'manual_average' ||
-      item.source === 'profile_photo'
+item.source === 'manual_average' ||
+item.source === 'profile_photo' ||
+item.source === 'imported_photo'
   )
 
   const FACE_MATCH_THRESHOLD = 0.45
@@ -1756,10 +1769,13 @@ synced: false,
 
     if (error) throw error
 
-    await offlineAttendanceDb.faceEmbeddings
-      .where('source')
-      .equals('imported_photo')
-      .delete()
+    const syncedEmbeddings = await offlineAttendanceDb.faceEmbeddings
+  .filter((item) => item.synced === true)
+  .toArray()
+
+await offlineAttendanceDb.faceEmbeddings.bulkDelete(
+  syncedEmbeddings.map((item) => item.id)
+)
 
     const expiresAt = new Date()
     expiresAt.setMonth(expiresAt.getMonth() + 3)
@@ -1771,7 +1787,7 @@ synced: false,
         student_id: item.student_id,
         class_id: item.class_id || 'pending',
         embedding: item.embedding,
-        source: 'imported_photo',
+        source: item.source || 'profile_photo',
         quality_score: 1,
         captured_at: item.created_at,
         expires_at: expiresAt.toISOString(),
