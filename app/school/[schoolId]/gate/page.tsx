@@ -95,7 +95,11 @@ const [todayEarlyExits, setTodayEarlyExits] = useState<any[]>([])
     ].slice(0, 12))
   }
 
-async function downloadOfflineData() {
+async function downloadOfflineData(forceFacialEnabled?: boolean) {
+  const isFacialAvailable =
+  typeof forceFacialEnabled === 'boolean'
+    ? forceFacialEnabled
+    : facialEnabled
   if (loadingOffline) {
     setResultWithTimeout({
       status: 'duplicate',
@@ -108,7 +112,7 @@ async function downloadOfflineData() {
 
   setResultWithTimeout({
     status: 'success',
-    message: facialEnabled
+    message: isFacialAvailable
   ? 'Atualizando dados offline e preparando reconhecimento facial...'
   : 'Atualizando dados offline para leitura por QR Code...',
   })
@@ -170,7 +174,7 @@ async function downloadOfflineData() {
     await offlineAttendanceDb.students.clear()
     await offlineAttendanceDb.students.bulkPut(offlineStudents as any[])
 
-    if (!facialEnabled) {
+    if (!isFacialAvailable) {
   setResultWithTimeout({
     status: 'success',
     message: `Dados offline atualizados. Alunos: ${offlineStudents.length}. Reconhecimento facial disponível apenas no plano Presença Inteligente.`,
@@ -287,44 +291,33 @@ const importedFaceEmbeddings =
 }
 
 async function fetchSubscription() {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('school_subscriptions')
     .select(`
-      facial_enabled,
       plan_id,
+      status,
+      facial_enabled,
+      student_limit,
+      current_period_end,
+      expires_at,
       updated_at
     `)
     .eq('school_id', schoolId)
+    .eq('status', 'active')
     .maybeSingle()
 
-  setFacialEnabled(Boolean(data?.facial_enabled))
+  console.log('[SUBSCRIPTION]', { data, error })
 
-  if (!data) return
-
-  const cacheVersion =
-    `${data.plan_id}-${data.facial_enabled}-${data.updated_at}`
-
-  const cacheKey = `offline_cache_version_${schoolId}`
-
-  const savedVersion = localStorage.getItem(cacheKey)
-
-  // se o plano mudou
-  if (savedVersion && savedVersion !== cacheVersion) {
-    console.log('CACHE OFFLINE ANTIGO. LIMPANDO...')
-
-    await offlineAttendanceDb.students.clear()
-    await offlineAttendanceDb.attendance.clear()
-    await offlineAttendanceDb.earlyExits.clear()
-    await offlineAttendanceDb.faceEmbeddings.clear()
-
-    setResultWithTimeout({
-      status: 'error',
-      message:
-        'Seu plano foi atualizado. Atualize novamente os dados offline.',
-    })
+  if (error) {
+    setFacialEnabled(false)
+    return false
   }
 
-  localStorage.setItem(cacheKey, cacheVersion)
+  const enabled = Boolean(data?.facial_enabled)
+
+  setFacialEnabled(enabled)
+
+  return enabled
 }
 
 async function handleOfflineScan(text: string) {
@@ -1585,13 +1578,15 @@ console.log('[FACIAL] embeddings salvos:', allEmbeddings.map((item) => ({
 
   useEffect(() => {
   async function init() {
+    let isFacialAvailable = false
+
     try {
       const accessOk = await ensureAccess()
 
       if (!accessOk) return
 
       await fetchSchoolName()
-      await fetchSubscription()
+      isFacialAvailable = await fetchSubscription()
       await loadTodayEarlyExits()
     } catch (error) {
       console.error('Erro ao iniciar modo portaria:', error)
@@ -1600,7 +1595,7 @@ console.log('[FACIAL] embeddings salvos:', allEmbeddings.map((item) => ({
 
       setTimeout(async () => {
         try {
-          await downloadOfflineData()
+          await downloadOfflineData(isFacialAvailable)
         } catch (error) {
           console.error(
             'Erro ao atualizar dados offline:',
@@ -1827,7 +1822,7 @@ console.log('[FACIAL] embeddings salvos:', allEmbeddings.map((item) => ({
                 </button>
               )}
 <button
-  onClick={downloadOfflineData}
+  onClick={() => downloadOfflineData()}
   disabled={loadingOffline}
   style={{
     ...secondaryButtonStyle,
