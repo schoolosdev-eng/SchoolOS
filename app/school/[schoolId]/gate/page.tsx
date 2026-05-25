@@ -1279,8 +1279,7 @@ console.log('[FACIAL] embeddings salvos:', allEmbeddings.map((item) => ({
       item.source === 'profile_photo'
   )
 
-  const FACE_MATCH_THRESHOLD = 0.62
-  const MIN_DISTANCE_GAP = 0.08
+  const FACE_MATCH_THRESHOLD = 0.45
 
   let bestMatch: any = null
   let bestDistance = Infinity
