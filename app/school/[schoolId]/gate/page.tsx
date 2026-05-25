@@ -7,6 +7,11 @@ import QRScanner from '@/components/QRScanner'
 import AttendanceSection from '@/components/AttendanceSection'
 import { offlineAttendanceDb } from '@/lib/offlineAttendanceDb'
 import AppButton from '@/components/AppButton'
+import FacialScanner from '@/components/FacialScanner'
+import {
+  generateFaceEmbeddingFromBlob,
+  calculateFaceDistance,
+} from '@/lib/faceRecognition'
 
 type ScanResult = {
   status: 'success' | 'duplicate' | 'error'
@@ -31,10 +36,14 @@ export default function GatePage() {
   const [manualQrCode, setManualQrCode] = useState('')
   const [manualMode, setManualMode] = useState(false)
   const [gateMode, setGateMode] = useState<'entry' | 'exit'>('entry')
+  const [readingMethod, setReadingMethod] = useState<'qr' | 'facial'>('qr')
   const audioContextRef = useRef<AudioContext | null>(null)
   const [loadingOffline, setLoadingOffline] = useState(false)
 const [loadingSync, setLoadingSync] = useState(false)
 const [closingGateMode, setClosingGateMode] = useState(false)
+
+const facialProcessingRef = useRef(false)
+const facialCooldownRef = useRef(false)
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [resultAnimationKey, setResultAnimationKey] = useState(0)
@@ -85,9 +94,20 @@ const [todayEarlyExits, setTodayEarlyExits] = useState<any[]>([])
   }
 
 async function downloadOfflineData() {
-  if (loadingOffline) return
+  if (loadingOffline) {
+    setResultWithTimeout({
+      status: 'duplicate',
+      message: 'A atualização offline já está em andamento.',
+    })
+    return
+  }
 
   setLoadingOffline(true)
+
+  setResultWithTimeout({
+    status: 'success',
+    message: 'Atualizando dados offline e preparando reconhecimento facial...',
+  })
 
   try {
     const { data, error } = await supabase
@@ -146,9 +166,108 @@ async function downloadOfflineData() {
     await offlineAttendanceDb.students.clear()
     await offlineAttendanceDb.students.bulkPut(offlineStudents as any[])
 
+    await syncFaceEmbeddingsFromSupabase()
+
+    const studentsWithFace = (offlineStudents as any[]).filter(
+      (student) => student.profile_photo_path
+    )
+
+    let processedFaces = 0
+    let generatedFaces = 0
+    let skippedFaces = 0
+    const totalFaces = studentsWithFace.length
+
+    for (const student of studentsWithFace) {
+      processedFaces++
+
+      const progress =
+        totalFaces > 0
+          ? Math.round((processedFaces / totalFaces) * 100)
+          : 100
+
+      setResultWithTimeout({
+        status: 'success',
+        message: `Preparando reconhecimento facial... ${progress}% (${processedFaces}/${totalFaces})`,
+      })
+
+      const existingPreferredEmbedding =
+  await offlineAttendanceDb.faceEmbeddings
+    .filter(
+      (item) =>
+        item.student_id === student.id &&
+        (
+          item.source === 'imported_photo' ||
+          item.source === 'manual_average'
+        )
+    )
+    .first()
+
+if (existingPreferredEmbedding) {
+  skippedFaces++
+  continue
+}
+
+      const existingProfileEmbedding =
+        await offlineAttendanceDb.faceEmbeddings.get(`profile-${student.id}`)
+
+      if (existingProfileEmbedding) {
+        skippedFaces++
+        continue
+      }
+
+      const { data: signedData } = await supabase.storage
+        .from('student-profile-photos')
+        .createSignedUrl(student.profile_photo_path, 3600)
+
+      if (!signedData?.signedUrl) continue
+
+      const response = await fetch(signedData.signedUrl)
+      const imageBlob = await response.blob()
+
+      const embedding = await generateFaceEmbeddingFromBlob(imageBlob)
+
+      if (!embedding) continue
+
+      await offlineAttendanceDb.faceEmbeddings.put({
+        id: `profile-${student.id}`,
+        school_id: student.school_id,
+        student_id: student.id,
+        class_id: student.class_id,
+        embedding,
+        source: 'profile_photo',
+        quality_score: null,
+        captured_at: new Date().toISOString(),
+        expires_at: new Date(
+          Date.now() + 90 * 24 * 60 * 60 * 1000
+        ).toISOString(),
+        synced: false,
+      })
+
+      generatedFaces++
+    }
+
+    const totalFaceEmbeddings =
+  await offlineAttendanceDb.faceEmbeddings.count()
+
+const importedFaceEmbeddings =
+  await offlineAttendanceDb.faceEmbeddings
+    .where('source')
+    .equals('imported_photo')
+    .count()
+
     setResultWithTimeout({
-      status: 'success',
-      message: `Dados offline atualizados. Alunos salvos: ${offlineStudents.length}`,
+  status: 'success',
+  message: `Dados offline atualizados. Alunos: ${offlineStudents.length}. Embeddings faciais: ${totalFaceEmbeddings}. Importados: ${importedFaceEmbeddings}. Novos por foto de perfil: ${generatedFaces}. Já existentes: ${skippedFaces}.`,
+})
+  } catch (error) {
+    console.error('ERRO AO ATUALIZAR DADOS OFFLINE:', error)
+
+    setResultWithTimeout({
+      status: 'error',
+      message:
+        error instanceof Error
+          ? error.message
+          : 'Erro ao atualizar dados offline.',
     })
   } finally {
     setLoadingOffline(false)
@@ -534,7 +653,7 @@ const pendingRecords = await offlineAttendanceDb.attendance
         .from('attendance_records')
         .update({
           status: 'present',
-          source: 'qr',
+          source: record.source,
           recorded_by_user_id: user?.id || null,
           updated_at: record.recorded_at,
         })
@@ -559,7 +678,7 @@ const pendingRecords = await offlineAttendanceDb.attendance
         class_id: record.class_id,
         attendance_date: record.attendance_date,
         status: 'present',
-        source: 'qr',
+        source: record.source,
         recorded_by_user_id: user?.id || null,
         created_at: record.recorded_at,
         updated_at: record.recorded_at,
@@ -962,9 +1081,157 @@ async function handleStartReading() {
   setIsScannerActive(true)
 }
 
-  function handleStopReading() {
-    setIsScannerActive(false)
+function averageEmbeddings(embeddings: number[][]) {
+  const length = embeddings[0].length
+
+  return Array.from({ length }, (_, index) => {
+    const sum = embeddings.reduce((total, embedding) => {
+      return total + embedding[index]
+    }, 0)
+
+    return sum / embeddings.length
+  })
+}
+
+function areEmbeddingsConsistent(embeddings: number[][]) {
+  const MAX_INTERNAL_DISTANCE = 0.55
+
+  for (let i = 0; i < embeddings.length; i++) {
+    for (let j = i + 1; j < embeddings.length; j++) {
+      const distance = calculateFaceDistance(embeddings[i], embeddings[j])
+
+      if (distance > MAX_INTERNAL_DISTANCE) {
+        return false
+      }
+    }
   }
+
+  return true
+}
+
+async function processFaceCapturesAfterReading() {
+  const captures = await offlineAttendanceDb.faceCapturesTemp
+    .filter((capture) => capture.processed === false)
+    .toArray()
+
+  if (captures.length === 0) return 0
+
+  const validCaptures = captures.filter((capture) => {
+    return capture.student_id !== 'pending' && capture.class_id !== 'pending'
+  })
+
+  const capturesByStudent = validCaptures.reduce((acc, capture) => {
+    if (!acc[capture.student_id]) {
+      acc[capture.student_id] = []
+    }
+
+    acc[capture.student_id].push(capture)
+
+    return acc
+  }, {} as Record<string, typeof validCaptures>)
+
+  let generated = 0
+
+  for (const [studentId, studentCaptures] of Object.entries(capturesByStudent)) {
+    if (studentCaptures.length < 3) {
+      continue
+    }
+
+    const selectedCaptures = studentCaptures.slice(0, 3)
+
+    const embeddings: number[][] = []
+
+    for (const capture of selectedCaptures) {
+      const embedding = await generateFaceEmbeddingFromBlob(capture.image_blob)
+
+      if (!embedding) continue
+
+      embeddings.push(embedding)
+    }
+
+    if (embeddings.length < 3) {
+      continue
+    }
+
+    if (!areEmbeddingsConsistent(embeddings)) {
+      console.log(
+        '[FACIAL] capturas inconsistentes para aluno:',
+        studentId
+      )
+
+      continue
+    }
+
+    const averagedEmbedding = averageEmbeddings(embeddings)
+
+    const referenceCapture = selectedCaptures[0]
+
+    await offlineAttendanceDb.faceEmbeddings.add({
+      id: crypto.randomUUID(),
+      school_id: referenceCapture.school_id,
+      student_id: referenceCapture.student_id,
+      class_id: referenceCapture.class_id,
+      embedding: averagedEmbedding,
+      source: 'profile_photo',
+quality_score: null,
+captured_at: new Date().toISOString(),
+expires_at: new Date(
+  Date.now() + 3650 * 24 * 60 * 60 * 1000
+).toISOString(),
+synced: false,
+    })
+
+    await offlineAttendanceDb.faceCapturesTemp.bulkDelete(
+      selectedCaptures.map((capture) => capture.id)
+    )
+
+    generated++
+  }
+
+  await offlineAttendanceDb.faceEmbeddings
+    .where('expires_at')
+    .below(new Date().toISOString())
+    .delete()
+
+  return generated
+}
+
+  async function handleStopReading() {
+  setIsScannerActive(false)
+
+  if (readingMethod === 'facial') {
+    setResultWithTimeout({
+      status: 'success',
+      message: 'Processando capturas faciais...',
+    })
+
+    try {
+      const generated = await processFaceCapturesAfterReading()
+
+      setResultWithTimeout({
+        status: 'success',
+        message:
+          generated > 0
+            ? `Leitura encerrada. ${generated} novo(s) vetor(es) facial(is) gerado(s).`
+            : 'Leitura encerrada. Nenhuma nova captura facial para processar.',
+      })
+    } catch (error) {
+      console.error('Erro ao processar capturas faciais:', error)
+
+      setResultWithTimeout({
+        status: 'error',
+        message: 'Erro ao processar capturas faciais.',
+      })
+    }
+
+    return
+  }
+
+  setResultWithTimeout({
+    status: 'success',
+    message: 'Leitura encerrada.',
+  })
+}
 
   async function handleCloseGateMode() {
   if (closingGateMode) return
@@ -995,6 +1262,240 @@ async function handleStartReading() {
     setManualMode(true)
   }
 
+  async function findBestFaceMatch(embedding: number[]) {
+  const allEmbeddings = await offlineAttendanceDb.faceEmbeddings.toArray()
+
+console.log('[FACIAL] embeddings salvos:', allEmbeddings.map((item) => ({
+  student_id: item.student_id,
+  class_id: item.class_id,
+  source: item.source,
+  size: item.embedding?.length,
+})))
+
+  const embeddingsToCompare = allEmbeddings.filter(
+    (item) =>
+      item.source === 'imported_photo' ||
+      item.source === 'manual_average' ||
+      item.source === 'profile_photo'
+  )
+
+  const FACE_MATCH_THRESHOLD = 0.45
+
+  let bestMatch: any = null
+  let bestDistance = Infinity
+  let secondBestDifferentStudentDistance = Infinity
+
+  for (const stored of embeddingsToCompare) {
+    if (!stored.embedding || stored.embedding.length !== embedding.length) {
+      continue
+    }
+
+    const distance = calculateFaceDistance(embedding, stored.embedding)
+
+    console.log('[FACE COMPARE]', {
+      studentId: stored.student_id,
+      source: stored.source,
+      distance,
+    })
+
+    if (distance < bestDistance) {
+      if (bestMatch && bestMatch.student_id !== stored.student_id) {
+        secondBestDifferentStudentDistance = bestDistance
+      }
+
+      bestDistance = distance
+      bestMatch = stored
+    } else if (
+      bestMatch &&
+      stored.student_id !== bestMatch.student_id &&
+      distance < secondBestDifferentStudentDistance
+    ) {
+      secondBestDifferentStudentDistance = distance
+    }
+  }
+
+  console.log('[FACE RESULT]', {
+    bestStudent: bestMatch?.student_id,
+    bestSource: bestMatch?.source,
+    bestDistance,
+    secondBestDifferentStudentDistance,
+    gap: secondBestDifferentStudentDistance - bestDistance,
+  })
+
+  if (!bestMatch || bestDistance > FACE_MATCH_THRESHOLD) {
+    return null
+  }
+
+  //if (
+  //  Number.isFinite(secondBestDifferentStudentDistance) &&
+  //  secondBestDifferentStudentDistance - bestDistance < MIN_DISTANCE_GAP
+  //) {
+  //  return null
+  //}
+
+  return {
+    student_id: bestMatch.student_id,
+    class_id: bestMatch.class_id,
+    distance: bestDistance,
+    source: bestMatch.source,
+  }
+}
+
+  async function handleFaceCapture(imageBlob: Blob) {
+  if (facialProcessingRef.current || facialCooldownRef.current) {
+    return
+  }
+
+  facialProcessingRef.current = true
+
+  try {
+    setResultWithTimeout({
+      status: 'success',
+      message: 'Processando rosto...',
+    })
+
+    const embedding = await generateFaceEmbeddingFromBlob(imageBlob)
+
+    if (!embedding) {
+      setResultWithTimeout({
+        status: 'error',
+        message: 'Nenhum rosto válido encontrado.',
+      })
+      return
+    }
+
+    const match = await findBestFaceMatch(embedding)
+
+    if (!match) {
+      setResultWithTimeout({
+        status: 'error',
+        message: 'Rosto não reconhecido.',
+      })
+      return
+    }
+
+    const MAX_MATCH_DISTANCE = 0.62
+
+    if (
+      typeof match.distance === 'number' &&
+      match.distance > MAX_MATCH_DISTANCE
+    ) {
+      setResultWithTimeout({
+        status: 'error',
+        message: 'Rosto detectado, mas sem confiança suficiente para registrar presença.',
+      })
+      return
+    }
+
+    const student = await offlineAttendanceDb.students.get(match.student_id)
+
+    if (!student) {
+      setResultWithTimeout({
+        status: 'error',
+        message: 'Aluno não encontrado.',
+      })
+      return
+    }
+
+    let photoUrl: string | null = null
+
+    if (navigator.onLine && student.profile_photo_path) {
+      const { data } = await supabase.storage
+        .from('student-profile-photos')
+        .createSignedUrl(student.profile_photo_path, 3600)
+
+      photoUrl = data?.signedUrl || null
+    }
+
+    const today = new Date().toISOString().split('T')[0]
+
+    const existingAttendance = await offlineAttendanceDb.attendance
+      .where('[student_id+attendance_date]')
+      .equals([student.id, today])
+      .first()
+
+    if (!existingAttendance) {
+      await offlineAttendanceDb.attendance.add({
+        id: crypto.randomUUID(),
+        school_id: student.school_id,
+        student_id: student.id,
+        class_id: student.class_id,
+        attendance_date: today,
+        status: 'present',
+        source: 'facial',
+        recorded_at: new Date().toISOString(),
+        synced: false,
+      })
+    }
+
+    // IMPORTANTE:
+    // Não salvar nova captura facial automaticamente durante a presença.
+    // Isso evita contaminar a base com vetores ruins ou de outro aluno.
+    /*
+    await offlineAttendanceDb.faceCapturesTemp.add({
+      id: crypto.randomUUID(),
+      school_id: schoolId,
+      student_id: student.id,
+      class_id: student.class_id,
+      image_blob: imageBlob,
+      captured_at: new Date().toISOString(),
+      processed: false,
+    })
+    */
+
+    const finalStatus = existingAttendance ? 'duplicate' : 'success'
+    const finalMessage = existingAttendance
+      ? 'Aluno já possuía presença registrada anteriormente.'
+      : 'Presença facial registrada com sucesso.'
+
+    const finalTime = new Date().toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+
+    setRecentScans((prev) => [
+      {
+        id: crypto.randomUUID(),
+        status: finalStatus,
+        message: finalMessage,
+        studentName: student.full_name,
+        className: student.class_name,
+        photo: photoUrl,
+        time: finalTime,
+      },
+      ...prev.slice(0, 9),
+    ])
+
+    setResultWithTimeout({
+      status: finalStatus,
+      message: finalMessage,
+      student: {
+        name: student.full_name,
+        className: student.class_name,
+        photo: photoUrl,
+      },
+      time: finalTime,
+    })
+  } catch (error) {
+    console.error('ERRO FACIAL COMPLETO:', error)
+
+    setResultWithTimeout({
+      status: 'error',
+      message:
+        error instanceof Error
+          ? error.message
+          : 'Erro ao processar rosto.',
+    })
+  } finally {
+    facialProcessingRef.current = false
+    facialCooldownRef.current = true
+
+    setTimeout(() => {
+      facialCooldownRef.current = false
+    }, 2000)
+  }
+}
+
   useEffect(() => {
   function handleOnline() {
     syncOfflineAttendance()
@@ -1009,14 +1510,29 @@ async function handleStartReading() {
 
   useEffect(() => {
   async function init() {
-    const accessOk = await ensureAccess()
-    if (!accessOk) return
+    try {
+      const accessOk = await ensureAccess()
 
-    await fetchSchoolName()
-    await loadTodayEarlyExits()
-    await downloadOfflineData()
+      if (!accessOk) return
 
-    setLoading(false)
+      await fetchSchoolName()
+      await loadTodayEarlyExits()
+    } catch (error) {
+      console.error('Erro ao iniciar modo portaria:', error)
+    } finally {
+      setLoading(false)
+
+      setTimeout(async () => {
+        try {
+          await downloadOfflineData()
+        } catch (error) {
+          console.error(
+            'Erro ao atualizar dados offline:',
+            error
+          )
+        }
+      }, 800)
+    }
   }
 
   init()
@@ -1066,6 +1582,49 @@ async function handleStartReading() {
       </main>
     )
   }
+
+  async function syncFaceEmbeddingsFromSupabase() {
+  try {
+    console.log('[FACIAL] sincronizando embeddings importados...')
+
+    const { data, error } = await supabase
+      .from('student_face_embeddings')
+      .select('*')
+      .eq('school_id', schoolId)
+
+    if (error) throw error
+
+    await offlineAttendanceDb.faceEmbeddings
+      .where('source')
+      .equals('imported_photo')
+      .delete()
+
+    const expiresAt = new Date()
+    expiresAt.setMonth(expiresAt.getMonth() + 3)
+
+    await offlineAttendanceDb.faceEmbeddings.bulkPut(
+      (data || []).map((item: any) => ({
+        id: item.id,
+        school_id: item.school_id,
+        student_id: item.student_id,
+        class_id: item.class_id || 'pending',
+        embedding: item.embedding,
+        source: 'imported_photo',
+        quality_score: 1,
+        captured_at: item.created_at,
+        expires_at: expiresAt.toISOString(),
+        synced: true,
+      }))
+    )
+
+    console.log(
+      '[FACIAL] embeddings importados sincronizados:',
+      data?.length || 0
+    )
+  } catch (error) {
+    console.error('[FACIAL] erro ao baixar embeddings:', error)
+  }
+}
 
   return (
     <main style={pageStyle} className="gate-page">
@@ -1130,6 +1689,32 @@ async function handleStartReading() {
   >
     Registrar saída
   </button>
+  <button
+  onClick={() => setReadingMethod('qr')}
+  style={{
+    ...secondaryButtonStyle,
+    background: readingMethod === 'qr' ? '#dbeafe' : '#ffffff',
+    borderColor: readingMethod === 'qr' ? '#2563eb' : '#cbd5e1',
+    color: readingMethod === 'qr' ? '#1d4ed8' : '#0f172a',
+  }}
+>
+  QR Code
+</button>
+
+<button
+  onClick={() => setReadingMethod('facial')}
+  disabled={gateMode === 'exit'}
+  style={{
+    ...secondaryButtonStyle,
+    background: readingMethod === 'facial' ? '#dcfce7' : '#ffffff',
+    borderColor: readingMethod === 'facial' ? '#16a34a' : '#cbd5e1',
+    color: readingMethod === 'facial' ? '#15803d' : '#0f172a',
+    opacity: gateMode === 'exit' ? 0.5 : 1,
+    cursor: gateMode === 'exit' ? 'not-allowed' : 'pointer',
+  }}
+>
+  Facial Premium
+</button>
 </div>
 
             <div style={scannerActionsStyle} className="scanner-actions">
@@ -1187,11 +1772,21 @@ async function handleStartReading() {
 
           {isScannerActive && (
             <div style={scannerBoxStyle}>
-<QRScanner
-  onScan={handleGateScan}
-  onNoCamera={handleNoCamera}
-  isActive={isScannerActive}
-/>
+{readingMethod === 'qr' && (
+  <QRScanner
+    onScan={handleOfflineScan}
+    onNoCamera={handleNoCamera}
+    isActive={isScannerActive}
+  />
+)}
+
+{readingMethod === 'facial' && (
+  <FacialScanner
+    isActive={isScannerActive}
+    onNoCamera={handleNoCamera}
+    onFaceCapture={handleFaceCapture}
+  />
+)}
             </div>
           )}
 
