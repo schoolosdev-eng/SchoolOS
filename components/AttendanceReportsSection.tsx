@@ -212,6 +212,13 @@ const tdNameStyle: React.CSSProperties = {
 }
   const selectedClass = classes.find((item) => item.id === selectedClassId)
 
+  const earlyExitMap = new Map(
+  earlyExits.map((exit) => [
+    `${exit.student_id}_${exit.exit_date}`,
+    exit,
+  ])
+)
+
   const reportRecords =
   filterStatus === 'early_exit'
     ? records.filter((record) =>
@@ -278,13 +285,6 @@ function formatTimeBR(dateString?: string) {
 
 const studentMap = new Map(
   students.map((s) => [s.id, s])
-)
-
-const earlyExitMap = new Map(
-  earlyExits.map((exit) => [
-    `${exit.student_id}_${exit.exit_date}`,
-    exit,
-  ])
 )
 
 async function loadAttendanceAnalytics() {
