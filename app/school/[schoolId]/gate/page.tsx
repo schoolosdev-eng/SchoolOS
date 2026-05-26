@@ -1464,7 +1464,7 @@ item.source === 'profile_photo' ||
 item.source === 'imported_photo'
   )
 
-  const FACE_MATCH_THRESHOLD = 0.40
+  const FACE_MATCH_THRESHOLD = 0.55
   const MIN_DISTANCE_GAP = 0.05
 
   let bestMatch: any = null
