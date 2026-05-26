@@ -1464,8 +1464,8 @@ item.source === 'profile_photo' ||
 item.source === 'imported_photo'
   )
 
-  const FACE_MATCH_THRESHOLD = 0.45
-  const MIN_DISTANCE_GAP = 0.07
+  const FACE_MATCH_THRESHOLD = 0.40
+  const MIN_DISTANCE_GAP = 0.05
 
   let bestMatch: any = null
   let bestDistance = Infinity
@@ -1477,6 +1477,12 @@ item.source === 'imported_photo'
     }
 
     const distance = calculateFaceDistance(embedding, stored.embedding)
+    console.log('[FACE COMPARE]', {
+  studentId: stored.student_id,
+  source: stored.source,
+  distance,
+  currentBest: bestDistance,
+})
 
     if (distance < bestDistance) {
       if (bestMatch && bestMatch.student_id !== stored.student_id) {
@@ -1526,7 +1532,15 @@ item.source === 'imported_photo'
       message: 'Processando rosto...',
     })
 
+    console.log('[FACIAL] gerando embedding...')
+
     const embedding = await generateFaceEmbeddingFromBlob(imageBlob)
+
+    console.log(
+  '[FACIAL] embedding gerado:',
+  !!embedding,
+  embedding?.length
+)
 
     if (!embedding) {
       setResultWithTimeout({
@@ -1536,7 +1550,11 @@ item.source === 'imported_photo'
       return
     }
 
+    console.log('[FACIAL] buscando match...')
+
     const match = await findBestFaceMatch(embedding)
+
+    console.log('[FACIAL] match encontrado:', match)
 
     if (!match) {
       setResultWithTimeout({
@@ -1760,22 +1778,22 @@ item.source === 'imported_photo'
 
   async function syncFaceEmbeddingsFromSupabase() {
   try {
-    console.log('[FACIAL] sincronizando embeddings importados...')
+    console.log('[FACIAL] sincronizando embeddings...')
 
     const { data, error } = await supabase
       .from('student_face_embeddings')
-      .select('*')
+      .select('id, school_id, student_id, embedding, source, created_at')
       .eq('school_id', schoolId)
 
     if (error) throw error
 
     const syncedEmbeddings = await offlineAttendanceDb.faceEmbeddings
-  .filter((item) => item.synced === true)
-  .toArray()
+      .filter((item) => item.synced === true)
+      .toArray()
 
-await offlineAttendanceDb.faceEmbeddings.bulkDelete(
-  syncedEmbeddings.map((item) => item.id)
-)
+    await offlineAttendanceDb.faceEmbeddings.bulkDelete(
+      syncedEmbeddings.map((item) => item.id)
+    )
 
     const expiresAt = new Date()
     expiresAt.setMonth(expiresAt.getMonth() + 3)
@@ -1785,9 +1803,9 @@ await offlineAttendanceDb.faceEmbeddings.bulkDelete(
         id: item.id,
         school_id: item.school_id,
         student_id: item.student_id,
-        class_id: item.class_id || 'pending',
+        class_id: 'pending',
         embedding: item.embedding,
-        source: item.source || 'profile_photo',
+        source: item.source || 'capture',
         quality_score: 1,
         captured_at: item.created_at,
         expires_at: expiresAt.toISOString(),
@@ -1795,10 +1813,7 @@ await offlineAttendanceDb.faceEmbeddings.bulkDelete(
       }))
     )
 
-    console.log(
-      '[FACIAL] embeddings importados sincronizados:',
-      data?.length || 0
-    )
+    console.log('[FACIAL] embeddings sincronizados:', data?.length || 0)
   } catch (error) {
     console.error('[FACIAL] erro ao baixar embeddings:', error)
   }

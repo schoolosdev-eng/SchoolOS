@@ -17,6 +17,7 @@ export default function FacialScanner({
   const faceDetectionRef = useRef<any>(null)
   const cameraRef = useRef<any>(null)
   const lastCaptureRef = useRef<number>(0)
+  const startedRef = useRef(false)
 
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
 
@@ -145,7 +146,13 @@ if (typeof score === 'number' && score > 0 && score < 0.45) {
 
     console.log('[FACIAL] criando câmera...')
 
-    const camera = new CameraClass(videoRef.current, {
+const videoElement = videoRef.current
+
+if (!videoElement) {
+  throw new Error('Elemento de vídeo não encontrado ao criar câmera.')
+}
+
+const camera = new CameraClass(videoElement, {
       onFrame: async () => {
         try {
           if (!videoRef.current) {
@@ -156,7 +163,7 @@ if (typeof score === 'number' && score > 0 && score < 0.45) {
           console.log('[FACIAL] enviando frame para MediaPipe')
 
           await faceDetection.send({
-            image: videoRef.current,
+            image: videoElement,
           })
 
           console.log('[FACIAL] frame processado')
@@ -204,39 +211,56 @@ if (typeof score === 'number' && score > 0 && score < 0.45) {
   faceDetectionRef.current = null
 }
 
-  function captureFrame() {
+  async function captureFrame() {
   if (!videoRef.current) return
   if (captureInProgressRef.current) return
 
   const video = videoRef.current
-  if (!video.videoWidth || !video.videoHeight) return
 
-  captureInProgressRef.current = true
-
-  const canvas = document.createElement('canvas')
-  canvas.width = video.videoWidth
-  canvas.height = video.videoHeight
-
-  const ctx = canvas.getContext('2d')
-  if (!ctx) {
-    captureInProgressRef.current = false
+  if (!video.videoWidth || !video.videoHeight) {
     return
   }
 
-  ctx.drawImage(video, 0, 0)
+  captureInProgressRef.current = true
 
-  canvas.toBlob((blob) => {
-    if (!blob) {
+  try {
+    console.log('[FACIAL] capturando frame...')
+
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+
+    const ctx = canvas.getContext('2d')
+
+    if (!ctx) {
       captureInProgressRef.current = false
       return
     }
 
-    onFaceCapture(blob)
+    ctx.drawImage(video, 0, 0)
 
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
+
+    const blob = await fetch(dataUrl).then((res) => res.blob())
+
+    console.log('[FACIAL] blob gerado:', blob.size)
+
+    console.log('[FACIAL] blob gerado:', blob.size)
+
+console.log('[FACIAL] chamando onFaceCapture...')
+
+await onFaceCapture(blob)
+
+console.log('[FACIAL] onFaceCapture finalizado')
+
+    console.log('[FACIAL] captura enviada')
+  } catch (error) {
+    console.error('[FACIAL] erro no captureFrame:', error)
+  } finally {
     setTimeout(() => {
       captureInProgressRef.current = false
-    }, 2000)
-  }, 'image/jpeg', 0.92)
+    }, 1200)
+  }
 }
 
   useEffect(() => {
@@ -245,12 +269,16 @@ if (typeof score === 'number' && score > 0 && score < 0.45) {
     return
   }
 
+  if (startedRef.current) return
+
+  startedRef.current = true
   startCamera()
 
   return () => {
     stopCamera()
+    startedRef.current = false
   }
-}, [isActive, facingMode])
+}, [isActive])
 
   if (!isActive) return null
 
