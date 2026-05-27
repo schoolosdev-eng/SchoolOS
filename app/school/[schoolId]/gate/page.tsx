@@ -47,6 +47,7 @@ const [manualStudentSearch, setManualStudentSearch] = useState('')
 const [manualStudents, setManualStudents] = useState<any[]>([])
 
 const [facialCandidates, setFacialCandidates] = useState<any[]>([])
+const [facialPhotosLoading, setFacialPhotosLoading] = useState(false)
 const [facialConfirmationResult, setFacialConfirmationResult] = useState<ScanResult | null>(null)
 
 const [facialEnabled, setFacialEnabled] = useState(false)
@@ -1534,20 +1535,43 @@ synced: false,
     .slice(0, MAX_CANDIDATES)
 
   const candidates = await Promise.all(
-  matches.map(async (match) => {
-    const student = await offlineAttendanceDb.students.get(match.student_id)
+    matches.map(async (match) => {
+      const student = await offlineAttendanceDb.students.get(match.student_id)
 
-    if (!student) return null
+      if (!student) return null
 
-    return {
-      ...match,
-      student,
-      photoUrl: await getStudentPhotoUrl(student),
-    }
-  })
-)
+      return {
+        ...match,
+        student,
+        photoUrl: null,
+      }
+    })
+  )
 
-return candidates.filter(Boolean)
+  return candidates.filter(Boolean)
+}
+
+async function loadCandidatePhotos(candidates: any[]) {
+  if (candidates.length === 0) return
+
+  setFacialPhotosLoading(true)
+
+  try {
+    const updatedCandidates = await Promise.all(
+      candidates.map(async (candidate) => {
+        const photoUrl = await getStudentPhotoUrl(candidate.student)
+
+        return {
+          ...candidate,
+          photoUrl,
+        }
+      })
+    )
+
+    setFacialCandidates(updatedCandidates)
+  } finally {
+    setFacialPhotosLoading(false)
+  }
 }
 
   async function handleFaceCapture(imageBlob: Blob) {
@@ -1582,7 +1606,9 @@ return candidates.filter(Boolean)
     }
 
     setFacialCandidates(candidates)
-    setIsScannerActive(false)
+setIsScannerActive(false)
+
+loadCandidatePhotos(candidates)
   } catch (error) {
     setResultWithTimeout({
       status: 'error',
@@ -2283,6 +2309,12 @@ setTimeout(() => {
           <p style={sectionTextStyle}>
             Toque na sua foto para confirmar a presença.
           </p>
+
+          {facialPhotosLoading && (
+  <p style={{ ...sectionTextStyle, color: '#2563eb', fontWeight: 900 }}>
+    Carregando fotos dos candidatos...
+  </p>
+)}
 
           <div
             style={{
