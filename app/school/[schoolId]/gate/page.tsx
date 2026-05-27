@@ -1930,6 +1930,21 @@ setTimeout(() => {
     }
 
     setReadingMethod('facial')
+
+setResultWithTimeout(
+  {
+    status: 'success',
+    message: 'Preparando reconhecimento facial...',
+  },
+  false,
+  false
+)
+
+generateFaceEmbeddingFromBlob(
+  new Blob([], { type: 'image/jpeg' })
+).catch(() => {
+  // Apenas aquece o modelo facial
+})
   }}
   disabled={gateMode === 'exit'}
   style={{

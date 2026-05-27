@@ -23,6 +23,11 @@ export default function FacialScanner({
 
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
 
+  const isSlowDevice =
+  typeof navigator !== 'undefined' &&
+  navigator.hardwareConcurrency &&
+  navigator.hardwareConcurrency <= 4
+
   const captureInProgressRef = useRef(false)
 
   function loadScript(src: string) {
@@ -176,9 +181,11 @@ const camera = new CameraClass(videoElement, {
           )
         }
       },
-      width: 1280,
-        height: 720,
-      facingMode,
+      width: isSlowDevice ? 640 : 1280,
+height: isSlowDevice ? 480 : 720,
+facingMode: {
+  ideal: facingMode,
+},
     })
 
     cameraRef.current = camera
