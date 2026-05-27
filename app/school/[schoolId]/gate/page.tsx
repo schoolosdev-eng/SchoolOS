@@ -102,6 +102,17 @@ const [todayEarlyExits, setTodayEarlyExits] = useState<any[]>([])
     ].slice(0, 12))
   }
 
+  function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.onloadend = () => resolve(reader.result as string)
+    reader.onerror = reject
+
+    reader.readAsDataURL(blob)
+  })
+}
+
 async function downloadOfflineData(forceFacialEnabled?: boolean) {
   const isFacialAvailable =
   typeof forceFacialEnabled === 'boolean'
@@ -180,6 +191,33 @@ async function downloadOfflineData(forceFacialEnabled?: boolean) {
 
     await offlineAttendanceDb.students.clear()
     await offlineAttendanceDb.students.bulkPut(offlineStudents as any[])
+
+    if (isFacialAvailable) {
+  for (const student of offlineStudents as any[]) {
+    if (!student.profile_photo_path) continue
+
+    try {
+      const { data: signedData, error: signedError } = await supabase.storage
+        .from('student-profile-photos')
+        .createSignedUrl(student.profile_photo_path, 3600)
+
+      if (signedError || !signedData?.signedUrl) continue
+
+      const response = await fetch(signedData.signedUrl)
+
+      if (!response.ok) continue
+
+      const imageBlob = await response.blob()
+      const profilePhotoDataUrl = await blobToDataUrl(imageBlob)
+
+      await offlineAttendanceDb.students.update(student.id, {
+        profile_photo_data_url: profilePhotoDataUrl,
+      } as any)
+    } catch (error) {
+      console.log('[FACIAL] erro ao salvar foto offline:', student.id, error)
+    }
+  }
+}
 
     if (!isFacialAvailable) {
   setResultWithTimeout({
@@ -1509,8 +1547,8 @@ synced: false,
   ...match,
   student,
   photoUrl:
-    (student as any).profile_photo_url ||
-    (student as any).profile_photo_data_url ||
+  (student as any).profile_photo_data_url ||
+  (student as any).profile_photo_url ||
     (student as any).photoUrl ||
     (student as any).photo_url ||
     null,
