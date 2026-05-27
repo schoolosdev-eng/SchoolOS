@@ -251,6 +251,7 @@ async function downloadOfflineData(forceFacialEnabled?: boolean) {
     status: 'success',
     message: `Preparando reconhecimento facial... ${progress}% (${processedFaces}/${totalFaces})`,
   },
+  false,
   false
 )
 
@@ -1147,7 +1148,11 @@ function ResponsiveStyles() {
   )
 }
 
-  function setResultWithTimeout(data: ScanResult, playSound = true) {
+  function setResultWithTimeout(
+  data: ScanResult,
+  playSound = true,
+  autoHide = true
+) {
   setScanResult(data)
   setResultAnimationKey((prev) => prev + 1)
 
@@ -1155,23 +1160,25 @@ function ResponsiveStyles() {
     playScanSound(data.status)
   }
 
-    pushRecentScan({
-      status: data.status,
-      message: data.message,
-      studentName: data.student?.name,
-      className: data.student?.className,
-      photo: data.student?.photo,
-      time: data.time || new Date().toLocaleTimeString(),
-    })
+  pushRecentScan({
+    status: data.status,
+    message: data.message,
+    studentName: data.student?.name,
+    className: data.student?.className,
+    photo: data.student?.photo,
+    time: data.time || new Date().toLocaleTimeString(),
+  })
 
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current)
-    }
+  if (timeoutRef.current) {
+    clearTimeout(timeoutRef.current)
+  }
 
+  if (autoHide) {
     timeoutRef.current = setTimeout(() => {
       setScanResult(null)
     }, 5000)
   }
+}
 
   async function ensureAccess() {
     const {
