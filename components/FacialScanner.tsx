@@ -344,9 +344,9 @@ console.log('[FACIAL] onFaceCapture finalizado')
     <div
       style={{
         position: 'absolute',
-        top: '50%',
+        bottom: 120,
         left: '50%',
-        transform: 'translate(-50%, -50%)',
+        transform: 'translateX(-50%)',
         background: 'rgba(22,163,74,0.92)',
         color: '#fff',
         padding: '16px 24px',
