@@ -47,6 +47,7 @@ const [manualStudentSearch, setManualStudentSearch] = useState('')
 const [manualStudents, setManualStudents] = useState<any[]>([])
 
 const [facialCandidates, setFacialCandidates] = useState<any[]>([])
+const [facialConfirmationResult, setFacialConfirmationResult] = useState<ScanResult | null>(null)
 
 const [facialEnabled, setFacialEnabled] = useState(false)
 
@@ -1505,12 +1506,15 @@ synced: false,
     if (!student) continue
 
     candidates.push({
-      ...match,
-      student,
-      photoUrl:
-        (student as any).profile_photo_data_url ||
-        null,
-    })
+  ...match,
+  student,
+  photoUrl:
+    (student as any).profile_photo_url ||
+    (student as any).profile_photo_data_url ||
+    (student as any).photoUrl ||
+    (student as any).photo_url ||
+    null,
+})
   }
 
   return candidates
@@ -1586,20 +1590,29 @@ async function confirmFacialCandidate(candidate: any) {
       .first()
 
     if (existing) {
-      setResultWithTimeout({
-        status: 'duplicate',
-        message: `${student.full_name} já possui presença registrada hoje.`,
-        student: {
-          name: student.full_name,
-          className: student.class_name,
-          photo: candidate.photoUrl || null,
-        },
-        time: new Date().toLocaleTimeString('pt-BR'),
-      })
+  const duplicateResult: ScanResult = {
+    status: 'duplicate',
+    message: `${student.full_name} já possui presença registrada hoje.`,
+    student: {
+      name: student.full_name,
+      className: student.class_name,
+      photo: candidate.photoUrl || null,
+    },
+    time: new Date().toLocaleTimeString('pt-BR'),
+  }
 
-      setFacialCandidates([])
-      return
-    }
+  setFacialConfirmationResult(duplicateResult)
+  setScanResult(duplicateResult)
+
+  setTimeout(() => {
+    setFacialCandidates([])
+    setFacialConfirmationResult(null)
+    setIsScannerActive(true)
+    setReadingMethod('facial')
+  }, 1800)
+
+  return
+}
 
     await offlineAttendanceDb.attendance.add({
       id: crypto.randomUUID(),
@@ -1613,18 +1626,26 @@ async function confirmFacialCandidate(candidate: any) {
       synced: false,
     })
 
-    setResultWithTimeout({
-      status: 'success',
-      message: 'Presença registrada com sucesso.',
-      student: {
-        name: student.full_name,
-        className: student.class_name,
-        photo: candidate.photoUrl || null,
-      },
-      time: new Date().toLocaleTimeString('pt-BR'),
-    })
+    const successResult: ScanResult = {
+  status: 'success',
+  message: 'Presença registrada com sucesso.',
+  student: {
+    name: student.full_name,
+    className: student.class_name,
+    photo: candidate.photoUrl || null,
+  },
+  time: new Date().toLocaleTimeString('pt-BR'),
+}
 
-    setFacialCandidates([])
+setFacialConfirmationResult(successResult)
+setScanResult(successResult)
+
+setTimeout(() => {
+  setFacialCandidates([])
+  setFacialConfirmationResult(null)
+  setIsScannerActive(true)
+  setReadingMethod('facial')
+}, 1800)
   } catch (error) {
     setResultWithTimeout({
       status: 'error',
@@ -1952,6 +1973,8 @@ async function confirmFacialCandidate(candidate: any) {
   onCancel={() => {
     setIsScannerActive(false)
     setReadingMethod('qr')
+    setFacialCandidates([])
+    setFacialConfirmationResult(null)
   }}
 />
 )}
@@ -2006,125 +2029,6 @@ async function confirmFacialCandidate(candidate: any) {
         Cancelar
       </button>
     </div>
-  </div>
-)}
-
-{facialCandidates.length > 0 && (
-  <div
-    style={{
-      marginTop: 20,
-      padding: 20,
-      borderRadius: 24,
-      background: '#ffffff',
-      border: '1px solid #dbeafe',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: 18,
-    }}
-  >
-    <div>
-      <h2
-        style={{
-          fontSize: 24,
-          fontWeight: 900,
-          color: '#0f172a',
-          marginBottom: 6,
-        }}
-      >
-        Quem é você?
-      </h2>
-
-      <p
-        style={{
-          color: '#475569',
-          fontSize: 15,
-        }}
-      >
-        Selecione sua foto para confirmar a presença.
-      </p>
-    </div>
-
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns:
-          'repeat(auto-fit, minmax(140px, 1fr))',
-        gap: 16,
-      }}
-    >
-      {facialCandidates.map((candidate) => (
-        <button
-          key={candidate.student_id}
-          onClick={() => confirmFacialCandidate(candidate)}
-          style={{
-            border: '1px solid #dbeafe',
-            background: '#f8fafc',
-            borderRadius: 20,
-            padding: 14,
-            cursor: 'pointer',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 10,
-          }}
-        >
-          <img
-            src={
-              candidate.photoUrl ||
-              '/placeholder-student.png'
-            }
-            alt={candidate.student.full_name}
-            style={{
-              width: 90,
-              height: 90,
-              borderRadius: '50%',
-              objectFit: 'cover',
-              border: '3px solid #bfdbfe',
-            }}
-          />
-
-          <div
-            style={{
-              fontWeight: 800,
-              color: '#0f172a',
-              fontSize: 14,
-              textAlign: 'center',
-            }}
-          >
-            {candidate.student.full_name}
-          </div>
-
-          <div
-            style={{
-              fontSize: 12,
-              color: '#64748b',
-              textAlign: 'center',
-            }}
-          >
-            {candidate.student.class_name}
-          </div>
-        </button>
-      ))}
-    </div>
-
-    <button
-      onClick={() => {
-        setFacialCandidates([])
-        setIsScannerActive(true)
-      }}
-      style={{
-        marginTop: 4,
-        padding: '16px 18px',
-        borderRadius: 18,
-        border: 'none',
-        background: '#dc2626',
-        color: '#ffffff',
-        fontWeight: 900,
-        cursor: 'pointer',
-      }}
-    >
-      Nenhum dos alunos acima, refazer
-    </button>
   </div>
 )}
 
@@ -2323,6 +2227,185 @@ async function confirmFacialCandidate(candidate: any) {
           Cancelar
         </button>
       </div>
+    </div>
+  </div>
+)}
+
+{facialCandidates.length > 0 && (
+  <div style={modalOverlayStyle}>
+    <div
+      style={{
+        width: 'min(960px, 96vw)',
+        maxHeight: '92vh',
+        overflowY: 'auto',
+        background: '#ffffff',
+        borderRadius: 28,
+        padding: 24,
+        boxShadow: '0 24px 80px rgba(15, 23, 42, 0.35)',
+      }}
+    >
+      {!facialConfirmationResult ? (
+        <>
+          <h2 style={{ ...sectionTitleStyle, fontSize: 28 }}>
+            Quem é você?
+          </h2>
+
+          <p style={sectionTextStyle}>
+            Toque na sua foto para confirmar a presença.
+          </p>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gap: 18,
+              marginTop: 20,
+            }}
+          >
+            {facialCandidates.map((candidate) => (
+              <button
+                key={candidate.student_id}
+                onClick={() => confirmFacialCandidate(candidate)}
+                style={{
+                  border: '1px solid #dbeafe',
+                  background: '#f8fafc',
+                  borderRadius: 24,
+                  padding: 18,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 12,
+                }}
+              >
+                {candidate.photoUrl ? (
+                  <img
+                    src={candidate.photoUrl}
+                    alt={candidate.student.full_name}
+                    style={{
+                      width: 130,
+                      height: 130,
+                      borderRadius: '50%',
+                      objectFit: 'cover',
+                      border: '4px solid #bfdbfe',
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: 130,
+                      height: 130,
+                      borderRadius: '50%',
+                      background: '#dbeafe',
+                      color: '#1d4ed8',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 42,
+                      fontWeight: 900,
+                      border: '4px solid #bfdbfe',
+                    }}
+                  >
+                    {candidate.student.full_name?.[0] || '?'}
+                  </div>
+                )}
+
+                <strong
+                  style={{
+                    color: '#0f172a',
+                    fontSize: 16,
+                    textAlign: 'center',
+                  }}
+                >
+                  {candidate.student.full_name}
+                </strong>
+
+                <span
+                  style={{
+                    color: '#64748b',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    textAlign: 'center',
+                  }}
+                >
+                  {candidate.student.class_name}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => {
+              setFacialCandidates([])
+              setFacialConfirmationResult(null)
+              setIsScannerActive(true)
+              setReadingMethod('facial')
+            }}
+            style={{
+              width: '100%',
+              marginTop: 22,
+              padding: '18px 20px',
+              borderRadius: 20,
+              border: 'none',
+              background: '#dc2626',
+              color: '#ffffff',
+              fontWeight: 900,
+              fontSize: 16,
+              cursor: 'pointer',
+            }}
+          >
+            Nenhum dos alunos acima, refazer
+          </button>
+        </>
+      ) : (
+        <div
+          style={{
+            minHeight: 360,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            textAlign: 'center',
+            gap: 14,
+          }}
+        >
+          {facialConfirmationResult.student?.photo ? (
+            <img
+              src={facialConfirmationResult.student.photo}
+              alt="Aluno"
+              style={{
+                width: 150,
+                height: 150,
+                borderRadius: '50%',
+                objectFit: 'cover',
+                border: '5px solid #86efac',
+              }}
+            />
+          ) : (
+            <div style={bigPhotoPlaceholderStyle}>
+              {facialConfirmationResult.student?.name?.[0] || '!'}
+            </div>
+          )}
+
+          <div style={{ fontSize: 52 }}>
+            {facialConfirmationResult.status === 'success' ? '✅' : '⚠️'}
+          </div>
+
+          <h2 style={{ ...sectionTitleStyle, fontSize: 28 }}>
+            {facialConfirmationResult.student?.name}
+          </h2>
+
+          <p style={{ ...sectionTextStyle, fontSize: 18 }}>
+            {facialConfirmationResult.message}
+          </p>
+
+          {facialConfirmationResult.time && (
+            <strong style={{ color: '#0f172a' }}>
+              {facialConfirmationResult.time}
+            </strong>
+          )}
+        </div>
+      )}
     </div>
   </div>
 )}
