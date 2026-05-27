@@ -16,6 +16,7 @@ export default function FacialScanner({
   onCancel,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const [faceCaptured, setFaceCaptured] = useState(false)
   const faceDetectionRef = useRef<any>(null)
   const cameraRef = useRef<any>(null)
   const lastCaptureRef = useRef<number>(0)
@@ -254,9 +255,11 @@ facingMode: {
 
     console.log('[FACIAL] blob gerado:', blob.size)
 
-    console.log('[FACIAL] blob gerado:', blob.size)
+setFaceCaptured(true)
 
 console.log('[FACIAL] chamando onFaceCapture...')
+
+await new Promise((resolve) => setTimeout(resolve, 700))
 
 await onFaceCapture(blob)
 
@@ -273,6 +276,7 @@ console.log('[FACIAL] onFaceCapture finalizado')
 }
 
   useEffect(() => {
+    setFaceCaptured(false)
   if (!isActive) {
     stopCamera()
     return
@@ -311,17 +315,51 @@ console.log('[FACIAL] onFaceCapture finalizado')
       }}
     >
       <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        style={{
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          display: 'block',
-        }}
-      />
+  ref={videoRef}
+  autoPlay
+  playsInline
+  muted
+  style={{
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    display: 'block',
+  }}
+/>
+
+{faceCaptured && (
+  <>
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        border: '6px solid #22c55e',
+        borderRadius: 24,
+        margin: 24,
+        boxShadow: '0 0 40px rgba(34,197,94,0.65)',
+        pointerEvents: 'none',
+      }}
+    />
+
+    <div
+      style={{
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        background: 'rgba(22,163,74,0.92)',
+        color: '#fff',
+        padding: '16px 24px',
+        borderRadius: 18,
+        fontWeight: 900,
+        fontSize: 22,
+        boxShadow: '0 12px 30px rgba(22,163,74,0.45)',
+      }}
+    >
+      ✓ Rosto capturado
+    </div>
+  </>
+)}
 
       <div
         style={{
