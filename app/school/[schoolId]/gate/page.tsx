@@ -192,32 +192,6 @@ async function downloadOfflineData(forceFacialEnabled?: boolean) {
     await offlineAttendanceDb.students.clear()
     await offlineAttendanceDb.students.bulkPut(offlineStudents as any[])
 
-    if (isFacialAvailable) {
-  for (const student of offlineStudents as any[]) {
-    if (!student.profile_photo_path) continue
-
-    try {
-      const { data: signedData, error: signedError } = await supabase.storage
-        .from('student-profile-photos')
-        .createSignedUrl(student.profile_photo_path, 3600)
-
-      if (signedError || !signedData?.signedUrl) continue
-
-      const response = await fetch(signedData.signedUrl)
-
-      if (!response.ok) continue
-
-      const imageBlob = await response.blob()
-      const profilePhotoDataUrl = await blobToDataUrl(imageBlob)
-
-      await offlineAttendanceDb.students.update(student.id, {
-        profile_photo_data_url: profilePhotoDataUrl,
-      } as any)
-    } catch (error) {
-      console.log('[FACIAL] erro ao salvar foto offline:', student.id, error)
-    }
-  }
-}
 
     if (!isFacialAvailable) {
   setResultWithTimeout({
@@ -1507,6 +1481,22 @@ synced: false,
     setManualMode(true)
   }
 
+  async function getStudentPhotoUrl(student: any) {
+  if ((student as any).profile_photo_data_url) {
+    return (student as any).profile_photo_data_url
+  }
+
+  if (!navigator.onLine || !student.profile_photo_path) {
+    return null
+  }
+
+  const { data } = await supabase.storage
+    .from('student-profile-photos')
+    .createSignedUrl(student.profile_photo_path, 3600)
+
+  return data?.signedUrl || null
+}
+
   async function findFaceCandidates(embedding: number[]) {
   const allEmbeddings = await offlineAttendanceDb.faceEmbeddings.toArray()
 
@@ -1553,12 +1543,7 @@ synced: false,
     candidates.push({
   ...match,
   student,
-  photoUrl:
-  (student as any).profile_photo_data_url ||
-  (student as any).profile_photo_url ||
-    (student as any).photoUrl ||
-    (student as any).photo_url ||
-    null,
+  photoUrl: await getStudentPhotoUrl(student),
 })
   }
 
