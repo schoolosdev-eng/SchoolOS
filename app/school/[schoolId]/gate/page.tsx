@@ -1533,21 +1533,21 @@ synced: false,
     .sort((a, b) => a.distance - b.distance)
     .slice(0, MAX_CANDIDATES)
 
-  const candidates = []
-
-  for (const match of matches) {
+  const candidates = await Promise.all(
+  matches.map(async (match) => {
     const student = await offlineAttendanceDb.students.get(match.student_id)
 
-    if (!student) continue
+    if (!student) return null
 
-    candidates.push({
-  ...match,
-  student,
-  photoUrl: await getStudentPhotoUrl(student),
-})
-  }
+    return {
+      ...match,
+      student,
+      photoUrl: await getStudentPhotoUrl(student),
+    }
+  })
+)
 
-  return candidates
+return candidates.filter(Boolean)
 }
 
   async function handleFaceCapture(imageBlob: Blob) {
