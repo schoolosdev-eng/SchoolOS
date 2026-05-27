@@ -46,6 +46,8 @@ const [manualStudentId, setManualStudentId] = useState('')
 const [manualStudentSearch, setManualStudentSearch] = useState('')
 const [manualStudents, setManualStudents] = useState<any[]>([])
 
+const [facialCandidates, setFacialCandidates] = useState<any[]>([])
+
 const [facialEnabled, setFacialEnabled] = useState(false)
 
 const facialProcessingRef = useRef(false)
@@ -205,10 +207,13 @@ async function downloadOfflineData(forceFacialEnabled?: boolean) {
           ? Math.round((processedFaces / totalFaces) * 100)
           : 100
 
-      setResultWithTimeout({
-        status: 'success',
-        message: `Preparando reconhecimento facial... ${progress}% (${processedFaces}/${totalFaces})`,
-      })
+      setResultWithTimeout(
+  {
+    status: 'success',
+    message: `Preparando reconhecimento facial... ${progress}% (${processedFaces}/${totalFaces})`,
+  },
+  false
+)
 
       const existingPreferredEmbedding =
   await offlineAttendanceDb.faceEmbeddings
@@ -1103,10 +1108,13 @@ function ResponsiveStyles() {
   )
 }
 
-  function setResultWithTimeout(data: ScanResult) {
+  function setResultWithTimeout(data: ScanResult, playSound = true) {
   setScanResult(data)
   setResultAnimationKey((prev) => prev + 1)
-  playScanSound(data.status)
+
+  if (playSound) {
+    playScanSound(data.status)
+  }
 
     pushRecentScan({
       status: data.status,
@@ -1453,94 +1461,73 @@ synced: false,
     setManualMode(true)
   }
 
-  async function findBestFaceMatch(embedding: number[]) {
+  async function findFaceCandidates(embedding: number[]) {
   const allEmbeddings = await offlineAttendanceDb.faceEmbeddings.toArray()
 
   const embeddingsToCompare = allEmbeddings.filter(
     (item) =>
-      item.source === 'capture' ||
-item.source === 'manual_average' ||
-item.source === 'profile_photo' ||
-item.source === 'imported_photo'
+      item.source === 'profile_photo' &&
+      item.embedding &&
+      item.embedding.length === embedding.length
   )
 
-  const FACE_MATCH_THRESHOLD = 0.55
-  const MIN_DISTANCE_GAP = 0.015
+  const FACE_CANDIDATE_THRESHOLD = 0.72
+  const MAX_CANDIDATES = 6
 
-  let bestMatch: any = null
-  let bestDistance = Infinity
-  let secondBestDifferentStudentDistance = Infinity
+  const bestByStudent = new Map<string, any>()
 
   for (const stored of embeddingsToCompare) {
-    if (!stored.embedding || stored.embedding.length !== embedding.length) {
-      continue
-    }
-
     const distance = calculateFaceDistance(embedding, stored.embedding)
-    console.log('[FACE COMPARE]', {
-  studentId: stored.student_id,
-  source: stored.source,
-  distance,
-  currentBest: bestDistance,
-})
 
-    if (distance < bestDistance) {
-      if (bestMatch && bestMatch.student_id !== stored.student_id) {
-        secondBestDifferentStudentDistance = bestDistance
-      }
+    if (distance > FACE_CANDIDATE_THRESHOLD) continue
 
-      bestDistance = distance
-      bestMatch = stored
-    } else if (
-      bestMatch &&
-      stored.student_id !== bestMatch.student_id &&
-      distance < secondBestDifferentStudentDistance
-    ) {
-      secondBestDifferentStudentDistance = distance
+    const existing = bestByStudent.get(stored.student_id)
+
+    if (!existing || distance < existing.distance) {
+      bestByStudent.set(stored.student_id, {
+        student_id: stored.student_id,
+        class_id: stored.class_id,
+        distance,
+        source: stored.source,
+      })
     }
   }
 
-  if (!bestMatch || bestDistance > FACE_MATCH_THRESHOLD) {
-    return null
+  const matches = Array.from(bestByStudent.values())
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, MAX_CANDIDATES)
+
+  const candidates = []
+
+  for (const match of matches) {
+    const student = await offlineAttendanceDb.students.get(match.student_id)
+
+    if (!student) continue
+
+    candidates.push({
+      ...match,
+      student,
+      photoUrl:
+        (student as any).profile_photo_data_url ||
+        null,
+    })
   }
 
-  if (
-    Number.isFinite(secondBestDifferentStudentDistance) &&
-    secondBestDifferentStudentDistance - bestDistance < MIN_DISTANCE_GAP
-  ) {
-    return null
-  }
-
-  return {
-    student_id: bestMatch.student_id,
-    class_id: bestMatch.class_id,
-    distance: bestDistance,
-    source: bestMatch.source,
-  }
+  return candidates
 }
 
   async function handleFaceCapture(imageBlob: Blob) {
-  if (facialProcessingRef.current || facialCooldownRef.current) {
-    return
-  }
+  if (facialProcessingRef.current || facialCooldownRef.current) return
 
   facialProcessingRef.current = true
 
   try {
     setResultWithTimeout({
       status: 'success',
-      message: 'Processando rosto...',
+      message: 'Procurando alunos parecidos...',
     })
 
-    console.log('[FACIAL] gerando embedding...')
-
     const embedding = await generateFaceEmbeddingFromBlob(imageBlob)
-
-    console.log(
-  '[FACIAL] embedding gerado:',
-  !!embedding,
-  embedding?.length
-)
 
     if (!embedding) {
       setResultWithTimeout({
@@ -1550,34 +1537,36 @@ item.source === 'imported_photo'
       return
     }
 
-    console.log('[FACIAL] buscando match...')
+    const candidates = await findFaceCandidates(embedding)
 
-    const match = await findBestFaceMatch(embedding)
-
-    console.log('[FACIAL] match encontrado:', match)
-
-    if (!match) {
+    if (candidates.length === 0) {
       setResultWithTimeout({
         status: 'error',
-        message: 'Rosto não reconhecido.',
+        message: 'Nenhum aluno parecido encontrado.',
       })
       return
     }
 
-    const MAX_MATCH_DISTANCE = 0.62
+    setFacialCandidates(candidates)
+    setIsScannerActive(false)
+  } catch (error) {
+    setResultWithTimeout({
+      status: 'error',
+      message: 'Erro ao processar rosto.',
+    })
+  } finally {
+    facialProcessingRef.current = false
+    facialCooldownRef.current = true
 
-    if (
-      typeof match.distance === 'number' &&
-      match.distance > MAX_MATCH_DISTANCE
-    ) {
-      setResultWithTimeout({
-        status: 'error',
-        message: 'Rosto detectado, mas sem confiança suficiente para registrar presença.',
-      })
-      return
-    }
+    setTimeout(() => {
+      facialCooldownRef.current = false
+    }, 1500)
+  }
+}
 
-    const student = await offlineAttendanceDb.students.get(match.student_id)
+async function confirmFacialCandidate(candidate: any) {
+  try {
+    const student = candidate.student
 
     if (!student) {
       setResultWithTimeout({
@@ -1587,102 +1576,60 @@ item.source === 'imported_photo'
       return
     }
 
-    let photoUrl: string | null = null
+    const attendanceDate = new Date()
+      .toISOString()
+      .split('T')[0]
 
-    if (navigator.onLine && student.profile_photo_path) {
-      const { data } = await supabase.storage
-        .from('student-profile-photos')
-        .createSignedUrl(student.profile_photo_path, 3600)
-
-      photoUrl = data?.signedUrl || null
-    }
-
-    const today = new Date().toISOString().split('T')[0]
-
-    const existingAttendance = await offlineAttendanceDb.attendance
+    const existing = await offlineAttendanceDb.attendance
       .where('[student_id+attendance_date]')
-      .equals([student.id, today])
+      .equals([student.id, attendanceDate])
       .first()
 
-    if (!existingAttendance) {
-      await offlineAttendanceDb.attendance.add({
-        id: crypto.randomUUID(),
-        school_id: student.school_id,
-        student_id: student.id,
-        class_id: student.class_id,
-        attendance_date: today,
-        status: 'present',
-        source: 'facial',
-        recorded_at: new Date().toISOString(),
-        synced: false,
+    if (existing) {
+      setResultWithTimeout({
+        status: 'duplicate',
+        message: `${student.full_name} já possui presença registrada hoje.`,
+        student: {
+          name: student.full_name,
+          className: student.class_name,
+          photo: candidate.photoUrl || null,
+        },
+        time: new Date().toLocaleTimeString('pt-BR'),
       })
+
+      setFacialCandidates([])
+      return
     }
 
-    // IMPORTANTE:
-    // Não salvar nova captura facial automaticamente durante a presença.
-    // Isso evita contaminar a base com vetores ruins ou de outro aluno.
-    /*
-    await offlineAttendanceDb.faceCapturesTemp.add({
+    await offlineAttendanceDb.attendance.add({
       id: crypto.randomUUID(),
       school_id: schoolId,
       student_id: student.id,
       class_id: student.class_id,
-      image_blob: imageBlob,
-      captured_at: new Date().toISOString(),
-      processed: false,
+      attendance_date: attendanceDate,
+      status: 'present',
+      source: 'facial',
+      recorded_at: new Date().toISOString(),
+      synced: false,
     })
-    */
-
-    const finalStatus = existingAttendance ? 'duplicate' : 'success'
-    const finalMessage = existingAttendance
-      ? 'Aluno já possuía presença registrada anteriormente.'
-      : 'Presença facial registrada com sucesso.'
-
-    const finalTime = new Date().toLocaleTimeString('pt-BR', {
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-
-    setRecentScans((prev) => [
-      {
-        id: crypto.randomUUID(),
-        status: finalStatus,
-        message: finalMessage,
-        studentName: student.full_name,
-        className: student.class_name,
-        photo: photoUrl,
-        time: finalTime,
-      },
-      ...prev.slice(0, 9),
-    ])
 
     setResultWithTimeout({
-      status: finalStatus,
-      message: finalMessage,
+      status: 'success',
+      message: 'Presença registrada com sucesso.',
       student: {
         name: student.full_name,
         className: student.class_name,
-        photo: photoUrl,
+        photo: candidate.photoUrl || null,
       },
-      time: finalTime,
+      time: new Date().toLocaleTimeString('pt-BR'),
     })
-  } catch (error) {
-    console.error('ERRO FACIAL COMPLETO:', error)
 
+    setFacialCandidates([])
+  } catch (error) {
     setResultWithTimeout({
       status: 'error',
-      message:
-        error instanceof Error
-          ? error.message
-          : 'Erro ao processar rosto.',
+      message: 'Erro ao registrar presença facial.',
     })
-  } finally {
-    facialProcessingRef.current = false
-    facialCooldownRef.current = true
-
-    setTimeout(() => {
-      facialCooldownRef.current = false
-    }, 2000)
   }
 }
 
@@ -1999,10 +1946,14 @@ item.source === 'imported_photo'
 
 {readingMethod === 'facial' && facialEnabled && (
   <FacialScanner
-    isActive={isScannerActive && facialEnabled}
-    onNoCamera={handleNoCamera}
-    onFaceCapture={handleFaceCapture}
-  />
+  isActive={isScannerActive && facialEnabled}
+  onNoCamera={handleNoCamera}
+  onFaceCapture={handleFaceCapture}
+  onCancel={() => {
+    setIsScannerActive(false)
+    setReadingMethod('qr')
+  }}
+/>
 )}
             </div>
           )}
@@ -2055,6 +2006,125 @@ item.source === 'imported_photo'
         Cancelar
       </button>
     </div>
+  </div>
+)}
+
+{facialCandidates.length > 0 && (
+  <div
+    style={{
+      marginTop: 20,
+      padding: 20,
+      borderRadius: 24,
+      background: '#ffffff',
+      border: '1px solid #dbeafe',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 18,
+    }}
+  >
+    <div>
+      <h2
+        style={{
+          fontSize: 24,
+          fontWeight: 900,
+          color: '#0f172a',
+          marginBottom: 6,
+        }}
+      >
+        Quem é você?
+      </h2>
+
+      <p
+        style={{
+          color: '#475569',
+          fontSize: 15,
+        }}
+      >
+        Selecione sua foto para confirmar a presença.
+      </p>
+    </div>
+
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns:
+          'repeat(auto-fit, minmax(140px, 1fr))',
+        gap: 16,
+      }}
+    >
+      {facialCandidates.map((candidate) => (
+        <button
+          key={candidate.student_id}
+          onClick={() => confirmFacialCandidate(candidate)}
+          style={{
+            border: '1px solid #dbeafe',
+            background: '#f8fafc',
+            borderRadius: 20,
+            padding: 14,
+            cursor: 'pointer',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <img
+            src={
+              candidate.photoUrl ||
+              '/placeholder-student.png'
+            }
+            alt={candidate.student.full_name}
+            style={{
+              width: 90,
+              height: 90,
+              borderRadius: '50%',
+              objectFit: 'cover',
+              border: '3px solid #bfdbfe',
+            }}
+          />
+
+          <div
+            style={{
+              fontWeight: 800,
+              color: '#0f172a',
+              fontSize: 14,
+              textAlign: 'center',
+            }}
+          >
+            {candidate.student.full_name}
+          </div>
+
+          <div
+            style={{
+              fontSize: 12,
+              color: '#64748b',
+              textAlign: 'center',
+            }}
+          >
+            {candidate.student.class_name}
+          </div>
+        </button>
+      ))}
+    </div>
+
+    <button
+      onClick={() => {
+        setFacialCandidates([])
+        setIsScannerActive(true)
+      }}
+      style={{
+        marginTop: 4,
+        padding: '16px 18px',
+        borderRadius: 18,
+        border: 'none',
+        background: '#dc2626',
+        color: '#ffffff',
+        fontWeight: 900,
+        cursor: 'pointer',
+      }}
+    >
+      Nenhum dos alunos acima, refazer
+    </button>
   </div>
 )}
 

@@ -6,12 +6,14 @@ type Props = {
   isActive: boolean
   onNoCamera?: () => void
   onFaceCapture: (imageBlob: Blob) => void
+  onCancel?: () => void
 }
 
 export default function FacialScanner({
   isActive,
   onNoCamera,
   onFaceCapture,
+  onCancel,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const faceDetectionRef = useRef<any>(null)
@@ -278,58 +280,100 @@ console.log('[FACIAL] onFaceCapture finalizado')
     stopCamera()
     startedRef.current = false
   }
-}, [isActive])
+}, [isActive, facingMode])
 
   if (!isActive) return null
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <button
-  type="button"
-  onClick={handleSwitchCamera}
-  style={{
-    padding: '10px 14px',
-    borderRadius: 12,
-    border: '1px solid #cbd5e1',
-    background: '#ffffff',
-    color: '#0f172a',
-    fontWeight: 800,
-    cursor: 'pointer',
-  }}
->
-  Alternar câmera
-</button>
-      <div
+  <div
+    style={{
+      position: 'fixed',
+      inset: 0,
+      zIndex: 9999,
+      background: '#020617',
+      display: 'flex',
+      flexDirection: 'column',
+    }}
+  >
+    <div
+      style={{
+        flex: 1,
+        minHeight: 0,
+        background: '#000',
+        position: 'relative',
+      }}
+    >
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
         style={{
           width: '100%',
-          borderRadius: 20,
-          overflow: 'hidden',
-          border: '1px solid #e2e8f0',
-          background: '#0f172a',
+          height: '100%',
+          objectFit: 'cover',
+          display: 'block',
         }}
-      >
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          style={{
-            width: '100%',
-            display: 'block',
-          }}
-        />
-      </div>
+      />
 
       <div
         style={{
-          fontSize: 13,
-          color: '#64748b',
+          position: 'absolute',
+          top: 16,
+          left: 16,
+          right: 16,
+          padding: 12,
+          borderRadius: 16,
+          background: 'rgba(15, 23, 42, 0.72)',
+          color: '#ffffff',
+          fontWeight: 900,
           textAlign: 'center',
-          fontWeight: 600,
         }}
       >
-        Câmera facial ativa. Capturas serão armazenadas apenas quando houver rosto detectado.
+        Posicione o rosto na câmera
       </div>
     </div>
-  )
-}
+
+    <div
+      style={{
+        padding: 16,
+        paddingBottom: 'calc(16px + env(safe-area-inset-bottom))',
+        background: '#ffffff',
+        display: 'flex',
+        gap: 12,
+      }}
+    >
+      <button
+        type="button"
+        onClick={handleSwitchCamera}
+        style={{
+          flex: 1,
+          padding: '16px 14px',
+          borderRadius: 16,
+          border: '1px solid #cbd5e1',
+          background: '#ffffff',
+          color: '#0f172a',
+          fontWeight: 900,
+        }}
+      >
+        Alternar câmera
+      </button>
+
+      <button
+        type="button"
+        onClick={onCancel}
+        style={{
+          flex: 1,
+          padding: '16px 14px',
+          borderRadius: 16,
+          border: 'none',
+          background: '#dc2626',
+          color: '#ffffff',
+          fontWeight: 900,
+        }}
+      >
+        Cancelar
+      </button>
+    </div>
+  </div>
+)}
