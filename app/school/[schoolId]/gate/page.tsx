@@ -248,12 +248,22 @@ if (existingPreferredEmbedding) {
 }
 
       const existingProfileEmbedding =
-        await offlineAttendanceDb.faceEmbeddings.get(`profile-${student.id}`)
+  await offlineAttendanceDb.faceEmbeddings.get(`profile-${student.id}`)
 
-      if (existingProfileEmbedding) {
-        skippedFaces++
-        continue
-      }
+if (
+  existingProfileEmbedding &&
+  existingProfileEmbedding.profile_photo_path === student.profile_photo_path
+) {
+  skippedFaces++
+  continue
+}
+
+if (
+  existingProfileEmbedding &&
+  existingProfileEmbedding.profile_photo_path !== student.profile_photo_path
+) {
+  await offlineAttendanceDb.faceEmbeddings.delete(`profile-${student.id}`)
+}
 
       const { data: signedData } = await supabase.storage
         .from('student-profile-photos')
@@ -269,19 +279,20 @@ if (existingPreferredEmbedding) {
       if (!embedding) continue
 
       await offlineAttendanceDb.faceEmbeddings.put({
-        id: `profile-${student.id}`,
-        school_id: student.school_id,
-        student_id: student.id,
-        class_id: student.class_id,
-        embedding,
-        source: 'profile_photo',
-        quality_score: null,
-        captured_at: new Date().toISOString(),
-        expires_at: new Date(
-          Date.now() + 90 * 24 * 60 * 60 * 1000
-        ).toISOString(),
-        synced: false,
-      })
+  id: `profile-${student.id}`,
+  school_id: student.school_id,
+  student_id: student.id,
+  class_id: student.class_id,
+  embedding,
+  source: 'profile_photo',
+  quality_score: null,
+  captured_at: new Date().toISOString(),
+  expires_at: new Date(
+    Date.now() + 90 * 24 * 60 * 60 * 1000
+  ).toISOString(),
+  synced: false,
+  profile_photo_path: student.profile_photo_path,
+})
 
       await supabase
   .from('student_face_embeddings')
@@ -292,6 +303,7 @@ if (existingPreferredEmbedding) {
     class_id: student.class_id,
     embedding,
     source: 'profile_photo',
+    profile_photo_path: student.profile_photo_path,
     created_at: new Date().toISOString(),
   })
 
@@ -1575,7 +1587,9 @@ async function loadCandidatePhotos(candidates: any[]) {
 }
 
   async function handleFaceCapture(imageBlob: Blob) {
-  if (facialProcessingRef.current || facialCooldownRef.current) return
+  if (facialProcessingRef.current || facialCooldownRef.current) {
+    return false
+  }
 
   facialProcessingRef.current = true
 
@@ -1592,7 +1606,7 @@ async function loadCandidatePhotos(candidates: any[]) {
         status: 'error',
         message: 'Nenhum rosto válido encontrado.',
       })
-      return
+      return false
     }
 
     const candidates = await findFaceCandidates(embedding)
@@ -1600,20 +1614,25 @@ async function loadCandidatePhotos(candidates: any[]) {
     if (candidates.length === 0) {
       setResultWithTimeout({
         status: 'error',
-        message: 'Nenhum aluno parecido encontrado.',
+        message:
+          'Rosto detectado, mas nenhum aluno semelhante foi encontrado. Tente novamente com melhor iluminação ou mais próximo da câmera.',
       })
-      return
+      return false
     }
 
     setFacialCandidates(candidates)
-setIsScannerActive(false)
+    setIsScannerActive(false)
 
-loadCandidatePhotos(candidates)
+    loadCandidatePhotos(candidates)
+
+    return true
   } catch (error) {
     setResultWithTimeout({
       status: 'error',
       message: 'Erro ao processar rosto.',
     })
+
+    return false
   } finally {
     facialProcessingRef.current = false
     facialCooldownRef.current = true
@@ -1806,7 +1825,7 @@ setTimeout(() => {
 
     const { data, error } = await supabase
       .from('student_face_embeddings')
-      .select('id, school_id, student_id, embedding, source, created_at')
+      .select('id, school_id, student_id, class_id, embedding, source, created_at, profile_photo_path')
       .eq('school_id', schoolId)
 
     if (error) throw error
@@ -1823,19 +1842,20 @@ setTimeout(() => {
     expiresAt.setMonth(expiresAt.getMonth() + 3)
 
     await offlineAttendanceDb.faceEmbeddings.bulkPut(
-      (data || []).map((item: any) => ({
-        id: item.id,
-        school_id: item.school_id,
-        student_id: item.student_id,
-        class_id: 'pending',
-        embedding: item.embedding,
-        source: item.source || 'capture',
-        quality_score: 1,
-        captured_at: item.created_at,
-        expires_at: expiresAt.toISOString(),
-        synced: true,
-      }))
-    )
+  (data || []).map((item: any) => ({
+    id: item.id,
+    school_id: item.school_id,
+    student_id: item.student_id,
+    class_id: item.class_id || 'pending',
+    embedding: item.embedding,
+    source: item.source || 'capture',
+    quality_score: 1,
+    captured_at: item.created_at,
+    expires_at: expiresAt.toISOString(),
+    synced: true,
+    profile_photo_path: item.profile_photo_path || null,
+  }))
+)
 
     console.log('[FACIAL] embeddings sincronizados:', data?.length || 0)
   } catch (error) {

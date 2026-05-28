@@ -58,6 +58,7 @@ export type OfflineFaceEmbedding = {
   captured_at: string
   expires_at: string
   synced: boolean
+  profile_photo_path?: string | null
 }
 
 export type OfflineFaceAttendanceAttempt = {
@@ -135,6 +136,20 @@ this.version(5).stores({
     'id, school_id, student_id, class_id, captured_at, processed',
   faceEmbeddings:
     'id, school_id, student_id, class_id, source, captured_at, expires_at, synced',
+  faceAttendanceAttempts:
+    'id, school_id, student_id, class_id, attendance_date, result, synced',
+})
+
+this.version(6).stores({
+  students: 'id, school_id, qr_code_token, class_id',
+  attendance:
+    'id, school_id, student_id, class_id, attendance_date, [student_id+attendance_date], synced',
+  earlyExits:
+    'id, school_id, student_id, class_id, exit_date, synced',
+  faceCapturesTemp:
+    'id, school_id, student_id, class_id, captured_at, processed',
+  faceEmbeddings:
+    'id, school_id, student_id, class_id, source, captured_at, expires_at, synced, profile_photo_path',
   faceAttendanceAttempts:
     'id, school_id, student_id, class_id, attendance_date, result, synced',
 })

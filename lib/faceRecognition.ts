@@ -43,6 +43,10 @@ export async function loadFaceModels() {
 export async function generateFaceEmbeddingFromBlob(
   imageBlob: Blob
 ): Promise<number[] | null> {
+  if (imageBlob.size === 0) {
+    return null
+  }
+
   await loadFaceModels()
 
   const imageUrl = URL.createObjectURL(imageBlob)

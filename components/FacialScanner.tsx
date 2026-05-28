@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 type Props = {
   isActive: boolean
   onNoCamera?: () => void
-  onFaceCapture: (imageBlob: Blob) => void
+  onFaceCapture: (imageBlob: Blob) => Promise<boolean>
   onCancel?: () => void
 }
 
@@ -259,11 +259,16 @@ setFaceCaptured(true)
 
 console.log('[FACIAL] chamando onFaceCapture...')
 
-await new Promise((resolve) => setTimeout(resolve, 700))
+await new Promise((resolve) => setTimeout(resolve, 500))
 
-await onFaceCapture(blob)
+const accepted = await onFaceCapture(blob)
 
-console.log('[FACIAL] onFaceCapture finalizado')
+console.log('[FACIAL] onFaceCapture finalizado', accepted)
+
+if (!accepted) {
+  setFaceCaptured(false)
+  return
+}
 
     console.log('[FACIAL] captura enviada')
   } catch (error) {
@@ -356,7 +361,7 @@ console.log('[FACIAL] onFaceCapture finalizado')
         boxShadow: '0 12px 30px rgba(22,163,74,0.45)',
       }}
     >
-      ✓ Rosto capturado
+      Rosto capturado. Aguarde...
     </div>
   </>
 )}
