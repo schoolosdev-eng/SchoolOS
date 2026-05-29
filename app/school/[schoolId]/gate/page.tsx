@@ -49,6 +49,7 @@ const [manualStudents, setManualStudents] = useState<any[]>([])
 const [facialCandidates, setFacialCandidates] = useState<any[]>([])
 const [facialPhotosLoading, setFacialPhotosLoading] = useState(false)
 const [facialConfirmationResult, setFacialConfirmationResult] = useState<ScanResult | null>(null)
+const [pendingFacialEmbedding, setPendingFacialEmbedding] = useState<number[] | null>(null)
 
 const [facialEnabled, setFacialEnabled] = useState(false)
 
@@ -1515,13 +1516,26 @@ synced: false,
 
   const embeddingsToCompare = allEmbeddings.filter(
     (item) =>
-      item.source === 'profile_photo' &&
+      (
+  item.source === 'profile_photo' ||
+  item.source === 'capture' ||
+  item.source === 'manual_average' ||
+  item.source === 'imported_photo'
+) &&
       item.embedding &&
       item.embedding.length === embedding.length
   )
 
-  const FACE_CANDIDATE_THRESHOLD = 0.72
-  const MAX_CANDIDATES = 6
+  console.log(
+  '[FACIAL] embeddings disponíveis:',
+  embeddingsToCompare.map((item) => ({
+    student_id: item.student_id,
+    source: item.source,
+  }))
+)
+
+  const FACE_CANDIDATE_THRESHOLD = 0.75
+  const MAX_CANDIDATES = 10
 
   const bestByStudent = new Map<string, any>()
 
@@ -1609,6 +1623,8 @@ async function loadCandidatePhotos(candidates: any[]) {
       return false
     }
 
+    setPendingFacialEmbedding(embedding)
+
     const candidates = await findFaceCandidates(embedding)
 
     if (candidates.length === 0) {
@@ -1643,9 +1659,86 @@ async function loadCandidatePhotos(candidates: any[]) {
   }
 }
 
+async function saveConfirmedFaceEmbedding(student: any) {
+  if (!pendingFacialEmbedding) return
+
+  const now = new Date()
+
+  const existingCaptures = await offlineAttendanceDb.faceEmbeddings
+    .filter(
+      (item) =>
+        item.school_id === schoolId &&
+        item.student_id === student.id &&
+        item.source === 'capture'
+    )
+    .sortBy('captured_at')
+
+  if (existingCaptures.length >= 10) {
+    const excess = existingCaptures.length - 9
+
+    await offlineAttendanceDb.faceEmbeddings.bulkDelete(
+      existingCaptures.slice(0, excess).map((item) => item.id)
+    )
+  }
+
+  const id = crypto.randomUUID()
+
+  const newEmbedding = {
+    id,
+    school_id: schoolId,
+    student_id: student.id,
+    class_id: student.class_id,
+    embedding: pendingFacialEmbedding,
+    source: 'capture' as const,
+    quality_score: null,
+    captured_at: now.toISOString(),
+    expires_at: new Date(
+      Date.now() + 3650 * 24 * 60 * 60 * 1000
+    ).toISOString(),
+    synced: false,
+    profile_photo_path: student.profile_photo_path || null,
+  }
+
+  console.log('[FACIAL APRENDIZADO] salvando embedding', {
+  student_id: student.id,
+  source: 'capture',
+})
+
+  await offlineAttendanceDb.faceEmbeddings.add(newEmbedding)
+
+  console.log('[FACIAL APRENDIZADO] embedding salvo com sucesso')
+
+  if (navigator.onLine) {
+    const { error } = await supabase
+      .from('student_face_embeddings')
+      .insert({
+        id,
+        school_id: schoolId,
+        student_id: student.id,
+        class_id: student.class_id,
+        embedding: pendingFacialEmbedding,
+        source: 'capture',
+        profile_photo_path: student.profile_photo_path || null,
+        created_at: now.toISOString(),
+      })
+
+      console.log('[FACIAL APRENDIZADO]', error)
+
+    if (!error) {
+      await offlineAttendanceDb.faceEmbeddings.update(id, {
+        synced: true,
+      })
+    }
+  }
+
+  setPendingFacialEmbedding(null)
+}
+
 async function confirmFacialCandidate(candidate: any) {
   try {
     const student = candidate.student
+
+    await saveConfirmedFaceEmbedding(student)
 
     if (!student) {
       setResultWithTimeout({
