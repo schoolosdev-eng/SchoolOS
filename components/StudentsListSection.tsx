@@ -1182,30 +1182,34 @@ setEditPhotoInputKey((prev) => prev + 1)
 }
 </button>
 
-<button
-  onClick={() => {
-  setFaceStudent(student)
+{false && (
+  <button
+    onClick={() => {
+      setFaceStudent(student)
 
-  setFaceEmbeddings([])
+      setFaceEmbeddings([])
 
-  setFaceMessage(
-  'Clique em capturar automaticamente e peça para o aluno mover levemente o rosto.'
-)
+      setFaceMessage(
+        'Clique em capturar automaticamente e peça para o aluno mover levemente o rosto.'
+      )
 
-  setSavingFace(false)
-}}
-  style={{
-    padding: '10px 14px',
-    borderRadius: 12,
-    border: 'none',
-    background: '#7c3aed',
-    color: '#fff',
-    fontWeight: 700,
-    cursor: 'pointer',
-  }}
->
-  {studentsWithFace[student.id] ? 'Atualizar cadastro facial' : 'Cadastrar face'}
-</button>
+      setSavingFace(false)
+    }}
+    style={{
+      padding: '10px 14px',
+      borderRadius: 12,
+      border: 'none',
+      background: '#7c3aed',
+      color: '#fff',
+      fontWeight: 700,
+      cursor: 'pointer',
+    }}
+  >
+    {studentsWithFace[student.id]
+      ? 'Atualizar cadastro facial'
+      : 'Cadastrar face'}
+  </button>
+)}
 
 <button
   onClick={() => setStudentToDelete(student)}
