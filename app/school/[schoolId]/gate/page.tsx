@@ -1681,6 +1681,40 @@ async function saveConfirmedFaceEmbedding(student: any) {
     )
   }
 
+  let photoOrder = 1
+
+  if (navigator.onLine) {
+    const { data: supabaseCaptures } = await supabase
+      .from('student_face_embeddings')
+      .select('id, photo_order, created_at')
+      .eq('school_id', schoolId)
+      .eq('student_id', student.id)
+      .eq('source', 'capture')
+      .order('created_at', { ascending: true })
+
+    if (supabaseCaptures && supabaseCaptures.length >= 10) {
+      const oldest = supabaseCaptures[0]
+
+      photoOrder = oldest.photo_order || 1
+
+      await supabase
+        .from('student_face_embeddings')
+        .delete()
+        .eq('id', oldest.id)
+    } else {
+      const usedOrders = new Set(
+        (supabaseCaptures || []).map((item) => item.photo_order)
+      )
+
+      for (let i = 1; i <= 10; i++) {
+        if (!usedOrders.has(i)) {
+          photoOrder = i
+          break
+        }
+      }
+    }
+  }
+
   const id = crypto.randomUUID()
 
   const newEmbedding = {
@@ -1700,58 +1734,41 @@ async function saveConfirmedFaceEmbedding(student: any) {
   }
 
   console.log('[FACIAL APRENDIZADO] salvando embedding', {
-  student_id: student.id,
-  source: 'capture',
-})
+    student_id: student.id,
+    source: 'capture',
+    photoOrder,
+  })
 
   await offlineAttendanceDb.faceEmbeddings.add(newEmbedding)
 
   console.log('[FACIAL APRENDIZADO] embedding salvo com sucesso')
 
   if (navigator.onLine) {
-  const { error } = await supabase
-    .from('student_face_embeddings')
-    .insert({
-      id,
-      school_id: schoolId,
-      student_id: student.id,
-      class_id: student.class_id,
-      embedding: pendingFacialEmbedding,
-      source: 'capture',
-      profile_photo_path: student.profile_photo_path || null,
-      photo_order: 1,
-      created_at: now.toISOString(),
-    })
-
-  console.log('[FACIAL APRENDIZADO]', error)
-
-  if (!error) {
-    await offlineAttendanceDb.faceEmbeddings.update(id, {
-      synced: true,
-    })
-
-    const { data: oldCaptures, error: listError } = await supabase
+    const { error } = await supabase
       .from('student_face_embeddings')
-      .select('id, created_at')
-      .eq('school_id', schoolId)
-      .eq('student_id', student.id)
-      .eq('source', 'capture')
-      .order('created_at', { ascending: false })
+      .insert({
+        id,
+        school_id: schoolId,
+        student_id: student.id,
+        class_id: student.class_id,
+        embedding: pendingFacialEmbedding,
+        source: 'capture',
+        profile_photo_path: student.profile_photo_path || null,
+        photo_order: photoOrder,
+        created_at: now.toISOString(),
+      })
 
-    if (!listError && oldCaptures && oldCaptures.length > 10) {
-      const idsToDelete = oldCaptures
-        .slice(10)
-        .map((item) => item.id)
+    console.log('[FACIAL APRENDIZADO]', error)
 
-      if (idsToDelete.length > 0) {
-        await supabase
-          .from('student_face_embeddings')
-          .delete()
-          .in('id', idsToDelete)
-      }
+    if (!error) {
+      await offlineAttendanceDb.faceEmbeddings.update(id, {
+        synced: true,
+      })
     }
   }
-}}
+
+  setPendingFacialEmbedding(null)
+}
 
 async function confirmFacialCandidate(candidate: any) {
   try {
