@@ -1602,12 +1602,17 @@ async function loadCandidatePhotos(candidates: any[]) {
 
   async function handleFaceCapture(imageBlob: Blob) {
   if (facialProcessingRef.current || facialCooldownRef.current) {
+    console.log('[FACIAL DEBUG] bloqueado por processing/cooldown')
     return false
   }
 
   facialProcessingRef.current = true
 
   try {
+    console.log('[FACIAL DEBUG] iniciando processamento', {
+      blobSize: imageBlob.size,
+    })
+
     setResultWithTimeout({
       status: 'success',
       message: 'Procurando alunos parecidos...',
@@ -1615,11 +1620,16 @@ async function loadCandidatePhotos(candidates: any[]) {
 
     const embedding = await generateFaceEmbeddingFromBlob(imageBlob)
 
+    console.log('[FACIAL DEBUG] embedding gerado:', embedding?.length)
+
     if (!embedding) {
+      console.log('[FACIAL DEBUG] retorno false: embedding nulo')
+
       setResultWithTimeout({
         status: 'error',
         message: 'Nenhum rosto válido encontrado.',
       })
+
       return false
     }
 
@@ -1627,12 +1637,17 @@ async function loadCandidatePhotos(candidates: any[]) {
 
     const candidates = await findFaceCandidates(embedding)
 
+    console.log('[FACIAL DEBUG] candidatos encontrados:', candidates.length)
+
     if (candidates.length === 0) {
+      console.log('[FACIAL DEBUG] retorno false: nenhum candidato')
+
       setResultWithTimeout({
         status: 'error',
         message:
           'Rosto detectado, mas nenhum aluno semelhante foi encontrado. Tente novamente com melhor iluminação ou mais próximo da câmera.',
       })
+
       return false
     }
 
@@ -1641,8 +1656,12 @@ async function loadCandidatePhotos(candidates: any[]) {
 
     loadCandidatePhotos(candidates)
 
+    console.log('[FACIAL DEBUG] retorno true: candidatos exibidos')
+
     return true
   } catch (error) {
+    console.error('[FACIAL DEBUG] erro no handleFaceCapture:', error)
+
     setResultWithTimeout({
       status: 'error',
       message: 'Erro ao processar rosto.',
