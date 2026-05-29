@@ -489,7 +489,7 @@ const sidebarButtonStyle: React.CSSProperties = {
     <section style={mainContentStyle}>
       <div style={containerStyle}>
         <div style={heroCardStyle}>
-          <div style={badgeStyle}>Gestão educacional</div>
+          <div style={badgeStyle}>SchoolOS Iniciando...</div>
           <h1 style={titleStyle}>Acesso às escolas</h1>
           <p style={subtitleStyle}>
             Estamos preparando seu ambiente para exibir as escolas vinculadas à sua conta.

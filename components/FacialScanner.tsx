@@ -23,6 +23,7 @@ export default function FacialScanner({
   const startedRef = useRef(false)
 
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
+  const [faceMessage, setFaceMessage] = useState<string | null>(null)
 
   const isSlowDevice =
   typeof navigator !== 'undefined' &&
@@ -267,8 +268,11 @@ console.log('[FACIAL] onFaceCapture finalizado', accepted)
 
 if (!accepted) {
   setFaceCaptured(false)
+  setFaceMessage('Nenhum rosto válido encontrado. Tente novamente.')
   return
 }
+
+setFaceMessage(null)
 
     console.log('[FACIAL] captura enviada')
   } catch (error) {
@@ -282,6 +286,7 @@ if (!accepted) {
 
   useEffect(() => {
     setFaceCaptured(false)
+    setFaceMessage(null)
   if (!isActive) {
     stopCamera()
     return
@@ -364,6 +369,28 @@ if (!accepted) {
       Rosto capturado. Aguarde...
     </div>
   </>
+)}
+
+{faceMessage && !faceCaptured && (
+  <div
+    style={{
+      position: 'absolute',
+      bottom: 120,
+      left: '50%',
+      transform: 'translateX(-50%)',
+      background: 'rgba(220,38,38,0.92)',
+      color: '#fff',
+      padding: '16px 24px',
+      borderRadius: 18,
+      fontWeight: 900,
+      fontSize: 20,
+      textAlign: 'center',
+      boxShadow: '0 12px 30px rgba(220,38,38,0.45)',
+      maxWidth: '90%',
+    }}
+  >
+    {faceMessage}
+  </div>
 )}
 
       <div
