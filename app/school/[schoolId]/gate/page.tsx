@@ -1709,30 +1709,49 @@ async function saveConfirmedFaceEmbedding(student: any) {
   console.log('[FACIAL APRENDIZADO] embedding salvo com sucesso')
 
   if (navigator.onLine) {
-    const { error } = await supabase
+  const { error } = await supabase
+    .from('student_face_embeddings')
+    .insert({
+      id,
+      school_id: schoolId,
+      student_id: student.id,
+      class_id: student.class_id,
+      embedding: pendingFacialEmbedding,
+      source: 'capture',
+      profile_photo_path: student.profile_photo_path || null,
+      photo_order: 1,
+      created_at: now.toISOString(),
+    })
+
+  console.log('[FACIAL APRENDIZADO]', error)
+
+  if (!error) {
+    await offlineAttendanceDb.faceEmbeddings.update(id, {
+      synced: true,
+    })
+
+    const { data: oldCaptures, error: listError } = await supabase
       .from('student_face_embeddings')
-      .insert({
-        id,
-        school_id: schoolId,
-        student_id: student.id,
-        class_id: student.class_id,
-        embedding: pendingFacialEmbedding,
-        source: 'capture',
-        profile_photo_path: student.profile_photo_path || null,
-        created_at: now.toISOString(),
-      })
+      .select('id, created_at')
+      .eq('school_id', schoolId)
+      .eq('student_id', student.id)
+      .eq('source', 'capture')
+      .order('created_at', { ascending: false })
 
-      console.log('[FACIAL APRENDIZADO]', error)
+    if (!listError && oldCaptures && oldCaptures.length > 10) {
+      const idsToDelete = oldCaptures
+        .slice(10)
+        .map((item) => item.id)
 
-    if (!error) {
-      await offlineAttendanceDb.faceEmbeddings.update(id, {
-        synced: true,
-      })
+      if (idsToDelete.length > 0) {
+        await supabase
+          .from('student_face_embeddings')
+          .delete()
+          .in('id', idsToDelete)
+      }
     }
   }
-
-  setPendingFacialEmbedding(null)
-}
+}}
 
 async function confirmFacialCandidate(candidate: any) {
   try {
