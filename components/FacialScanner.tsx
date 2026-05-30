@@ -101,7 +101,6 @@ export default function FacialScanner({
     console.log('[FACIAL] opções configuradas')
 
     faceDetection.onResults((results: any) => {
-      console.log('[FACIAL] onResults chamado')
 
       if (captureInProgressRef.current) {
         console.log('[FACIAL] bloqueado: captureInProgress')
@@ -167,18 +166,14 @@ if (!videoElement) {
 const camera = new CameraClass(videoElement, {
       onFrame: async () => {
         try {
-          if (!videoRef.current) {
-            console.log('[FACIAL] onFrame sem videoRef')
-            return
-          }
-
-          console.log('[FACIAL] enviando frame para MediaPipe')
+          if (!isActive || !videoRef.current || !faceDetectionRef.current) {
+  return
+}
 
           await faceDetection.send({
             image: videoElement,
           })
 
-          console.log('[FACIAL] frame processado')
         } catch (error) {
           console.error(
             '[FACIAL] erro no onFrame:',
@@ -215,12 +210,28 @@ facingMode: {
 }
 
   function stopCamera() {
-  if (cameraRef.current) {
-    cameraRef.current.stop()
-    cameraRef.current = null
-  }
+  try {
+    if (cameraRef.current) {
+      cameraRef.current.stop()
+      cameraRef.current = null
+    }
 
-  faceDetectionRef.current = null
+    const stream = videoRef.current?.srcObject as MediaStream | null
+
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop())
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+
+    faceDetectionRef.current = null
+    captureInProgressRef.current = false
+    startedRef.current = false
+  } catch (error) {
+    console.error('[FACIAL] erro ao parar câmera:', error)
+  }
 }
 
   async function captureFrame() {
@@ -286,8 +297,9 @@ setFaceMessage(null)
 }
 
   useEffect(() => {
-    setFaceCaptured(false)
-    setFaceMessage(null)
+  setFaceCaptured(false)
+  setFaceMessage(null)
+
   if (!isActive) {
     stopCamera()
     return
@@ -296,11 +308,11 @@ setFaceMessage(null)
   if (startedRef.current) return
 
   startedRef.current = true
+
   startCamera()
 
   return () => {
     stopCamera()
-    startedRef.current = false
   }
 }, [isActive, cameraMode])
 

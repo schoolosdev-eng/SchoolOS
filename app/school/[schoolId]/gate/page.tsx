@@ -56,6 +56,9 @@ const [facialEnabled, setFacialEnabled] = useState(false)
 const facialProcessingRef = useRef(false)
 const facialCooldownRef = useRef(false)
 
+const facialEmbeddingsCacheRef = useRef<any[]>([])
+const facialEmbeddingsLoadedRef = useRef(false)
+
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [resultAnimationKey, setResultAnimationKey] = useState(0)
 
@@ -105,22 +108,7 @@ const [facialCameraMode, setFacialCameraMode] = useState<'user' | 'environment'>
     ].slice(0, 12))
   }
 
-  function blobToDataUrl(blob: Blob) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-
-    reader.onloadend = () => resolve(reader.result as string)
-    reader.onerror = reject
-
-    reader.readAsDataURL(blob)
-  })
-}
-
-async function downloadOfflineData(forceFacialEnabled?: boolean) {
-  const isFacialAvailable =
-  typeof forceFacialEnabled === 'boolean'
-    ? forceFacialEnabled
-    : facialEnabled
+async function downloadOfflineData() {
   if (loadingOffline) {
     setResultWithTimeout({
       status: 'duplicate',
@@ -133,9 +121,7 @@ async function downloadOfflineData(forceFacialEnabled?: boolean) {
 
   setResultWithTimeout({
     status: 'success',
-    message: isFacialAvailable
-  ? 'Atualizando dados offline e preparando reconhecimento facial...'
-  : 'Atualizando dados offline para leitura por QR Code...',
+    message: 'Atualizando dados offline para leitura por QR Code...',
   })
 
   try {
@@ -195,136 +181,10 @@ async function downloadOfflineData(forceFacialEnabled?: boolean) {
     await offlineAttendanceDb.students.clear()
     await offlineAttendanceDb.students.bulkPut(offlineStudents as any[])
 
-
-    if (!isFacialAvailable) {
-  setResultWithTimeout({
-    status: 'success',
-    message: `Dados offline atualizados. Alunos: ${offlineStudents.length}. Reconhecimento facial disponível apenas no plano Presença Inteligente.`,
-  })
-  return
-}
-
-    await syncFaceEmbeddingsFromSupabase()
-
-    const studentsWithFace = (offlineStudents as any[]).filter(
-      (student) => student.profile_photo_path
-    )
-
-    let processedFaces = 0
-    let generatedFaces = 0
-    let skippedFaces = 0
-    const totalFaces = studentsWithFace.length
-
-    for (const student of studentsWithFace) {
-      processedFaces++
-
-      const progress =
-        totalFaces > 0
-          ? Math.round((processedFaces / totalFaces) * 100)
-          : 100
-
-      setResultWithTimeout(
-  {
-    status: 'success',
-    message: `Preparando reconhecimento facial para funcionar offline. Por favor, aguarde... ${progress}% (${processedFaces}/${totalFaces})`,
-  },
-  false,
-  false
-)
-
-      const existingPreferredEmbedding =
-  await offlineAttendanceDb.faceEmbeddings
-    .filter(
-      (item) =>
-        item.student_id === student.id &&
-        (
-          item.source === 'imported_photo' ||
-          item.source === 'manual_average'
-        )
-    )
-    .first()
-
-if (existingPreferredEmbedding) {
-  skippedFaces++
-  continue
-}
-
-      const existingProfileEmbedding =
-  await offlineAttendanceDb.faceEmbeddings.get(`profile-${student.id}`)
-
-if (
-  existingProfileEmbedding &&
-  existingProfileEmbedding.profile_photo_path === student.profile_photo_path
-) {
-  skippedFaces++
-  continue
-}
-
-if (
-  existingProfileEmbedding &&
-  existingProfileEmbedding.profile_photo_path !== student.profile_photo_path
-) {
-  await offlineAttendanceDb.faceEmbeddings.delete(`profile-${student.id}`)
-}
-
-      const { data: signedData } = await supabase.storage
-        .from('student-profile-photos')
-        .createSignedUrl(student.profile_photo_path, 3600)
-
-      if (!signedData?.signedUrl) continue
-
-      const response = await fetch(signedData.signedUrl)
-      const imageBlob = await response.blob()
-
-      const embedding = await generateFaceEmbeddingFromBlob(imageBlob)
-
-      if (!embedding) continue
-
-      await offlineAttendanceDb.faceEmbeddings.put({
-  id: `profile-${student.id}`,
-  school_id: student.school_id,
-  student_id: student.id,
-  class_id: student.class_id,
-  embedding,
-  source: 'profile_photo',
-  quality_score: null,
-  captured_at: new Date().toISOString(),
-  expires_at: new Date(
-    Date.now() + 90 * 24 * 60 * 60 * 1000
-  ).toISOString(),
-  synced: false,
-  profile_photo_path: student.profile_photo_path,
-})
-
-      await supabase
-  .from('student_face_embeddings')
-  .upsert({
-    id: `profile-${student.id}`,
-    school_id: student.school_id,
-    student_id: student.id,
-    class_id: student.class_id,
-    embedding,
-    source: 'profile_photo',
-    profile_photo_path: student.profile_photo_path,
-    created_at: new Date().toISOString(),
-  })
-
-      generatedFaces++
-    }
-
-    const totalFaceEmbeddings =
-  await offlineAttendanceDb.faceEmbeddings.count()
-
-const importedFaceEmbeddings =
-  await offlineAttendanceDb.faceEmbeddings
-    .where('source')
-    .equals('imported_photo')
-    .count()
-
     setResultWithTimeout({
-  status: 'success',
-  message: `Dados offline atualizados. Alunos: ${offlineStudents.length}. Embeddings faciais: ${totalFaceEmbeddings}. Importados: ${importedFaceEmbeddings}. Novos por foto de perfil: ${generatedFaces}. Já existentes: ${skippedFaces}.`,
-})
+      status: 'success',
+      message: `Dados offline de QR Code atualizados. Alunos: ${offlineStudents.length}.`,
+    })
   } catch (error) {
     console.error('ERRO AO ATUALIZAR DADOS OFFLINE:', error)
 
@@ -1315,151 +1175,8 @@ async function handleStartReading() {
   setIsScannerActive(true)
 }
 
-function averageEmbeddings(embeddings: number[][]) {
-  const length = embeddings[0].length
-
-  return Array.from({ length }, (_, index) => {
-    const sum = embeddings.reduce((total, embedding) => {
-      return total + embedding[index]
-    }, 0)
-
-    return sum / embeddings.length
-  })
-}
-
-function areEmbeddingsConsistent(embeddings: number[][]) {
-  const MAX_INTERNAL_DISTANCE = 0.55
-
-  for (let i = 0; i < embeddings.length; i++) {
-    for (let j = i + 1; j < embeddings.length; j++) {
-      const distance = calculateFaceDistance(embeddings[i], embeddings[j])
-
-      if (distance > MAX_INTERNAL_DISTANCE) {
-        return false
-      }
-    }
-  }
-
-  return true
-}
-
-async function processFaceCapturesAfterReading() {
-  const captures = await offlineAttendanceDb.faceCapturesTemp
-    .filter((capture) => capture.processed === false)
-    .toArray()
-
-  if (captures.length === 0) return 0
-
-  const validCaptures = captures.filter((capture) => {
-    return capture.student_id !== 'pending' && capture.class_id !== 'pending'
-  })
-
-  const capturesByStudent = validCaptures.reduce((acc, capture) => {
-    if (!acc[capture.student_id]) {
-      acc[capture.student_id] = []
-    }
-
-    acc[capture.student_id].push(capture)
-
-    return acc
-  }, {} as Record<string, typeof validCaptures>)
-
-  let generated = 0
-
-  for (const [studentId, studentCaptures] of Object.entries(capturesByStudent)) {
-    if (studentCaptures.length < 3) {
-      continue
-    }
-
-    const selectedCaptures = studentCaptures.slice(0, 3)
-
-    const embeddings: number[][] = []
-
-    for (const capture of selectedCaptures) {
-      const embedding = await generateFaceEmbeddingFromBlob(capture.image_blob)
-
-      if (!embedding) continue
-
-      embeddings.push(embedding)
-    }
-
-    if (embeddings.length < 3) {
-      continue
-    }
-
-    if (!areEmbeddingsConsistent(embeddings)) {
-      console.log(
-        '[FACIAL] capturas inconsistentes para aluno:',
-        studentId
-      )
-
-      continue
-    }
-
-    const averagedEmbedding = averageEmbeddings(embeddings)
-
-    const referenceCapture = selectedCaptures[0]
-
-    await offlineAttendanceDb.faceEmbeddings.add({
-      id: crypto.randomUUID(),
-      school_id: referenceCapture.school_id,
-      student_id: referenceCapture.student_id,
-      class_id: referenceCapture.class_id,
-      embedding: averagedEmbedding,
-      source: 'profile_photo',
-quality_score: null,
-captured_at: new Date().toISOString(),
-expires_at: new Date(
-  Date.now() + 3650 * 24 * 60 * 60 * 1000
-).toISOString(),
-synced: false,
-    })
-
-    await offlineAttendanceDb.faceCapturesTemp.bulkDelete(
-      selectedCaptures.map((capture) => capture.id)
-    )
-
-    generated++
-  }
-
-  await offlineAttendanceDb.faceEmbeddings
-    .where('expires_at')
-    .below(new Date().toISOString())
-    .delete()
-
-  return generated
-}
-
   async function handleStopReading() {
   setIsScannerActive(false)
-
-  if (readingMethod === 'facial') {
-    setResultWithTimeout({
-      status: 'success',
-      message: 'Processando capturas faciais...',
-    })
-
-    try {
-      const generated = await processFaceCapturesAfterReading()
-
-      setResultWithTimeout({
-        status: 'success',
-        message:
-          generated > 0
-            ? `Leitura encerrada. ${generated} novo(s) vetor(es) facial(is) gerado(s).`
-            : 'Leitura encerrada. Nenhuma nova captura facial para processar.',
-      })
-    } catch (error) {
-      console.error('Erro ao processar capturas faciais:', error)
-
-      setResultWithTimeout({
-        status: 'error',
-        message: 'Erro ao processar capturas faciais.',
-      })
-    }
-
-    return
-  }
 
   setResultWithTimeout({
     status: 'success',
@@ -1512,8 +1229,46 @@ synced: false,
   return data?.signedUrl || null
 }
 
+async function loadFacialEmbeddingsFromSupabase(forceReload = false) {
+  if (facialEmbeddingsLoadedRef.current && !forceReload) {
+    return facialEmbeddingsCacheRef.current
+  }
+
+  if (!navigator.onLine) {
+    setResultWithTimeout({
+      status: 'error',
+      message: 'Sem internet. O reconhecimento facial funciona somente online.',
+    })
+
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('student_face_embeddings')
+    .select('id, school_id, student_id, class_id, embedding, source, profile_photo_path, created_at')
+    .eq('school_id', schoolId)
+
+  if (error) {
+    console.error('[FACIAL ONLINE] erro ao carregar embeddings:', error)
+
+    setResultWithTimeout({
+      status: 'error',
+      message: 'Erro ao carregar dados faciais do Supabase.',
+    })
+
+    return []
+  }
+
+  facialEmbeddingsCacheRef.current = data || []
+  facialEmbeddingsLoadedRef.current = true
+
+  console.log('[FACIAL ONLINE] embeddings carregados:', data?.length || 0)
+
+  return facialEmbeddingsCacheRef.current
+}
+
   async function findFaceCandidates(embedding: number[]) {
-  const allEmbeddings = await offlineAttendanceDb.faceEmbeddings.toArray()
+  const allEmbeddings = await loadFacialEmbeddingsFromSupabase()
 
   const embeddingsToCompare = allEmbeddings.filter(
     (item) =>
@@ -1682,75 +1437,57 @@ async function loadCandidatePhotos(candidates: any[]) {
 async function saveConfirmedFaceEmbedding(student: any) {
   if (!pendingFacialEmbedding) return
 
-  const now = new Date()
-
-  const existingCaptures = await offlineAttendanceDb.faceEmbeddings
-    .filter(
-      (item) =>
-        item.school_id === schoolId &&
-        item.student_id === student.id &&
-        item.source === 'capture'
-    )
-    .sortBy('captured_at')
-
-  if (existingCaptures.length >= 10) {
-    const excess = existingCaptures.length - 9
-
-    await offlineAttendanceDb.faceEmbeddings.bulkDelete(
-      existingCaptures.slice(0, excess).map((item) => item.id)
-    )
+  if (!navigator.onLine) {
+    setResultWithTimeout({
+      status: 'error',
+      message: 'Sem internet. Não foi possível salvar o reconhecimento facial.',
+    })
+    return
   }
 
+  const now = new Date()
+  const id = crypto.randomUUID()
   let photoOrder = 1
 
-  if (navigator.onLine) {
-    const { data: supabaseCaptures } = await supabase
-      .from('student_face_embeddings')
-      .select('id, photo_order, created_at')
-      .eq('school_id', schoolId)
-      .eq('student_id', student.id)
-      .eq('source', 'capture')
-      .order('created_at', { ascending: true })
+  const { data: supabaseCaptures, error: fetchError } = await supabase
+    .from('student_face_embeddings')
+    .select('id, photo_order, created_at')
+    .eq('school_id', schoolId)
+    .eq('student_id', student.id)
+    .eq('source', 'capture')
+    .order('created_at', { ascending: true })
 
-    if (supabaseCaptures && supabaseCaptures.length >= 10) {
-      const oldest = supabaseCaptures[0]
+  if (fetchError) {
+    console.error('[FACIAL APRENDIZADO] erro ao buscar capturas:', fetchError)
 
-      photoOrder = oldest.photo_order || 1
+    setResultWithTimeout({
+      status: 'error',
+      message: 'Erro ao preparar salvamento facial.',
+    })
 
-      await supabase
-        .from('student_face_embeddings')
-        .delete()
-        .eq('id', oldest.id)
-    } else {
-      const usedOrders = new Set(
-        (supabaseCaptures || []).map((item) => item.photo_order)
-      )
-
-      for (let i = 1; i <= 10; i++) {
-        if (!usedOrders.has(i)) {
-          photoOrder = i
-          break
-        }
-      }
-    }
+    return
   }
 
-  const id = crypto.randomUUID()
+  if (supabaseCaptures && supabaseCaptures.length >= 10) {
+    const oldest = supabaseCaptures[0]
 
-  const newEmbedding = {
-    id,
-    school_id: schoolId,
-    student_id: student.id,
-    class_id: student.class_id,
-    embedding: pendingFacialEmbedding,
-    source: 'capture' as const,
-    quality_score: null,
-    captured_at: now.toISOString(),
-    expires_at: new Date(
-      Date.now() + 3650 * 24 * 60 * 60 * 1000
-    ).toISOString(),
-    synced: false,
-    profile_photo_path: student.profile_photo_path || null,
+    photoOrder = oldest.photo_order || 1
+
+    await supabase
+      .from('student_face_embeddings')
+      .delete()
+      .eq('id', oldest.id)
+  } else {
+    const usedOrders = new Set(
+      (supabaseCaptures || []).map((item) => item.photo_order)
+    )
+
+    for (let i = 1; i <= 10; i++) {
+      if (!usedOrders.has(i)) {
+        photoOrder = i
+        break
+      }
+    }
   }
 
   console.log('[FACIAL APRENDIZADO] salvando embedding', {
@@ -1759,33 +1496,41 @@ async function saveConfirmedFaceEmbedding(student: any) {
     photoOrder,
   })
 
-  await offlineAttendanceDb.faceEmbeddings.add(newEmbedding)
+  const { error } = await supabase
+    .from('student_face_embeddings')
+    .insert({
+      id,
+      school_id: schoolId,
+      student_id: student.id,
+      class_id: student.class_id,
+      embedding: pendingFacialEmbedding,
+      source: 'capture',
+      profile_photo_path: student.profile_photo_path || null,
+      photo_order: photoOrder,
+      created_at: now.toISOString(),
+    })
 
-  console.log('[FACIAL APRENDIZADO] embedding salvo com sucesso')
+  console.log('[FACIAL APRENDIZADO]', error)
 
-  if (navigator.onLine) {
-    const { error } = await supabase
-      .from('student_face_embeddings')
-      .insert({
-        id,
-        school_id: schoolId,
-        student_id: student.id,
-        class_id: student.class_id,
-        embedding: pendingFacialEmbedding,
-        source: 'capture',
-        profile_photo_path: student.profile_photo_path || null,
-        photo_order: photoOrder,
-        created_at: now.toISOString(),
-      })
+  if (error) {
+    setResultWithTimeout({
+      status: 'error',
+      message: 'Erro ao salvar embedding facial no Supabase.',
+    })
 
-    console.log('[FACIAL APRENDIZADO]', error)
-
-    if (!error) {
-      await offlineAttendanceDb.faceEmbeddings.update(id, {
-        synced: true,
-      })
-    }
+    return
   }
+
+  facialEmbeddingsCacheRef.current.push({
+    id,
+    school_id: schoolId,
+    student_id: student.id,
+    class_id: student.class_id,
+    embedding: pendingFacialEmbedding,
+    source: 'capture',
+    profile_photo_path: student.profile_photo_path || null,
+    created_at: now.toISOString(),
+  })
 
   setPendingFacialEmbedding(null)
 }
@@ -1793,8 +1538,6 @@ async function saveConfirmedFaceEmbedding(student: any) {
 async function confirmFacialCandidate(candidate: any) {
   try {
     const student = candidate.student
-
-    await saveConfirmedFaceEmbedding(student)
 
     if (!student) {
       setResultWithTimeout({
@@ -1804,73 +1547,114 @@ async function confirmFacialCandidate(candidate: any) {
       return
     }
 
-    const attendanceDate = new Date()
-      .toISOString()
-      .split('T')[0]
+    if (!navigator.onLine) {
+      setResultWithTimeout({
+        status: 'error',
+        message: 'Sem internet. O reconhecimento facial funciona somente online.',
+      })
+      return
+    }
 
-    const existing = await offlineAttendanceDb.attendance
-      .where('[student_id+attendance_date]')
-      .equals([student.id, attendanceDate])
-      .first()
+    await saveConfirmedFaceEmbedding(student)
 
-    if (existing) {
-  const duplicateResult: ScanResult = {
-    status: 'duplicate',
-    message: `${student.full_name} já possui presença registrada hoje.`,
-    student: {
-      name: student.full_name,
-      className: student.class_name,
-      photo: candidate.photoUrl || null,
-    },
-    time: new Date().toLocaleTimeString('pt-BR'),
-  }
+    const now = new Date()
+    const attendanceDate = now.toISOString().split('T')[0]
 
-  setFacialConfirmationResult(duplicateResult)
-  setScanResult(duplicateResult)
+    const { data: existingAttendance, error: existingError } = await supabase
+      .from('attendance_records')
+      .select('id, status, updated_at')
+      .eq('school_id', schoolId)
+      .eq('student_id', student.id)
+      .eq('class_id', student.class_id)
+      .eq('attendance_date', attendanceDate)
+      .maybeSingle()
 
-  setTimeout(() => {
-    setFacialCandidates([])
-    setFacialConfirmationResult(null)
-    setIsScannerActive(true)
-    setReadingMethod('facial')
-  }, 1800)
+    if (existingError) {
+      throw existingError
+    }
 
-  return
-}
+    if (existingAttendance?.status === 'present') {
+      const duplicateResult: ScanResult = {
+        status: 'duplicate',
+        message: `${student.full_name} já possui presença registrada hoje.`,
+        student: {
+          name: student.full_name,
+          className: student.class_name,
+          photo: candidate.photoUrl || null,
+        },
+        time: new Date(existingAttendance.updated_at || now).toLocaleTimeString('pt-BR'),
+      }
 
-    await offlineAttendanceDb.attendance.add({
-      id: crypto.randomUUID(),
-      school_id: schoolId,
-      student_id: student.id,
-      class_id: student.class_id,
-      attendance_date: attendanceDate,
-      status: 'present',
-      source: 'facial',
-      recorded_at: new Date().toISOString(),
-      synced: false,
-    })
+      setFacialConfirmationResult(duplicateResult)
+      setScanResult(duplicateResult)
+
+      setTimeout(() => {
+        setFacialCandidates([])
+        setFacialConfirmationResult(null)
+        setIsScannerActive(true)
+        setReadingMethod('facial')
+      }, 1800)
+
+      return
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (existingAttendance) {
+      const { error } = await supabase
+        .from('attendance_records')
+        .update({
+          status: 'present',
+          source: 'facial',
+          recorded_by_user_id: user?.id || null,
+          updated_at: now.toISOString(),
+        })
+        .eq('id', existingAttendance.id)
+
+      if (error) throw error
+    } else {
+      const { error } = await supabase
+        .from('attendance_records')
+        .insert({
+          school_id: schoolId,
+          student_id: student.id,
+          class_id: student.class_id,
+          attendance_date: attendanceDate,
+          status: 'present',
+          source: 'facial',
+          recorded_by_user_id: user?.id || null,
+          created_at: now.toISOString(),
+          updated_at: now.toISOString(),
+        })
+
+      if (error) throw error
+    }
 
     const successResult: ScanResult = {
-  status: 'success',
-  message: 'Presença registrada com sucesso.',
-  student: {
-    name: student.full_name,
-    className: student.class_name,
-    photo: candidate.photoUrl || null,
-  },
-  time: new Date().toLocaleTimeString('pt-BR'),
-}
+      status: 'success',
+      message: 'Presença registrada com sucesso.',
+      student: {
+        name: student.full_name,
+        className: student.class_name,
+        photo: candidate.photoUrl || null,
+      },
+      time: now.toLocaleTimeString('pt-BR'),
+    }
 
-setFacialConfirmationResult(successResult)
-setScanResult(successResult)
+    setFacialConfirmationResult(successResult)
+    setScanResult(successResult)
 
-setTimeout(() => {
-  setFacialCandidates([])
-  setFacialConfirmationResult(null)
-  setIsScannerActive(true)
-  setReadingMethod('facial')
-}, 1800)
+    setTimeout(() => {
+      setFacialCandidates([])
+      setFacialConfirmationResult(null)
+      setIsScannerActive(true)
+      setReadingMethod('facial')
+    }, 1800)
   } catch (error) {
+    console.error('[FACIAL ONLINE] erro ao registrar presença:', error)
+
     setResultWithTimeout({
       status: 'error',
       message: 'Erro ao registrar presença facial.',
@@ -1909,7 +1693,7 @@ setTimeout(() => {
 
       setTimeout(async () => {
         try {
-          await downloadOfflineData(isFacialAvailable)
+          await downloadOfflineData()
         } catch (error) {
           console.error(
             'Erro ao atualizar dados offline:',
@@ -1967,50 +1751,6 @@ setTimeout(() => {
       </main>
     )
   }
-
-  async function syncFaceEmbeddingsFromSupabase() {
-  try {
-    console.log('[FACIAL] sincronizando embeddings...')
-
-    const { data, error } = await supabase
-      .from('student_face_embeddings')
-      .select('id, school_id, student_id, class_id, embedding, source, created_at, profile_photo_path')
-      .eq('school_id', schoolId)
-
-    if (error) throw error
-
-    const syncedEmbeddings = await offlineAttendanceDb.faceEmbeddings
-      .filter((item) => item.synced === true)
-      .toArray()
-
-    await offlineAttendanceDb.faceEmbeddings.bulkDelete(
-      syncedEmbeddings.map((item) => item.id)
-    )
-
-    const expiresAt = new Date()
-    expiresAt.setMonth(expiresAt.getMonth() + 3)
-
-    await offlineAttendanceDb.faceEmbeddings.bulkPut(
-  (data || []).map((item: any) => ({
-    id: item.id,
-    school_id: item.school_id,
-    student_id: item.student_id,
-    class_id: item.class_id || 'pending',
-    embedding: item.embedding,
-    source: item.source || 'capture',
-    quality_score: 1,
-    captured_at: item.created_at,
-    expires_at: expiresAt.toISOString(),
-    synced: true,
-    profile_photo_path: item.profile_photo_path || null,
-  }))
-)
-
-    console.log('[FACIAL] embeddings sincronizados:', data?.length || 0)
-  } catch (error) {
-    console.error('[FACIAL] erro ao baixar embeddings:', error)
-  }
-}
 
   return (
     <main style={pageStyle} className="gate-page">
@@ -2097,6 +1837,16 @@ setTimeout(() => {
       })
       return
     }
+
+    if (!navigator.onLine) {
+  setResultWithTimeout({
+    status: 'error',
+    message: 'Reconhecimento facial precisa de internet.',
+  })
+  return
+}
+
+    loadFacialEmbeddingsFromSupabase(true)
 
     setReadingMethod('facial')
 
