@@ -86,6 +86,7 @@ const [exitReason, setExitReason] = useState('')
 const [otherExitReason, setOtherExitReason] = useState('')
 const [authorizedByName, setAuthorizedByName] = useState('')
 const [todayEarlyExits, setTodayEarlyExits] = useState<any[]>([])
+const [facialCameraMode, setFacialCameraMode] = useState<'user' | 'environment'>('user')
 
   function pushRecentScan(data: {
     status: 'success' | 'duplicate' | 'error'
@@ -225,7 +226,7 @@ async function downloadOfflineData(forceFacialEnabled?: boolean) {
       setResultWithTimeout(
   {
     status: 'success',
-    message: `Preparando reconhecimento facial... ${progress}% (${processedFaces}/${totalFaces})`,
+    message: `Preparando reconhecimento facial para funcionar offline. Por favor, aguarde... ${progress}% (${processedFaces}/${totalFaces})`,
   },
   false,
   false
@@ -2102,7 +2103,7 @@ setTimeout(() => {
 setResultWithTimeout(
   {
     status: 'success',
-    message: 'Preparando reconhecimento facial...',
+    message: 'Clique em iniciar leitura.',
   },
   false,
   false
@@ -2207,6 +2208,8 @@ generateFaceEmbeddingFromBlob(
 {readingMethod === 'facial' && facialEnabled && (
   <FacialScanner
   isActive={isScannerActive && facialEnabled}
+  cameraMode={facialCameraMode}
+  onCameraModeChange={setFacialCameraMode}
   onNoCamera={handleNoCamera}
   onFaceCapture={handleFaceCapture}
   onCancel={() => {

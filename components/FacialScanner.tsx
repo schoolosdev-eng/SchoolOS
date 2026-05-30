@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 
 type Props = {
   isActive: boolean
+  cameraMode: 'user' | 'environment'
+  onCameraModeChange: (mode: 'user' | 'environment') => void
   onNoCamera?: () => void
   onFaceCapture: (imageBlob: Blob) => Promise<boolean>
   onCancel?: () => void
@@ -11,6 +13,8 @@ type Props = {
 
 export default function FacialScanner({
   isActive,
+  cameraMode,
+  onCameraModeChange,
   onNoCamera,
   onFaceCapture,
   onCancel,
@@ -22,7 +26,6 @@ export default function FacialScanner({
   const lastCaptureRef = useRef<number>(0)
   const startedRef = useRef(false)
 
-  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
   const [faceMessage, setFaceMessage] = useState<string | null>(null)
 
   const isSlowDevice =
@@ -186,7 +189,7 @@ const camera = new CameraClass(videoElement, {
       width: isSlowDevice ? 640 : 1280,
 height: isSlowDevice ? 480 : 720,
 facingMode: {
-  ideal: facingMode,
+  ideal: cameraMode,
 },
     })
 
@@ -208,9 +211,7 @@ facingMode: {
 }
 
   function handleSwitchCamera() {
-  setFacingMode((prev) =>
-    prev === 'user' ? 'environment' : 'user'
-  )
+  onCameraModeChange(cameraMode === 'user' ? 'environment' : 'user')
 }
 
   function stopCamera() {
@@ -301,7 +302,7 @@ setFaceMessage(null)
     stopCamera()
     startedRef.current = false
   }
-}, [isActive, facingMode])
+}, [isActive, cameraMode])
 
   if (!isActive) return null
 
