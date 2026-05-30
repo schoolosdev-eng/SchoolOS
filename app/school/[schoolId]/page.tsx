@@ -21,6 +21,7 @@ import StudentsListSection from '@/components/StudentsListSection'
 import ClassMapSection from '@/components/ClassMapSection'
 import PlansSection from '@/components/PlansSection'
 import AttendanceFrequencyRanking from '@/components/AttendanceFrequencyRanking'
+import { generateFaceEmbeddingFromBlob } from '@/lib/faceRecognition'
 
 type Student = {
   id: string
@@ -245,6 +246,9 @@ const [annualRankingData, setAnnualRankingData] = useState<AttendanceRankingItem
 
   const [guardianEmail, setGuardianEmail] = useState('')
   const [guardianWhatsapp, setGuardianWhatsapp] = useState('')
+
+  const [preparingFaceEmbeddings, setPreparingFaceEmbeddings] = useState(false)
+const [faceEmbeddingProgress, setFaceEmbeddingProgress] = useState('')
 
 const [activeSection, setActiveSection] = useState<
   | 'overview'
@@ -729,6 +733,203 @@ async function loadAllData() {
   return filePath
 }
 
+async function prepareExistingProfilePhotoEmbeddings() {
+  if (!schoolId) return
+  if (preparingFaceEmbeddings) return
+
+  const confirmRun = window.confirm(
+    'Gerar embeddings faciais das fotos já cadastradas? Isso pode demorar alguns minutos.'
+  )
+
+  if (!confirmRun) return
+
+  setPreparingFaceEmbeddings(true)
+  setFaceEmbeddingProgress('Buscando alunos com foto...')
+
+  try {
+    const { data, error } = await supabase
+      .from('students')
+      .select(`
+        id,
+        full_name,
+        profile_photo_path,
+        enrollments (
+          class_id
+        )
+      `)
+      .eq('school_id', schoolId)
+      .not('profile_photo_path', 'is', null)
+
+    if (error) {
+      showMessage(`Erro ao buscar alunos: ${error.message}`)
+      return
+    }
+
+    const studentsWithPhoto = data || []
+
+    const { data: existingEmbeddings, error: embeddingsError } = await supabase
+      .from('student_face_embeddings')
+      .select('student_id')
+      .eq('school_id', schoolId)
+      .eq('source', 'profile_photo')
+
+    if (embeddingsError) {
+      showMessage(`Erro ao verificar embeddings: ${embeddingsError.message}`)
+      return
+    }
+
+    const alreadyDone = new Set(
+      (existingEmbeddings || []).map((item) => item.student_id)
+    )
+
+    const pendingStudents = studentsWithPhoto.filter(
+      (student: any) =>
+        student.profile_photo_path &&
+        !alreadyDone.has(student.id)
+    )
+
+    if (pendingStudents.length === 0) {
+      showMessage('Todos os alunos com foto já possuem embedding facial.')
+      setFaceEmbeddingProgress('')
+      return
+    }
+
+    let successCount = 0
+    let failCount = 0
+
+    for (let i = 0; i < pendingStudents.length; i++) {
+      const student: any = pendingStudents[i]
+
+      setFaceEmbeddingProgress(
+        `Processando ${i + 1}/${pendingStudents.length}: ${student.full_name}`
+      )
+
+      try {
+        const enrollment = Array.isArray(student.enrollments)
+          ? student.enrollments[0]
+          : student.enrollments
+
+        const classId = enrollment?.class_id
+
+        if (!classId) {
+          failCount++
+          continue
+        }
+
+        const { data: signedData, error: signedError } = await supabase.storage
+          .from('student-profile-photos')
+          .createSignedUrl(student.profile_photo_path, 300)
+
+        if (signedError || !signedData?.signedUrl) {
+          failCount++
+          continue
+        }
+
+        const response = await fetch(signedData.signedUrl)
+        const blob = await response.blob()
+
+        const embedding = await generateFaceEmbeddingFromBlob(blob)
+
+        if (!embedding) {
+          failCount++
+          continue
+        }
+
+        const { error: insertError } = await supabase
+          .from('student_face_embeddings')
+          .insert({
+            id: crypto.randomUUID(),
+            school_id: schoolId,
+            student_id: student.id,
+            class_id: classId,
+            embedding,
+            source: 'profile_photo',
+            profile_photo_path: student.profile_photo_path,
+            photo_order: 0,
+            created_at: new Date().toISOString(),
+          })
+
+        if (insertError) {
+          failCount++
+          continue
+        }
+
+        successCount++
+      } catch (error) {
+        console.error('[FACIAL PROFILE BATCH] erro:', error)
+        failCount++
+      }
+    }
+
+    showMessage(
+      `Embeddings gerados: ${successCount}. Falhas: ${failCount}.`
+    )
+
+    setFaceEmbeddingProgress(
+      `Concluído. Gerados: ${successCount}. Falhas: ${failCount}.`
+    )
+  } finally {
+    setPreparingFaceEmbeddings(false)
+  }
+}
+
+async function saveProfilePhotoFaceEmbedding({
+  studentId,
+  photoFile,
+  profilePhotoPath,
+}: {
+  studentId: string
+  photoFile: File
+  profilePhotoPath: string
+}) {
+  if (!schoolId) return
+
+  const embedding = await generateFaceEmbeddingFromBlob(photoFile)
+
+  if (!embedding) {
+    console.warn('[FACIAL PROFILE] nenhum rosto encontrado na foto do aluno:', studentId)
+    return
+  }
+
+  const { data: enrollment } = await supabase
+    .from('enrollments')
+    .select('class_id')
+    .eq('school_id', schoolId)
+    .eq('student_id', studentId)
+    .limit(1)
+    .maybeSingle()
+
+  if (!enrollment?.class_id) {
+    console.warn('[FACIAL PROFILE] aluno sem matrícula:', studentId)
+    return
+  }
+
+  await supabase
+    .from('student_face_embeddings')
+    .delete()
+    .eq('school_id', schoolId)
+    .eq('student_id', studentId)
+    .eq('source', 'profile_photo')
+
+  const { error } = await supabase
+    .from('student_face_embeddings')
+    .insert({
+      id: crypto.randomUUID(),
+      school_id: schoolId,
+      student_id: studentId,
+      class_id: enrollment.class_id,
+      embedding,
+      source: 'profile_photo',
+      profile_photo_path: profilePhotoPath,
+      photo_order: 0,
+      created_at: new Date().toISOString(),
+    })
+
+  if (error) {
+    console.error('[FACIAL PROFILE] erro ao salvar embedding:', error)
+  }
+}
+
 async function initializeAttendanceForToday() {
   if (!schoolId) {
     showMessage('Escola não identificada.')
@@ -1194,6 +1395,14 @@ async function handleUpdateStudent(
     showMessage(`Erro ao atualizar aluno: ${error.message}`)
     return
   }
+
+  if (data.photo && profilePhotoPath) {
+  await saveProfilePhotoFaceEmbedding({
+    studentId,
+    photoFile: data.photo,
+    profilePhotoPath,
+  })
+}
 
   await fetchStudents()
   showMessage('Aluno atualizado com sucesso.')
@@ -3390,6 +3599,23 @@ style={{
                                           >
                                           Modo Portaria
                                                   </button>
+                                                  {(isAdmin || isManager) && (
+  <button
+    onClick={prepareExistingProfilePhotoEmbeddings}
+    disabled={preparingFaceEmbeddings}
+    style={dashboardSecondaryButtonStyle}
+  >
+    {preparingFaceEmbeddings
+      ? 'Preparando facial...'
+      : 'Preparar fotos faciais'}
+  </button>
+)}
+
+{faceEmbeddingProgress && (
+  <div style={dashboardMessageStyle}>
+    {faceEmbeddingProgress}
+  </div>
+)}
 
                 <button
                   onClick={handleLogout}
