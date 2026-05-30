@@ -1273,22 +1273,23 @@ async function loadFacialEmbeddingsFromSupabase(forceReload = false) {
   const embeddingsToCompare = allEmbeddings.filter(
     (item) =>
       (
-  item.source === 'profile_photo' ||
-  item.source === 'capture' ||
-  item.source === 'manual_average' ||
-  item.source === 'imported_photo'
-) &&
+        item.source === 'profile_photo' ||
+        item.source === 'capture' ||
+        item.source === 'manual_average' ||
+        item.source === 'imported_photo'
+      ) &&
       item.embedding &&
       item.embedding.length === embedding.length
   )
 
   console.log(
-  '[FACIAL] embeddings disponíveis:',
-  embeddingsToCompare.map((item) => ({
-    student_id: item.student_id,
-    source: item.source,
-  }))
-)
+    '[FACIAL] embeddings disponíveis:',
+    embeddingsToCompare.map((item) => ({
+      student_id: item.student_id,
+      class_id: item.class_id,
+      source: item.source,
+    }))
+  )
 
   const FACE_CANDIDATE_THRESHOLD = 0.75
   const MAX_CANDIDATES = 10
@@ -1316,9 +1317,64 @@ async function loadFacialEmbeddingsFromSupabase(forceReload = false) {
     .sort((a, b) => a.distance - b.distance)
     .slice(0, MAX_CANDIDATES)
 
-  const candidates = await Promise.all(
-    matches.map(async (match) => {
-      const student = await offlineAttendanceDb.students.get(match.student_id)
+  if (matches.length === 0) {
+    return []
+  }
+
+  const studentIds = matches.map((match) => match.student_id)
+
+  const { data, error } = await supabase
+    .from('enrollments')
+    .select(`
+      student_id,
+      class_id,
+      students (
+        id,
+        full_name,
+        school_id,
+        profile_photo_path,
+        responsible_whatsapp
+      ),
+      classes (
+        id,
+        name
+      )
+    `)
+    .eq('school_id', schoolId)
+    .in('student_id', studentIds)
+
+  if (error) {
+    console.error('[FACIAL ONLINE] erro ao buscar alunos candidatos:', error)
+    return []
+  }
+
+  const studentsMap = new Map<string, any>()
+
+  for (const item of data || []) {
+    const student = Array.isArray((item as any).students)
+      ? (item as any).students[0]
+      : (item as any).students
+
+    const schoolClass = Array.isArray((item as any).classes)
+      ? (item as any).classes[0]
+      : (item as any).classes
+
+    if (!student?.id) continue
+
+    studentsMap.set((item as any).student_id, {
+      id: student.id,
+      school_id: student.school_id,
+      full_name: student.full_name,
+      profile_photo_path: student.profile_photo_path || null,
+      responsible_whatsapp: student.responsible_whatsapp || null,
+      class_id: (item as any).class_id,
+      class_name: schoolClass?.name || 'Sem turma',
+    })
+  }
+
+  const candidates = matches
+    .map((match) => {
+      const student = studentsMap.get(match.student_id)
 
       if (!student) return null
 
@@ -1328,9 +1384,20 @@ async function loadFacialEmbeddingsFromSupabase(forceReload = false) {
         photoUrl: null,
       }
     })
+    .filter(Boolean)
+
+  console.log(
+    '[FACIAL DEBUG] candidatos completos:',
+    candidates.map((candidate: any) => ({
+      student_id: candidate.student_id,
+      nome: candidate.student.full_name,
+      turma: candidate.student.class_name,
+      distance: candidate.distance,
+      source: candidate.source,
+    }))
   )
 
-  return candidates.filter(Boolean)
+  return candidates
 }
 
 async function loadCandidatePhotos(candidates: any[]) {

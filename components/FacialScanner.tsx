@@ -206,6 +206,7 @@ facingMode: {
 }
 
   function handleSwitchCamera() {
+  stopCamera()
   onCameraModeChange(cameraMode === 'user' ? 'environment' : 'user')
 }
 
