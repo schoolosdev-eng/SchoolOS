@@ -250,6 +250,17 @@ const [annualRankingData, setAnnualRankingData] = useState<AttendanceRankingItem
   const [preparingFaceEmbeddings, setPreparingFaceEmbeddings] = useState(false)
 const [faceEmbeddingProgress, setFaceEmbeddingProgress] = useState('')
 
+const [faceEmbeddingPercent, setFaceEmbeddingPercent] = useState(0)
+
+const [facialPreparedCount, setFacialPreparedCount] = useState(0)
+const [facialTotalWithPhotoCount, setFacialTotalWithPhotoCount] = useState(0)
+
+const [faceEmbeddingFailures, setFaceEmbeddingFailures] = useState<
+  { id: string; name: string; reason: string }[]
+>([])
+
+const [showFaceFailuresModal, setShowFaceFailuresModal] = useState(false)
+
 const [activeSection, setActiveSection] = useState<
   | 'overview'
   | 'registrations'
@@ -711,6 +722,8 @@ async function loadAllData() {
     fetchStudents(),
   ])
 
+  await loadFacialPreparedSummary()
+
   fetchTeachers()
   fetchManagers()
 }
@@ -733,6 +746,25 @@ async function loadAllData() {
   return filePath
 }
 
+async function loadFacialPreparedSummary() {
+  if (!schoolId) return
+
+  const { count: totalWithPhoto } = await supabase
+    .from('students')
+    .select('id', { count: 'exact', head: true })
+    .eq('school_id', schoolId)
+    .not('profile_photo_path', 'is', null)
+
+  const { count: preparedCount } = await supabase
+    .from('student_face_embeddings')
+    .select('id', { count: 'exact', head: true })
+    .eq('school_id', schoolId)
+    .eq('source', 'profile_photo')
+
+  setFacialTotalWithPhotoCount(totalWithPhoto || 0)
+  setFacialPreparedCount(preparedCount || 0)
+}
+
 async function prepareExistingProfilePhotoEmbeddings() {
   if (!schoolId) return
   if (preparingFaceEmbeddings) return
@@ -745,6 +777,7 @@ async function prepareExistingProfilePhotoEmbeddings() {
 
   setPreparingFaceEmbeddings(true)
   setFaceEmbeddingProgress('Buscando alunos com foto...')
+  setFaceEmbeddingPercent(0)
 
   try {
     const { data, error } = await supabase
@@ -791,18 +824,24 @@ async function prepareExistingProfilePhotoEmbeddings() {
     if (pendingStudents.length === 0) {
       showMessage('Todos os alunos com foto já possuem embedding facial.')
       setFaceEmbeddingProgress('')
+      setFaceEmbeddingPercent(0)
       return
     }
 
     let successCount = 0
-    let failCount = 0
+let failCount = 0
+const failures: any[] = []
 
-    for (let i = 0; i < pendingStudents.length; i++) {
+for (let i = 0; i < pendingStudents.length; i++) {
       const student: any = pendingStudents[i]
 
       setFaceEmbeddingProgress(
         `Processando ${i + 1}/${pendingStudents.length}: ${student.full_name}`
       )
+
+      setFaceEmbeddingPercent(
+  Math.round(((i + 1) / pendingStudents.length) * 100)
+)
 
       try {
         const enrollment = Array.isArray(student.enrollments)
@@ -812,18 +851,30 @@ async function prepareExistingProfilePhotoEmbeddings() {
         const classId = enrollment?.class_id
 
         if (!classId) {
-          failCount++
-          continue
-        }
+  failCount++
+  failures.push({
+    id: student.id,
+    name: student.full_name,
+    reason: 'Aluno sem matrícula/turma.',
+  })
+  continue
+}
 
         const { data: signedData, error: signedError } = await supabase.storage
           .from('student-profile-photos')
           .createSignedUrl(student.profile_photo_path, 300)
 
         if (signedError || !signedData?.signedUrl) {
-          failCount++
-          continue
-        }
+  failCount++
+
+  failures.push({
+    id: student.id,
+    name: student.full_name,
+    reason: 'Não foi possível baixar a foto.',
+  })
+
+  continue
+}
 
         const response = await fetch(signedData.signedUrl)
         const blob = await response.blob()
@@ -831,9 +882,16 @@ async function prepareExistingProfilePhotoEmbeddings() {
         const embedding = await generateFaceEmbeddingFromBlob(blob)
 
         if (!embedding) {
-          failCount++
-          continue
-        }
+  failCount++
+
+  failures.push({
+    id: student.id,
+    name: student.full_name,
+    reason: 'Nenhum rosto foi detectado na foto.',
+  })
+
+  continue
+}
 
         const { error: insertError } = await supabase
           .from('student_face_embeddings')
@@ -850,16 +908,36 @@ async function prepareExistingProfilePhotoEmbeddings() {
           })
 
         if (insertError) {
-          failCount++
-          continue
-        }
+  failCount++
+
+  failures.push({
+    id: student.id,
+    name: student.full_name,
+    reason: 'Erro ao salvar embedding no banco.',
+  })
+
+  continue
+}
 
         successCount++
       } catch (error) {
-        console.error('[FACIAL PROFILE BATCH] erro:', error)
-        failCount++
-      }
+  console.error('[FACIAL PROFILE BATCH] erro:', error)
+
+  failCount++
+
+  failures.push({
+    id: student.id,
+    name: student.full_name,
+    reason: 'Erro inesperado durante o processamento.',
+  })
+}
     }
+
+    setFaceEmbeddingFailures(failures)
+
+if (failures.length > 0) {
+  setShowFaceFailuresModal(true)
+}
 
     showMessage(
       `Embeddings gerados: ${successCount}. Falhas: ${failCount}.`
@@ -868,6 +946,9 @@ async function prepareExistingProfilePhotoEmbeddings() {
     setFaceEmbeddingProgress(
       `Concluído. Gerados: ${successCount}. Falhas: ${failCount}.`
     )
+    setFaceEmbeddingPercent(100)
+
+    await loadFacialPreparedSummary()
   } finally {
     setPreparingFaceEmbeddings(false)
   }
@@ -1402,6 +1483,7 @@ async function handleUpdateStudent(
     photoFile: data.photo,
     profilePhotoPath,
   })
+  await loadFacialPreparedSummary()
 }
 
   await fetchStudents()
@@ -3594,11 +3676,14 @@ style={{
                   Trocar Escola
                 </button>
                 <button
-                  onClick={() => router.push(`/school/${schoolId}/gate`)}
-                      style={dashboardPrimaryButtonStyle}
-                                          >
-                                          Modo Portaria
-                                                  </button>
+  onClick={() => router.push(`/school/${schoolId}/gate`)}
+  style={dashboardPrimaryButtonStyle}
+>
+  <div>Modo Portaria</div>
+  <div style={{ fontSize: 11, marginTop: 3, opacity: 0.9 }}>
+    Facial: {facialPreparedCount}/{facialTotalWithPhotoCount}
+  </div>
+</button>
                                                   {(isAdmin || isManager) && (
   <button
     onClick={prepareExistingProfilePhotoEmbeddings}
@@ -3614,13 +3699,62 @@ style={{
 {faceEmbeddingProgress && (
   <div
     style={{
-      padding: 12,
-      borderRadius: 12,
-      background: '#eef2ff',
-      fontWeight: 600,
+      padding: '14px 18px',
+      borderRadius: 16,
+      background: 'linear-gradient(135deg, #1e293b, #0f172a)',
+      color: '#ffffff',
+      fontWeight: 700,
+      minWidth: 280,
+      boxShadow: '0 10px 30px rgba(15,23,42,0.25)',
+      border: '1px solid rgba(255,255,255,0.08)',
     }}
   >
-    {faceEmbeddingProgress}
+    <div
+      style={{
+        fontSize: 11,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+        opacity: 0.75,
+        marginBottom: 8,
+      }}
+    >
+      Reconhecimento Facial
+    </div>
+
+    <div style={{ fontSize: 14, lineHeight: 1.4 }}>
+      {faceEmbeddingProgress}
+    </div>
+
+    <div
+      style={{
+        marginTop: 10,
+        height: 8,
+        borderRadius: 999,
+        background: 'rgba(255,255,255,0.18)',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          height: '100%',
+          width: `${faceEmbeddingPercent}%`,
+          borderRadius: 999,
+          background: '#22c55e',
+          transition: 'width 0.25s ease',
+        }}
+      />
+    </div>
+
+    <div
+      style={{
+        marginTop: 6,
+        fontSize: 12,
+        opacity: 0.85,
+        textAlign: 'right',
+      }}
+    >
+      {faceEmbeddingPercent}%
+    </div>
   </div>
 )}
 
@@ -4559,6 +4693,79 @@ onClick={() => {
         }}
       >
         Enviar WhatsApp
+      </button>
+    </div>
+  </div>
+)}
+
+{showFaceFailuresModal && (
+  <div
+    style={{
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(15, 23, 42, 0.55)',
+      zIndex: 9998,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 20,
+    }}
+  >
+    <div
+      style={{
+        width: '100%',
+        maxWidth: 720,
+        maxHeight: '82vh',
+        overflowY: 'auto',
+        background: '#ffffff',
+        borderRadius: 24,
+        padding: 24,
+        boxShadow: '0 30px 80px rgba(0,0,0,0.35)',
+      }}
+    >
+      <h2 style={{ margin: 0, color: '#0f172a', fontWeight: 900 }}>
+        Alunos não preparados
+      </h2>
+
+      <p style={{ color: '#64748b', fontWeight: 700 }}>
+        Esses alunos precisam de uma nova foto ou matrícula válida para o reconhecimento facial.
+      </p>
+
+      <div style={{ display: 'grid', gap: 10, marginTop: 16 }}>
+        {faceEmbeddingFailures.map((item) => (
+          <div
+            key={item.id}
+            style={{
+              padding: 12,
+              borderRadius: 14,
+              background: '#fff7ed',
+              border: '1px solid #fed7aa',
+            }}
+          >
+            <strong style={{ color: '#0f172a' }}>{item.name}</strong>
+
+            <div style={{ color: '#9a3412', fontWeight: 800, marginTop: 4 }}>
+              {item.reason}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={() => setShowFaceFailuresModal(false)}
+        style={{
+          marginTop: 18,
+          width: '100%',
+          padding: '14px 18px',
+          borderRadius: 16,
+          border: 'none',
+          background: '#2563eb',
+          color: '#ffffff',
+          fontWeight: 900,
+          cursor: 'pointer',
+        }}
+      >
+        Entendi
       </button>
     </div>
   </div>

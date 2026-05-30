@@ -106,6 +106,14 @@ const [selectedEnrollmentYearId, setSelectedEnrollmentYearId] = useState('')
 
 const [selectedEnrollmentClassId, setSelectedEnrollmentClassId] = useState('')
 
+const [studentsWithProfileEmbedding, setStudentsWithProfileEmbedding] =
+  useState<Record<string, boolean>>({})
+
+const [facialEmbeddingSummary, setFacialEmbeddingSummary] = useState({
+  prepared: 0,
+  totalWithPhoto: 0,
+})
+
 const [enrollingLoading, setEnrollingLoading] = useState(false)
 
 const [faceStudent, setFaceStudent] = useState<Student | null>(null)
@@ -709,6 +717,55 @@ function areEmbeddingsConsistent(
 useEffect(() => {
 }, [students])
 
+useEffect(() => {
+  async function loadProfilePhotoEmbeddingsStatus() {
+    if (!schoolId) return
+
+    const studentsWithPhoto = students.filter(
+      (student) => (student as any).profile_photo_path
+    )
+
+    if (studentsWithPhoto.length === 0) {
+      setStudentsWithProfileEmbedding({})
+      setFacialEmbeddingSummary({
+        prepared: 0,
+        totalWithPhoto: 0,
+      })
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('student_face_embeddings')
+      .select('student_id')
+      .eq('school_id', schoolId)
+      .eq('source', 'profile_photo')
+      .in(
+        'student_id',
+        studentsWithPhoto.map((student) => student.id)
+      )
+
+    if (error) {
+      console.error('[FACIAL STATUS] erro ao buscar embeddings:', error)
+      return
+    }
+
+    const map: Record<string, boolean> = {}
+
+    ;(data || []).forEach((item) => {
+      map[item.student_id] = true
+    })
+
+    setStudentsWithProfileEmbedding(map)
+
+    setFacialEmbeddingSummary({
+      prepared: Object.keys(map).length,
+      totalWithPhoto: studentsWithPhoto.length,
+    })
+  }
+
+  loadProfilePhotoEmbeddingsStatus()
+}, [schoolId, students])
+
   return (
     <div style={cardStyle}>
       <div style={listHeaderStyle}>
@@ -856,7 +913,24 @@ useEffect(() => {
       ) : filteredStudents.length === 0 ? (
         <div style={emptyStyle}>Nenhum aluno encontrado com esses filtros.</div>
       ) : (
-        <div style={listStyle}>
+  <>
+    <div
+      style={{
+        marginBottom: 12,
+        padding: 12,
+        borderRadius: 12,
+        background: '#f8fafc',
+        border: '1px solid #e2e8f0',
+        color: '#0f172a',
+        fontWeight: 700,
+      }}
+    >
+      Reconhecimento facial preparado:{' '}
+      {facialEmbeddingSummary.prepared}/
+      {facialEmbeddingSummary.totalWithPhoto} alunos com foto.
+    </div>
+
+    <div style={listStyle}>
 {filteredStudents.map((student) => {
   const isEditing = editingStudentId === student.id
 
@@ -1030,6 +1104,21 @@ useEffect(() => {
                 <div style={itemSubInfoStyle}>
                   WhatsApp: {student.responsible_whatsapp || 'Não informado'}
                 </div>
+                {(student as any).profile_photo_path ? (
+  studentsWithProfileEmbedding[student.id] ? (
+    <div style={{ marginTop: 6, color: '#15803d', fontSize: 12, fontWeight: 900 }}>
+      🟢 Facial preparado
+    </div>
+  ) : (
+    <div style={{ marginTop: 6, color: '#ca8a04', fontSize: 12, fontWeight: 900 }}>
+      🟡 Facial pendente
+    </div>
+  )
+) : (
+  <div style={{ marginTop: 6, color: '#dc2626', fontSize: 12, fontWeight: 900 }}>
+    🔴 Sem foto para facial
+  </div>
+)}
               </>
             )}
           </div>
@@ -1190,6 +1279,7 @@ const message = encodeURIComponent(
   )
 })}
         </div>
+          </>
       )}
 
     <div
