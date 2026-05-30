@@ -3612,7 +3612,14 @@ style={{
 )}
 
 {faceEmbeddingProgress && (
-  <div style={dashboardMessageStyle}>
+  <div
+    style={{
+      padding: 12,
+      borderRadius: 12,
+      background: '#eef2ff',
+      fontWeight: 600,
+    }}
+  >
     {faceEmbeddingProgress}
   </div>
 )}
