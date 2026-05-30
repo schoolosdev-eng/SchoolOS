@@ -5,7 +5,6 @@ import { QRCodeCanvas } from 'qrcode.react'
 import { supabase } from '@/lib/supabase'
 import * as htmlToImage from 'html-to-image'
 import ManualFacialEnrollmentScanner from '@/components/ManualFacialEnrollmentScanner'
-import { offlineAttendanceDb } from '@/lib/offlineAttendanceDb'
 import {
   generateFaceEmbeddingFromBlob,
   calculateFaceDistance,
@@ -711,12 +710,20 @@ function areEmbeddingsConsistent(
 }
 
 async function loadStudentsWithFace() {
-  const embeddings = await offlineAttendanceDb.faceEmbeddings.toArray()
+  const { data, error } = await supabase
+    .from('student_face_embeddings')
+    .select('student_id, created_at')
+    .eq('school_id', schoolId)
+
+  if (error) {
+    console.error('Erro ao buscar faces cadastradas:', error)
+    return
+  }
 
   const map: Record<string, string> = {}
 
-  embeddings.forEach((embedding) => {
-    map[embedding.student_id] = embedding.captured_at
+  ;(data || []).forEach((embedding: any) => {
+    map[embedding.student_id] = embedding.created_at
   })
 
   setStudentsWithFace(map)
@@ -1616,11 +1623,6 @@ const bestEmbeddings = generatedEmbeddings.slice(0, 5)
         return
       }
 
-      await offlineAttendanceDb.faceEmbeddings
-        .where('student_id')
-        .equals(faceStudent.id)
-        .delete()
-
       const { error: deleteFaceError } = await supabase
         .from('student_face_embeddings')
         .delete()
@@ -1636,28 +1638,23 @@ const bestEmbeddings = generatedEmbeddings.slice(0, 5)
       expiresAt.setMonth(expiresAt.getMonth() + 3)
 
       for (let index = 0; index < bestEmbeddings.length; index++) {
-        await offlineAttendanceDb.faceEmbeddings.add({
-          id: crypto.randomUUID(),
-          school_id: schoolId,
-          student_id: faceStudent.id,
-          class_id: '',
-          embedding: bestEmbeddings[index].embedding,
-          source: 'capture',
-          quality_score: bestEmbeddings[index].quality,
-          captured_at: now.toISOString(),
-          expires_at: expiresAt.toISOString(),
-          synced: false,
-        })
 
-        const { error: insertFaceError } = await supabase
-          .from('student_face_embeddings')
-          .insert({
-            school_id: schoolId,
-            student_id: faceStudent.id,
-            embedding: bestEmbeddings[index].embedding,
-            photo_order: index + 1,
-            source: 'capture',
-          })
+        const enrollment = getStudentEnrollment(faceStudent.id)
+
+const { error: insertFaceError } = await supabase
+  .from('student_face_embeddings')
+  .insert({
+    id: crypto.randomUUID(),
+    school_id: schoolId,
+    student_id: faceStudent.id,
+    class_id: enrollment?.class_id || null,
+    embedding: bestEmbeddings[index].embedding,
+    photo_order: index + 1,
+    source: 'capture',
+    quality_score: bestEmbeddings[index].quality,
+    profile_photo_path: (faceStudent as any).profile_photo_path || null,
+    created_at: now.toISOString(),
+  })
 
         if (insertFaceError) {
           setFaceMessage(insertFaceError.message)
