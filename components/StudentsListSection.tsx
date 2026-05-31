@@ -135,11 +135,10 @@ const [faceCaptureSuccess, setFaceCaptureSuccess] = useState(false)
     return Array.from(new Set(classNames)).sort((a, b) => a.localeCompare(b))
   }, [students])
 
-const hasActiveFilter =
-  studentSearch.trim().length > 0 ||
-  selectedClassFilter !== '' ||
-  onlyWithoutClass ||
-  facialStatusFilter !== ''
+//const hasActiveFilter = true
+
+const shouldShowStudents =
+  students.length > 0
 
 const filteredStudents = students
   .filter((student) => {
@@ -946,10 +945,6 @@ useEffect(() => {
 
       {students.length === 0 ? (
         <div style={emptyStyle}>Nenhum aluno cadastrado.</div>
-      ) : !hasActiveFilter ? (
-        <div style={emptyStyle}>
-          Use a busca por nome ou selecione uma turma para exibir os alunos.
-        </div>
       ) : filteredStudents.length === 0 ? (
         <div style={emptyStyle}>Nenhum aluno encontrado com esses filtros.</div>
       ) : (
