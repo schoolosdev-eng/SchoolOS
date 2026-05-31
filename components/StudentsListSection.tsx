@@ -156,17 +156,12 @@ const filteredStudents = students
       !student.class_name ||
       student.class_name === 'Sem turma'
 
-      const hasPhoto = hasStudentFacePhoto(student)
+      const facialStatus = getStudentFacialStatus(student)
 
 const matchesFacialStatus =
   !facialStatusFilter ||
   facialStatusFilter === 'all' ||
-  (facialStatusFilter === 'without_photo' && !hasPhoto) ||
-  (
-    facialStatusFilter === 'facial_pending' &&
-    hasPhoto &&
-    !studentsWithProfileEmbedding[student.id]
-  )
+  facialStatusFilter === facialStatus
 
     return (
   matchesName &&
@@ -193,9 +188,17 @@ const matchesFacialStatus =
 function hasStudentFacePhoto(student: Student) {
   return Boolean(
     student.profile_photo_path ||
-    student.profile_photo_url ||
-    photoUrls[student.id]
+    student.profile_photo_url
   )
+}
+
+function getStudentFacialStatus(student: Student) {
+  const hasPhoto = hasStudentFacePhoto(student)
+  const hasEmbedding = Boolean(studentsWithProfileEmbedding[student.id])
+
+  if (!hasPhoto) return 'without_photo'
+  if (!hasEmbedding) return 'facial_pending'
+  return 'facial_ready'
 }
 
 function clearQrSelection() {
@@ -914,7 +917,8 @@ useEffect(() => {
   <option value="">Filtro facial</option>
   <option value="all">Todos</option>
   <option value="without_photo">Sem foto de rosto</option>
-  <option value="facial_pending">Com facial pendente</option>
+  <option value="facial_pending">Facial pendente</option>
+  <option value="facial_ready">Facial preparado</option>
 </select>
 </div>
 
