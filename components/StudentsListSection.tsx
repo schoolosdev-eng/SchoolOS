@@ -157,9 +157,7 @@ const filteredStudents = students
       !student.class_name ||
       student.class_name === 'Sem turma'
 
-      const hasPhoto = Boolean(
-  student.profile_photo_path || photoUrls[student.id]
-)
+      const hasPhoto = hasStudentFacePhoto(student)
 
 const matchesFacialStatus =
   !facialStatusFilter ||
@@ -190,6 +188,14 @@ const matchesFacialStatus =
     prev.includes(studentId)
       ? prev.filter((id) => id !== studentId)
       : [...prev, studentId]
+  )
+}
+
+function hasStudentFacePhoto(student: Student) {
+  return Boolean(
+    student.profile_photo_path ||
+    student.profile_photo_url ||
+    photoUrls[student.id]
   )
 }
 
@@ -745,9 +751,7 @@ useEffect(() => {
   async function loadProfilePhotoEmbeddingsStatus() {
     if (!schoolId) return
 
-    const studentsWithPhoto = students.filter(
-  (student) => Boolean(student.profile_photo_path || photoUrls[student.id])
-)
+    const studentsWithPhoto = students.filter(hasStudentFacePhoto)
 
     if (studentsWithPhoto.length === 0) {
       setStudentsWithProfileEmbedding({})
@@ -991,13 +995,13 @@ useEffect(() => {
       marginTop: 4,
     }}
   />
-{photoUrls[student.id] ? (
+{photoUrls[student.id] || student.profile_photo_url ? (
   <img
-    src={photoUrls[student.id] || ''}
-              alt={student.full_name || 'Aluno'}
-              style={photoStyle}
-            />
-          ) : (
+    src={photoUrls[student.id] || student.profile_photo_url || ''}
+    alt={student.full_name || 'Aluno'}
+    style={photoStyle}
+  />
+) : (
             <div style={photoPlaceholderStyle}>
               {(student.full_name || student.name || '?')[0]}
             </div>
@@ -1140,7 +1144,7 @@ useEffect(() => {
                 <div style={itemSubInfoStyle}>
                   WhatsApp: {student.responsible_whatsapp || 'Não informado'}
                 </div>
-                {(student as any).profile_photo_path ? (
+                {hasStudentFacePhoto(student) ? (
   studentsWithProfileEmbedding[student.id] ? (
     <div style={{ marginTop: 6, color: '#15803d', fontSize: 12, fontWeight: 900 }}>
       🟢 Facial preparado
