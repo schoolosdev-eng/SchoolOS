@@ -138,7 +138,10 @@ const [faceCaptureSuccess, setFaceCaptureSuccess] = useState(false)
 //const hasActiveFilter = true
 
 const shouldShowStudents =
-  students.length > 0
+  studentSearch.trim().length > 0 ||
+  Boolean(selectedClassFilter) ||
+  Boolean(facialStatusFilter) ||
+  onlyWithoutClass
 
 const filteredStudents = students
   .filter((student) => {
@@ -955,10 +958,14 @@ useEffect(() => {
 </label>
 
       {students.length === 0 ? (
-        <div style={emptyStyle}>Nenhum aluno cadastrado.</div>
-      ) : filteredStudents.length === 0 ? (
-        <div style={emptyStyle}>Nenhum aluno encontrado com esses filtros.</div>
-      ) : (
+  <div style={emptyStyle}>Nenhum aluno cadastrado.</div>
+) : !shouldShowStudents ? (
+  <div style={emptyStyle}>
+    Use a busca por nome, selecione uma turma ou use o filtro facial para exibir os alunos.
+  </div>
+) : filteredStudents.length === 0 ? (
+  <div style={emptyStyle}>Nenhum aluno encontrado com esses filtros.</div>
+) : (
   <>
     <div
       style={{
