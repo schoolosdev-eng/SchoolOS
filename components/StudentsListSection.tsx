@@ -751,7 +751,14 @@ useEffect(() => {
 
 useEffect(() => {
   async function loadProfilePhotoEmbeddingsStatus() {
-    if (!schoolId) return
+    if (!schoolId || students.length === 0) {
+      setStudentsWithProfileEmbedding({})
+      setFacialEmbeddingSummary({
+        prepared: 0,
+        totalWithPhoto: 0,
+      })
+      return
+    }
 
     const studentsWithPhoto = students.filter(hasStudentFacePhoto)
 
@@ -794,7 +801,7 @@ useEffect(() => {
   }
 
   loadProfilePhotoEmbeddingsStatus()
-}, [schoolId, students, photoUrls])
+}, [schoolId, students])
 
   return (
     <div style={cardStyle}>
