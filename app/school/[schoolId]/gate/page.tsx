@@ -1751,8 +1751,20 @@ async function confirmFacialCandidate(candidate: any) {
       if (!accessOk) return
 
       await fetchSchoolName()
-      isFacialAvailable = await fetchSubscription()
-      await loadTodayEarlyExits()
+isFacialAvailable = await fetchSubscription()
+await loadTodayEarlyExits()
+
+if (isFacialAvailable && navigator.onLine) {
+  loadFacialEmbeddingsFromSupabase(true).catch((error) => {
+    console.error('[FACIAL ONLINE] erro no pré-carregamento:', error)
+  })
+
+  generateFaceEmbeddingFromBlob(
+    new Blob([], { type: 'image/jpeg' })
+  ).catch(() => {
+    // Apenas aquece o modelo facial
+  })
+}
     } catch (error) {
       console.error('Erro ao iniciar modo portaria:', error)
     } finally {
@@ -1913,7 +1925,7 @@ async function confirmFacialCandidate(candidate: any) {
   return
 }
 
-    loadFacialEmbeddingsFromSupabase(true)
+    loadFacialEmbeddingsFromSupabase(false)
 
     setReadingMethod('facial')
 
