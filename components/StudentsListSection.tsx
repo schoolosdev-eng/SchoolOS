@@ -143,6 +143,14 @@ const shouldShowStudents =
   Boolean(facialStatusFilter) ||
   onlyWithoutClass
 
+  console.log('[FILTROS]', {
+  studentSearch,
+  selectedClassFilter,
+  facialStatusFilter,
+  onlyWithoutClass,
+  shouldShowStudents,
+})
+
 const filteredStudents = students
   .filter((student) => {
     const matchesName =
