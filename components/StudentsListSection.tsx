@@ -157,7 +157,7 @@ const filteredStudents = students
       !student.class_name ||
       student.class_name === 'Sem turma'
 
-      const hasPhoto = Boolean(photoUrls[student.id])
+      const hasPhoto = Boolean(student.profile_photo_path)
 
 const matchesFacialStatus =
   !facialStatusFilter ||
@@ -744,7 +744,7 @@ useEffect(() => {
     if (!schoolId) return
 
     const studentsWithPhoto = students.filter(
-  (student) => Boolean(photoUrls[student.id])
+  (student) => Boolean(student.profile_photo_path)
 )
 
     if (studentsWithPhoto.length === 0) {
@@ -786,7 +786,7 @@ useEffect(() => {
   }
 
   loadProfilePhotoEmbeddingsStatus()
-}, [schoolId, students, photoUrls])
+}, [schoolId, students])
 
   return (
     <div style={cardStyle}>
