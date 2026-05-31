@@ -59,6 +59,9 @@ const facialCooldownRef = useRef(false)
 const facialEmbeddingsCacheRef = useRef<any[]>([])
 const facialEmbeddingsLoadedRef = useRef(false)
 
+const facialStudentsCacheRef = useRef<Map<string, any>>(new Map())
+const facialStudentsLoadedRef = useRef(false)
+
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [resultAnimationKey, setResultAnimationKey] = useState(0)
 
@@ -1267,6 +1270,71 @@ async function loadFacialEmbeddingsFromSupabase(forceReload = false) {
   return facialEmbeddingsCacheRef.current
 }
 
+async function loadFacialStudentsFromSupabase(forceReload = false) {
+  if (facialStudentsLoadedRef.current && !forceReload) {
+    return facialStudentsCacheRef.current
+  }
+
+  if (!navigator.onLine) {
+    return facialStudentsCacheRef.current
+  }
+
+  const { data, error } = await supabase
+    .from('enrollments')
+    .select(`
+      student_id,
+      class_id,
+      students (
+        id,
+        full_name,
+        school_id,
+        profile_photo_path,
+        responsible_whatsapp
+      ),
+      classes (
+        id,
+        name
+      )
+    `)
+    .eq('school_id', schoolId)
+
+  if (error) {
+    console.error('[FACIAL ONLINE] erro ao carregar alunos faciais:', error)
+    return facialStudentsCacheRef.current
+  }
+
+  const studentsMap = new Map<string, any>()
+
+  for (const item of data || []) {
+    const student = Array.isArray((item as any).students)
+      ? (item as any).students[0]
+      : (item as any).students
+
+    const schoolClass = Array.isArray((item as any).classes)
+      ? (item as any).classes[0]
+      : (item as any).classes
+
+    if (!student?.id) continue
+
+    studentsMap.set((item as any).student_id, {
+      id: student.id,
+      school_id: student.school_id,
+      full_name: student.full_name,
+      profile_photo_path: student.profile_photo_path || null,
+      responsible_whatsapp: student.responsible_whatsapp || null,
+      class_id: (item as any).class_id,
+      class_name: schoolClass?.name || 'Sem turma',
+    })
+  }
+
+  facialStudentsCacheRef.current = studentsMap
+  facialStudentsLoadedRef.current = true
+
+  console.log('[FACIAL ONLINE] alunos faciais em cache:', studentsMap.size)
+
+  return facialStudentsCacheRef.current
+}
+
   async function findFaceCandidates(embedding: number[]) {
   const allEmbeddings = await loadFacialEmbeddingsFromSupabase()
 
@@ -1321,70 +1389,21 @@ async function loadFacialEmbeddingsFromSupabase(forceReload = false) {
     return []
   }
 
-  const studentIds = matches.map((match) => match.student_id)
+  const studentsMap = await loadFacialStudentsFromSupabase(false)
 
-  const { data, error } = await supabase
-    .from('enrollments')
-    .select(`
-      student_id,
-      class_id,
-      students (
-        id,
-        full_name,
-        school_id,
-        profile_photo_path,
-        responsible_whatsapp
-      ),
-      classes (
-        id,
-        name
-      )
-    `)
-    .eq('school_id', schoolId)
-    .in('student_id', studentIds)
+const candidates = matches
+  .map((match) => {
+    const student = studentsMap.get(match.student_id)
 
-  if (error) {
-    console.error('[FACIAL ONLINE] erro ao buscar alunos candidatos:', error)
-    return []
-  }
+    if (!student) return null
 
-  const studentsMap = new Map<string, any>()
-
-  for (const item of data || []) {
-    const student = Array.isArray((item as any).students)
-      ? (item as any).students[0]
-      : (item as any).students
-
-    const schoolClass = Array.isArray((item as any).classes)
-      ? (item as any).classes[0]
-      : (item as any).classes
-
-    if (!student?.id) continue
-
-    studentsMap.set((item as any).student_id, {
-      id: student.id,
-      school_id: student.school_id,
-      full_name: student.full_name,
-      profile_photo_path: student.profile_photo_path || null,
-      responsible_whatsapp: student.responsible_whatsapp || null,
-      class_id: (item as any).class_id,
-      class_name: schoolClass?.name || 'Sem turma',
-    })
-  }
-
-  const candidates = matches
-    .map((match) => {
-      const student = studentsMap.get(match.student_id)
-
-      if (!student) return null
-
-      return {
-        ...match,
-        student,
-        photoUrl: null,
-      }
-    })
-    .filter(Boolean)
+    return {
+      ...match,
+      student,
+      photoUrl: null,
+    }
+  })
+  .filter(Boolean)
 
   console.log(
     '[FACIAL DEBUG] candidatos completos:',
@@ -1755,7 +1774,10 @@ isFacialAvailable = await fetchSubscription()
 await loadTodayEarlyExits()
 
 if (isFacialAvailable && navigator.onLine) {
-  loadFacialEmbeddingsFromSupabase(true).catch((error) => {
+  Promise.all([
+    loadFacialEmbeddingsFromSupabase(true),
+    loadFacialStudentsFromSupabase(true),
+  ]).catch((error) => {
     console.error('[FACIAL ONLINE] erro no pré-carregamento:', error)
   })
 
@@ -1981,7 +2003,19 @@ generateFaceEmbeddingFromBlob(
                 </button>
               )}
 <button
-  onClick={() => downloadOfflineData()}
+  onClick={async () => {
+  await downloadOfflineData()
+
+  if (facialEnabled && navigator.onLine) {
+    facialEmbeddingsLoadedRef.current = false
+    facialStudentsLoadedRef.current = false
+
+    await Promise.all([
+      loadFacialEmbeddingsFromSupabase(true),
+      loadFacialStudentsFromSupabase(true),
+    ])
+  }
+}}
   disabled={loadingOffline}
   style={{
     ...secondaryButtonStyle,
