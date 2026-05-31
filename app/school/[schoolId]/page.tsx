@@ -372,6 +372,26 @@ const isSubscriptionActive =
 const isFreePlan =
   subscriptionPlanId === 'free_monthly'
 
+  function getSubscriptionDaysRemaining() {
+  if (!subscriptionExpiresAt) return null
+
+  const now = new Date()
+  const expiresAt = new Date(subscriptionExpiresAt)
+
+  const diffMs = expiresAt.getTime() - now.getTime()
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+
+  return diffDays
+}
+
+const subscriptionDaysRemaining = getSubscriptionDaysRemaining()
+
+const shouldShowSubscriptionWarning =
+  isAdmin &&
+  subscriptionDaysRemaining !== null &&
+  subscriptionDaysRemaining > 0 &&
+  subscriptionDaysRemaining <= 5
+
 useEffect(() => {
   const channel = supabase
     .channel('attendance-changes')
@@ -3617,6 +3637,57 @@ style={{
         </aside>
 
         <section style={dashboardContentStyle}>
+          {shouldShowSubscriptionWarning && (
+  <div
+    style={{
+      padding: '20px',
+      borderRadius: 20,
+      background: '#fee2e2',
+      border: '1px solid #fca5a5',
+      color: '#991b1b',
+      fontWeight: 700,
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 16,
+      flexWrap: 'wrap',
+      boxShadow: '0 12px 30px rgba(220,38,38,0.12)',
+    }}
+  >
+    <div>
+      <div
+        style={{
+          fontSize: 18,
+          fontWeight: 900,
+          marginBottom: 6,
+        }}
+      >
+        ⚠️ Seu plano expira em {subscriptionDaysRemaining} dia(s)
+      </div>
+
+      <div>
+        Renove sua assinatura para evitar interrupções nos
+        serviços da escola.
+      </div>
+    </div>
+
+    <button
+      onClick={() => handleChangeSection('plans')}
+      style={{
+        padding: '14px 20px',
+        borderRadius: 14,
+        border: 'none',
+        background: '#2563eb',
+        color: '#ffffff',
+        fontWeight: 900,
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      Renovar agora
+    </button>
+  </div>
+)}
           {isMobile && (
   <div
     style={{

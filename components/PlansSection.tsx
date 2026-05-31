@@ -23,6 +23,8 @@ type CurrentSubscription = {
   status: string
   student_limit: number | null
   facial_enabled: boolean | null
+  current_period_end: string | null
+  expires_at: string | null
 }
 
 export default function PlansSection({
@@ -59,7 +61,7 @@ export default function PlansSection({
   async function fetchCurrentSubscription() {
     const { data, error } = await supabase
       .from('school_subscriptions')
-      .select('plan_id, status, student_limit, facial_enabled')
+      .select('plan_id, status, student_limit, facial_enabled, current_period_end, expires_at')
       .eq('school_id', schoolId)
       .maybeSingle()
 
@@ -496,6 +498,36 @@ if (!session?.access_token) {
     opacity: loading ? 0.7 : 1,
   })
 
+  function getPlanRemainingText() {
+  const endDate =
+    currentSubscription?.current_period_end ||
+    currentSubscription?.expires_at
+
+  if (!endDate) {
+    return 'Sem data de vencimento definida'
+  }
+
+  const now = new Date()
+  const end = new Date(endDate)
+
+  const diffMs = end.getTime() - now.getTime()
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+
+  if (diffDays < 0) {
+    return 'Plano vencido'
+  }
+
+  if (diffDays === 0) {
+    return 'Vence hoje'
+  }
+
+  if (diffDays === 1) {
+    return 'Resta 1 dia'
+  }
+
+  return `Restam ${diffDays} dias`
+}
+
   return (
     <section style={sectionStyle}>
       <section style={heroCardStyle}>
@@ -524,6 +556,10 @@ if (!session?.access_token) {
             flexWrap: 'wrap',
           }}
         >
+          <div>
+  <strong>Tempo restante:</strong>{' '}
+  {getPlanRemainingText()}
+</div>
           <div>
             <strong>Modalidade:</strong>{' '}
             {currentPlan?.billing_cycle === 'annual'
