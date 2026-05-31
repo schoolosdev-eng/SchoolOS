@@ -17,6 +17,7 @@ type Student = {
   email: string | null
   birth_date: string
   profile_photo_url?: string | null
+  profile_photo_path?: string | null
   qr_code_token?: string | null
   class_name?: string | null
   responsible_email?: string | null
@@ -156,7 +157,7 @@ const filteredStudents = students
       !student.class_name ||
       student.class_name === 'Sem turma'
 
-      const hasPhoto = Boolean(student.profile_photo_url)
+      const hasPhoto = Boolean(student.profile_photo_path || student.profile_photo_url)
 
 const matchesFacialStatus =
   !facialStatusFilter ||
@@ -743,8 +744,8 @@ useEffect(() => {
     if (!schoolId) return
 
     const studentsWithPhoto = students.filter(
-      (student) => (student as any).profile_photo_path
-    )
+  (student) => student.profile_photo_path || student.profile_photo_url
+)
 
     if (studentsWithPhoto.length === 0) {
       setStudentsWithProfileEmbedding({})
