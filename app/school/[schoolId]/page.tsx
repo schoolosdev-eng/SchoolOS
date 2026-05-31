@@ -392,6 +392,11 @@ const shouldShowSubscriptionWarning =
   subscriptionDaysRemaining > 0 &&
   subscriptionDaysRemaining <= 5
 
+  const isSubscriptionExpired =
+  isAdmin &&
+  subscriptionDaysRemaining !== null &&
+  subscriptionDaysRemaining <= 0
+
 useEffect(() => {
   const channel = supabase
     .channel('attendance-changes')
@@ -3685,6 +3690,56 @@ style={{
       }}
     >
       Renovar agora
+    </button>
+  </div>
+)}
+{isSubscriptionExpired && (
+  <div
+    style={{
+      padding: '20px',
+      borderRadius: 20,
+      background: '#fee2e2',
+      border: '2px solid #dc2626',
+      color: '#991b1b',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 16,
+      flexWrap: 'wrap',
+      boxShadow: '0 12px 30px rgba(220,38,38,0.15)',
+    }}
+  >
+    <div>
+      <div
+        style={{
+          fontSize: 18,
+          fontWeight: 900,
+          marginBottom: 6,
+        }}
+      >
+        🚫 Seu plano está vencido
+      </div>
+
+      <div>
+        Alguns recursos do SchoolOS podem estar bloqueados até a
+        regularização do pagamento.
+      </div>
+    </div>
+
+    <button
+      onClick={() => handleChangeSection('plans')}
+      style={{
+        padding: '14px 20px',
+        borderRadius: 14,
+        border: 'none',
+        background: '#dc2626',
+        color: '#ffffff',
+        fontWeight: 900,
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      Regularizar pagamento
     </button>
   </div>
 )}
