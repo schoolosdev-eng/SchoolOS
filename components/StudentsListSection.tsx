@@ -106,6 +106,9 @@ const [selectedEnrollmentYearId, setSelectedEnrollmentYearId] = useState('')
 
 const [selectedEnrollmentClassId, setSelectedEnrollmentClassId] = useState('')
 
+const [savingStudentId, setSavingStudentId] = useState<string | null>(null)
+const [facialStatusFilter, setFacialStatusFilter] = useState('')
+
 const [studentsWithProfileEmbedding, setStudentsWithProfileEmbedding] =
   useState<Record<string, boolean>>({})
 
@@ -134,7 +137,8 @@ const [faceCaptureSuccess, setFaceCaptureSuccess] = useState(false)
 const hasActiveFilter =
   studentSearch.trim().length > 0 ||
   selectedClassFilter !== '' ||
-  onlyWithoutClass
+  onlyWithoutClass ||
+  facialStatusFilter !== ''
 
 const filteredStudents = students
   .filter((student) => {
@@ -152,7 +156,24 @@ const filteredStudents = students
       !student.class_name ||
       student.class_name === 'Sem turma'
 
-    return matchesName && matchesClass && matchesWithoutClass
+      const hasPhoto = Boolean(student.profile_photo_url)
+
+const matchesFacialStatus =
+  !facialStatusFilter ||
+  facialStatusFilter === 'all' ||
+  (facialStatusFilter === 'without_photo' && !hasPhoto) ||
+  (
+    facialStatusFilter === 'facial_pending' &&
+    hasPhoto &&
+    !studentsWithProfileEmbedding[student.id]
+  )
+
+    return (
+  matchesName &&
+  matchesClass &&
+  matchesWithoutClass &&
+  matchesFacialStatus
+)
   })
   .sort((a, b) => {
     const nameA = (a.full_name || a.name || '').toLowerCase()
@@ -878,6 +899,17 @@ useEffect(() => {
       </option>
     ))}
   </select>
+
+  <select
+  value={facialStatusFilter}
+  onChange={(e) => setFacialStatusFilter(e.target.value)}
+  style={inputStyle}
+>
+  <option value="">Filtro facial</option>
+  <option value="all">Todos</option>
+  <option value="without_photo">Sem foto de rosto</option>
+  <option value="facial_pending">Com facial pendente</option>
+</select>
 </div>
 
 <label
@@ -1149,29 +1181,40 @@ useEffect(() => {
 {isEditing ? (
   <>
     <button
-onClick={async () => {
-  const adjustedPhoto = await createAdjustedEditPhotoFile()
+  disabled={savingStudentId === student.id}
+  onClick={async () => {
+    try {
+      setSavingStudentId(student.id)
 
-  await onUpdateStudent(student.id, {
-    full_name: editName,
-    email: editEmail,
-    responsible_email: editResponsibleEmail,
-    responsible_whatsapp: editResponsibleWhatsapp,
-    photo: adjustedPhoto || editPhoto,
-  })
+      const adjustedPhoto = await createAdjustedEditPhotoFile()
 
-  setEditingStudentId(null)
-  setEditPhoto(null)
-  setEditPhotoPreview(null)
-  setEditPhotoPositionX(50)
-  setEditPhotoPositionY(50)
-  setEditPhotoZoom(1)
-  setEditPhotoInputKey((prev) => prev + 1)
-}}
-      style={saveButtonStyle}
-    >
-      Salvar
-    </button>
+      await onUpdateStudent(student.id, {
+        full_name: editName,
+        email: editEmail,
+        responsible_email: editResponsibleEmail,
+        responsible_whatsapp: editResponsibleWhatsapp,
+        photo: adjustedPhoto || editPhoto,
+      })
+
+      setEditingStudentId(null)
+      setEditPhoto(null)
+      setEditPhotoPreview(null)
+      setEditPhotoPositionX(50)
+      setEditPhotoPositionY(50)
+      setEditPhotoZoom(1)
+      setEditPhotoInputKey((prev) => prev + 1)
+    } finally {
+      setSavingStudentId(null)
+    }
+  }}
+  style={{
+    ...saveButtonStyle,
+    opacity: savingStudentId === student.id ? 0.7 : 1,
+    cursor: savingStudentId === student.id ? 'wait' : 'pointer',
+  }}
+>
+  {savingStudentId === student.id ? 'Salvando...' : 'Salvar'}
+</button>
 
     <button
       onClick={() => {
