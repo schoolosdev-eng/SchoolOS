@@ -205,8 +205,11 @@ facingMode: {
   }
 }
 
-  function handleSwitchCamera() {
+  async function handleSwitchCamera() {
   stopCamera()
+
+  await new Promise((resolve) => setTimeout(resolve, 800))
+
   onCameraModeChange(cameraMode === 'user' ? 'environment' : 'user')
 }
 
@@ -224,8 +227,11 @@ facingMode: {
     }
 
     if (videoRef.current) {
-      videoRef.current.srcObject = null
-    }
+  videoRef.current.srcObject = null
+  videoRef.current.pause()
+  videoRef.current.removeAttribute('src')
+  videoRef.current.load()
+}
 
     faceDetectionRef.current = null
     captureInProgressRef.current = false
