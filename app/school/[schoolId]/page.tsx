@@ -387,13 +387,13 @@ const isFreePlan =
 const subscriptionDaysRemaining = getSubscriptionDaysRemaining()
 
 const shouldShowSubscriptionWarning =
-  isAdmin &&
+  (isAdmin || isManager) &&
   subscriptionDaysRemaining !== null &&
   subscriptionDaysRemaining > 0 &&
   subscriptionDaysRemaining <= 5
 
   const isSubscriptionExpired =
-  isAdmin &&
+  (isAdmin || isManager) &&
   subscriptionDaysRemaining !== null &&
   subscriptionDaysRemaining <= 0
 
@@ -3585,7 +3585,7 @@ style={{
     >
     Avaliações
     </button>
-    {isAdmin && (
+    {(isAdmin || isManager) && (
   <button
     onClick={() => handleChangeSection('plans')}
     style={
