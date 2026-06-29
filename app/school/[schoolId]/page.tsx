@@ -4698,7 +4698,7 @@ onClick={() => {
     </div>
   )
 )}
-{activeSection === 'plans' && isAdmin && (
+{activeSection === 'plans' && (isAdmin || isManager) && (
   <PlansSection
     schoolId={schoolId}
     currentStudents={students.length}
