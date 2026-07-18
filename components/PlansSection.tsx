@@ -44,19 +44,20 @@ export default function PlansSection({
   )
 
   async function fetchPlans() {
-    const { data, error } = await supabase
-      .from('subscription_plans')
-      .select('*')
-      .eq('is_active', true)
-      .order('price', { ascending: true })
+  const { data, error } = await supabase
+    .from('subscription_plans')
+    .select('*')
+    .eq('is_active', true)
+    .not('id', 'like', 'ponto_%')
+    .order('price', { ascending: true })
 
-    if (error) {
-      showMessage(`Erro ao carregar planos: ${error.message}`)
-      return
-    }
-
-    setPlans((data || []) as Plan[])
+  if (error) {
+    showMessage(`Erro ao carregar planos: ${error.message}`)
+    return
   }
+
+  setPlans((data || []) as Plan[])
+}
 
   async function fetchCurrentSubscription() {
     const { data, error } = await supabase
