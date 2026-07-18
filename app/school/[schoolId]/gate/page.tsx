@@ -24,6 +24,16 @@ type ScanResult = {
   time?: string
 }
 
+type PendingFacialCapture = {
+  blob: Blob
+  capturedAt: string
+}
+
+type PendingFacialConfirmation = {
+  candidate: any
+  capturedAt: string
+}
+
 export default function GatePage() {
   const params = useParams<{ schoolId: string }>()
   const router = useRouter()
@@ -50,6 +60,22 @@ const [facialCandidates, setFacialCandidates] = useState<any[]>([])
 const [facialPhotosLoading, setFacialPhotosLoading] = useState(false)
 const [facialConfirmationResult, setFacialConfirmationResult] = useState<ScanResult | null>(null)
 const [pendingFacialEmbedding, setPendingFacialEmbedding] = useState<number[] | null>(null)
+
+const [
+  pendingFacialCapture,
+  setPendingFacialCapture,
+] = useState<PendingFacialCapture | null>(null)
+
+const [
+  pendingFacialConfirmation,
+  setPendingFacialConfirmation,
+] = useState<PendingFacialConfirmation | null>(null)
+
+const [facialConfirming, setFacialConfirming] =
+  useState(false)
+
+const facialRestartTimeoutRef =
+  useRef<ReturnType<typeof setTimeout> | null>(null)
 
 const [facialEnabled, setFacialEnabled] = useState(false)
 
@@ -1475,23 +1501,38 @@ async function loadCandidatePhotos(candidates: any[]) {
       return false
     }
 
-    setPendingFacialEmbedding(embedding)
+    const capturedAt = new Date().toISOString()
 
-    const candidates = await findFaceCandidates(embedding)
+setPendingFacialEmbedding(embedding)
+
+setPendingFacialCapture({
+  blob: imageBlob,
+  capturedAt,
+})
+
+setPendingFacialConfirmation(null)
+
+const candidates = await findFaceCandidates(embedding)
 
     console.log('[FACIAL DEBUG] candidatos encontrados:', candidates.length)
 
     if (candidates.length === 0) {
-      console.log('[FACIAL DEBUG] retorno false: nenhum candidato')
+  console.log(
+    '[FACIAL DEBUG] retorno false: nenhum candidato'
+  )
 
-      setResultWithTimeout({
-        status: 'error',
-        message:
-          'Rosto detectado, mas nenhum aluno semelhante foi encontrado. Tente novamente com melhor iluminação ou mais próximo da câmera.',
-      })
+  setPendingFacialCapture(null)
+  setPendingFacialEmbedding(null)
+  setPendingFacialConfirmation(null)
 
-      return false
-    }
+  setResultWithTimeout({
+    status: 'error',
+    message:
+      'Rosto detectado, mas nenhum aluno semelhante foi encontrado. Tente novamente com melhor iluminação ou mais próximo da câmera.',
+  })
+
+  return false
+}
 
     setFacialCandidates(candidates)
     setIsScannerActive(false)
@@ -1502,14 +1543,21 @@ async function loadCandidatePhotos(candidates: any[]) {
 
     return true
   } catch (error) {
-    console.error('[FACIAL DEBUG] erro no handleFaceCapture:', error)
+  console.error(
+    '[FACIAL DEBUG] erro no handleFaceCapture:',
+    error
+  )
 
-    setResultWithTimeout({
-      status: 'error',
-      message: 'Erro ao processar rosto.',
-    })
+  setPendingFacialCapture(null)
+  setPendingFacialEmbedding(null)
+  setPendingFacialConfirmation(null)
 
-    return false
+  setResultWithTimeout({
+    status: 'error',
+    message: 'Erro ao processar rosto.',
+  })
+
+  return false
   } finally {
     facialProcessingRef.current = false
     facialCooldownRef.current = true
@@ -1621,130 +1669,218 @@ async function saveConfirmedFaceEmbedding(student: any) {
   setPendingFacialEmbedding(null)
 }
 
-async function confirmFacialCandidate(candidate: any) {
-  try {
-    const student = candidate.student
+function selectFacialCandidateForConfirmation(
+  candidate: any
+) {
+  if (!pendingFacialCapture) {
+    setResultWithTimeout({
+      status: 'error',
+      message:
+        'A captura facial não está mais disponível. Faça uma nova leitura.',
+    })
 
-    if (!student) {
-      setResultWithTimeout({
-        status: 'error',
-        message: 'Aluno não encontrado.',
-      })
-      return
-    }
+    setFacialCandidates([])
+    setPendingFacialEmbedding(null)
+    setPendingFacialConfirmation(null)
+    setReadingMethod('facial')
+    setIsScannerActive(true)
 
-    if (!navigator.onLine) {
-      setResultWithTimeout({
-        status: 'error',
-        message: 'Sem internet. O reconhecimento facial funciona somente online.',
-      })
-      return
-    }
+    return
+  }
 
-    await saveConfirmedFaceEmbedding(student)
+  setPendingFacialConfirmation({
+    candidate,
+    capturedAt:
+      pendingFacialCapture.capturedAt,
+  })
+}
 
-    const now = new Date()
-    const attendanceDate = now.toISOString().split('T')[0]
+function restartFacialScannerAfterConfirmation() {
+  if (facialRestartTimeoutRef.current) {
+    clearTimeout(
+      facialRestartTimeoutRef.current
+    )
+  }
 
-    const { data: existingAttendance, error: existingError } = await supabase
-      .from('attendance_records')
-      .select('id, status, updated_at')
-      .eq('school_id', schoolId)
-      .eq('student_id', student.id)
-      .eq('class_id', student.class_id)
-      .eq('attendance_date', attendanceDate)
-      .maybeSingle()
+  setIsScannerActive(false)
 
-    if (existingError) {
-      throw existingError
-    }
-
-    if (existingAttendance?.status === 'present') {
-      const duplicateResult: ScanResult = {
-        status: 'duplicate',
-        message: `${student.full_name} já possui presença registrada hoje.`,
-        student: {
-          name: student.full_name,
-          className: student.class_name,
-          photo: candidate.photoUrl || null,
-        },
-        time: new Date(existingAttendance.updated_at || now).toLocaleTimeString('pt-BR'),
-      }
-
-      setFacialConfirmationResult(duplicateResult)
-      setScanResult(duplicateResult)
-
-      setTimeout(() => {
-        setFacialCandidates([])
-        setFacialConfirmationResult(null)
-        setIsScannerActive(true)
-        setReadingMethod('facial')
-      }, 1800)
-
-      return
-    }
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (existingAttendance) {
-      const { error } = await supabase
-        .from('attendance_records')
-        .update({
-          status: 'present',
-          source: 'facial',
-          recorded_by_user_id: user?.id || null,
-          updated_at: now.toISOString(),
-        })
-        .eq('id', existingAttendance.id)
-
-      if (error) throw error
-    } else {
-      const { error } = await supabase
-        .from('attendance_records')
-        .insert({
-          school_id: schoolId,
-          student_id: student.id,
-          class_id: student.class_id,
-          attendance_date: attendanceDate,
-          status: 'present',
-          source: 'facial',
-          recorded_by_user_id: user?.id || null,
-          created_at: now.toISOString(),
-          updated_at: now.toISOString(),
-        })
-
-      if (error) throw error
-    }
-
-    const successResult: ScanResult = {
-      status: 'success',
-      message: 'Presença registrada com sucesso.',
-      student: {
-        name: student.full_name,
-        className: student.class_name,
-        photo: candidate.photoUrl || null,
-      },
-      time: now.toLocaleTimeString('pt-BR'),
-    }
-
-    setFacialConfirmationResult(successResult)
-    setScanResult(successResult)
-
+  facialRestartTimeoutRef.current =
     setTimeout(() => {
       setFacialCandidates([])
       setFacialConfirmationResult(null)
-      setIsScannerActive(true)
+      setPendingFacialConfirmation(null)
+      setPendingFacialCapture(null)
+      setPendingFacialEmbedding(null)
+
       setReadingMethod('facial')
-    }, 1800)
+      setIsScannerActive(true)
+
+      facialRestartTimeoutRef.current = null
+    }, 2000)
+}
+
+async function confirmFacialCandidate(
+  candidate: any
+) {
+  if (
+    facialConfirming ||
+    !pendingFacialCapture
+  ) {
+    return
+  }
+
+  const student = candidate?.student
+
+  if (!student) {
+    setResultWithTimeout({
+      status: 'error',
+      message: 'Aluno não encontrado.',
+    })
+
+    return
+  }
+
+  if (!navigator.onLine) {
+    setResultWithTimeout({
+      status: 'error',
+      message:
+        'Sem internet. O reconhecimento facial funciona somente online.',
+    })
+
+    return
+  }
+
+  setFacialConfirming(true)
+  setIsScannerActive(false)
+
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+
+    if (!session?.access_token) {
+      throw new Error(
+        'Usuário não autenticado.'
+      )
+    }
+
+    const formData = new FormData()
+
+    formData.append(
+      'schoolId',
+      schoolId
+    )
+
+    formData.append(
+      'studentId',
+      student.id
+    )
+
+    formData.append(
+      'classId',
+      student.class_id
+    )
+
+    formData.append(
+      'capturedAt',
+      pendingFacialCapture.capturedAt
+    )
+
+    formData.append(
+      'photo',
+      pendingFacialCapture.blob,
+      `chegada-${student.id}.jpg`
+    )
+
+    const response = await fetch(
+      '/api/gate/confirm-facial-attendance',
+      {
+        method: 'POST',
+        headers: {
+          Authorization:
+            `Bearer ${session.access_token}`,
+        },
+        body: formData,
+      }
+    )
+
+    const data = await response
+      .json()
+      .catch(() => ({}))
+
+    if (!response.ok) {
+      throw new Error(
+        data.error ||
+          'Erro ao registrar presença.'
+      )
+    }
+
+    /*
+     * Mantém o aprendizado facial atual.
+     * O registro da presença já foi feito
+     * pelo backend.
+     */
+    await saveConfirmedFaceEmbedding(student)
+
+    const resultTime = new Date(
+      data.capturedAt ||
+        pendingFacialCapture.capturedAt
+    ).toLocaleTimeString('pt-BR')
+
+    const result: ScanResult =
+      data.duplicate
+        ? {
+            status: 'duplicate',
+            message:
+              `${student.full_name} já possui presença registrada hoje.`,
+            student: {
+              name: student.full_name,
+              className:
+                student.class_name,
+              photo:
+                candidate.photoUrl || null,
+            },
+            time: resultTime,
+          }
+        : {
+            status: 'success',
+            message:
+              'Presença registrada com sucesso.',
+            student: {
+              name: student.full_name,
+              className:
+                student.class_name,
+              photo:
+                candidate.photoUrl || null,
+            },
+            time: resultTime,
+          }
+
+    setPendingFacialConfirmation(null)
+    setFacialConfirmationResult(result)
+
+    setResultWithTimeout(
+      result,
+      true,
+      false
+    )
+
+    restartFacialScannerAfterConfirmation()
   } catch (error) {
-    console.error('[FACIAL ONLINE] erro ao registrar presença:', error)
+    console.error(
+      '[FACIAL] erro ao confirmar presença:',
+      error
+    )
 
     setResultWithTimeout({
       status: 'error',
-      message: 'Erro ao registrar presença facial.',
+      message:
+        error instanceof Error
+          ? error.message
+          : 'Erro ao registrar presença facial.',
     })
+  } finally {
+    setFacialConfirming(false)
   }
 }
 
@@ -1812,6 +1948,14 @@ if (isFacialAvailable && navigator.onLine) {
   return () => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current)
+    }
+
+    if (
+      facialRestartTimeoutRef.current
+    ) {
+      clearTimeout(
+        facialRestartTimeoutRef.current
+      )
     }
   }
 }, [])
@@ -2076,11 +2220,14 @@ generateFaceEmbeddingFromBlob(
   onNoCamera={handleNoCamera}
   onFaceCapture={handleFaceCapture}
   onCancel={() => {
-    setIsScannerActive(false)
-    setReadingMethod('qr')
-    setFacialCandidates([])
-    setFacialConfirmationResult(null)
-  }}
+  setIsScannerActive(false)
+  setReadingMethod('qr')
+  setFacialCandidates([])
+  setFacialConfirmationResult(null)
+  setPendingFacialConfirmation(null)
+  setPendingFacialCapture(null)
+  setPendingFacialEmbedding(null)
+}}
 />
 )}
             </div>
@@ -2336,7 +2483,8 @@ generateFaceEmbeddingFromBlob(
   </div>
 )}
 
-{facialCandidates.length > 0 && (
+{facialCandidates.length > 0 &&
+  !pendingFacialConfirmation && (
   <div style={modalOverlayStyle}>
     <div
       style={{
@@ -2376,7 +2524,11 @@ generateFaceEmbeddingFromBlob(
             {facialCandidates.map((candidate) => (
               <button
                 key={candidate.student_id}
-                onClick={() => confirmFacialCandidate(candidate)}
+                onClick={() =>
+  selectFacialCandidateForConfirmation(
+    candidate
+  )
+}
                 style={{
                   border: '1px solid #dbeafe',
                   background: '#f8fafc',
@@ -2447,11 +2599,15 @@ generateFaceEmbeddingFromBlob(
 
           <button
             onClick={() => {
-              setFacialCandidates([])
-              setFacialConfirmationResult(null)
-              setIsScannerActive(true)
-              setReadingMethod('facial')
-            }}
+  setFacialCandidates([])
+  setFacialConfirmationResult(null)
+  setPendingFacialConfirmation(null)
+  setPendingFacialCapture(null)
+  setPendingFacialEmbedding(null)
+
+  setIsScannerActive(true)
+  setReadingMethod('facial')
+}}
             style={{
               width: '100%',
               marginTop: 22,
@@ -2517,6 +2673,185 @@ generateFaceEmbeddingFromBlob(
           )}
         </div>
       )}
+    </div>
+  </div>
+)}
+
+{pendingFacialConfirmation && (
+  <div
+    style={{
+      ...modalOverlayStyle,
+      zIndex: 1100,
+    }}
+  >
+    <div
+      style={{
+        width: 'min(460px, 96vw)',
+        maxHeight: '94vh',
+        overflowY: 'auto',
+        background: '#ffffff',
+        borderRadius: 28,
+        padding: 24,
+        textAlign: 'center',
+        boxShadow:
+          '0 24px 80px rgba(15, 23, 42, 0.35)',
+      }}
+    >
+      <h2
+        style={{
+          ...sectionTitleStyle,
+          fontSize: 28,
+        }}
+      >
+        Confirmar chegada
+      </h2>
+
+      <p style={sectionTextStyle}>
+        Confira seus dados antes de confirmar.
+      </p>
+
+      {pendingFacialConfirmation
+        .candidate.photoUrl ? (
+        <img
+          src={
+            pendingFacialConfirmation
+              .candidate.photoUrl
+          }
+          alt={
+            pendingFacialConfirmation
+              .candidate.student.full_name
+          }
+          style={{
+            width: 160,
+            height: 160,
+            borderRadius: '50%',
+            objectFit: 'cover',
+            border: '5px solid #bfdbfe',
+            marginTop: 20,
+            boxShadow:
+              '0 16px 36px rgba(15, 23, 42, 0.18)',
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            width: 160,
+            height: 160,
+            borderRadius: '50%',
+            margin: '20px auto 0',
+            background: '#dbeafe',
+            color: '#1d4ed8',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: 900,
+            fontSize: 54,
+            border: '5px solid #bfdbfe',
+          }}
+        >
+          {pendingFacialConfirmation
+            .candidate.student
+            .full_name?.[0] || '?'}
+        </div>
+      )}
+
+      <h3
+        style={{
+          margin: '18px 0 5px',
+          color: '#0f172a',
+          fontSize: 25,
+          fontWeight: 900,
+        }}
+      >
+        {
+          pendingFacialConfirmation
+            .candidate.student.full_name
+        }
+      </h3>
+
+      <div
+        style={{
+          color: '#475569',
+          fontSize: 18,
+          fontWeight: 800,
+        }}
+      >
+        {
+          pendingFacialConfirmation
+            .candidate.student.class_name
+        }
+      </div>
+
+      <div
+        style={{
+          marginTop: 16,
+          padding: 14,
+          borderRadius: 16,
+          background: '#f0fdf4',
+          color: '#15803d',
+          fontWeight: 900,
+          fontSize: 24,
+        }}
+      >
+        {new Date(
+          pendingFacialConfirmation
+            .capturedAt
+        ).toLocaleTimeString('pt-BR', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        })}
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          gap: 12,
+          marginTop: 22,
+          flexWrap: 'wrap',
+        }}
+      >
+        <button
+          disabled={facialConfirming}
+          onClick={() =>
+            confirmFacialCandidate(
+              pendingFacialConfirmation
+                .candidate
+            )
+          }
+          style={{
+            ...primaryButtonStyle,
+            flex: 1,
+            opacity:
+              facialConfirming ? 0.7 : 1,
+            cursor:
+              facialConfirming
+                ? 'not-allowed'
+                : 'pointer',
+          }}
+        >
+          {facialConfirming
+            ? 'Confirmando...'
+            : 'Confirmar'}
+        </button>
+
+        <button
+          disabled={facialConfirming}
+          onClick={() => {
+            setPendingFacialConfirmation(
+              null
+            )
+          }}
+          style={{
+            ...secondaryButtonStyle,
+            flex: 1,
+            opacity:
+              facialConfirming ? 0.7 : 1,
+          }}
+        >
+          Cancelar
+        </button>
+      </div>
     </div>
   </div>
 )}
