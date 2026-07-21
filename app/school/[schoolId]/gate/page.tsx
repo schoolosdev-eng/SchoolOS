@@ -79,6 +79,11 @@ const facialRestartTimeoutRef =
 
 const [facialEnabled, setFacialEnabled] = useState(false)
 
+const [
+  regularExitEnabled,
+  setRegularExitEnabled,
+] = useState(false)
+
 const facialProcessingRef = useRef(false)
 const facialCooldownRef = useRef(false)
 
@@ -279,6 +284,67 @@ async function fetchSubscription() {
   const enabled = Boolean(data?.facial_enabled)
 
   setFacialEnabled(enabled)
+
+  return enabled
+}
+
+async function fetchRegularExitAddon() {
+  const { data, error } = await supabase
+    .from('school_addon_subscriptions')
+    .select(`
+      status,
+      addon_code,
+      student_limit,
+      current_period_start,
+      current_period_end
+    `)
+    .eq('school_id', schoolId)
+    .eq(
+      'addon_code',
+      'regular_exit_photo_whatsapp'
+    )
+    .eq('status', 'active')
+    .maybeSingle()
+
+  if (error) {
+    console.error(
+      '[ADICIONAL SAÍDA] erro ao consultar assinatura:',
+      error
+    )
+
+    setRegularExitEnabled(false)
+    return false
+  }
+
+  const now = Date.now()
+
+  const started =
+    !data?.current_period_start ||
+    new Date(
+      data.current_period_start
+    ).getTime() <= now
+
+  const notExpired =
+    !data?.current_period_end ||
+    new Date(
+      data.current_period_end
+    ).getTime() >= now
+
+  const enabled = Boolean(
+    data &&
+    started &&
+    notExpired
+  )
+
+  console.log(
+    '[ADICIONAL SAÍDA]',
+    {
+      data,
+      enabled,
+    }
+  )
+
+  setRegularExitEnabled(enabled)
 
   return enabled
 }
@@ -1906,7 +1972,17 @@ async function confirmFacialCandidate(
       if (!accessOk) return
 
       await fetchSchoolName()
-isFacialAvailable = await fetchSubscription()
+
+const [
+  facialAvailable,
+] = await Promise.all([
+  fetchSubscription(),
+  fetchRegularExitAddon(),
+])
+
+isFacialAvailable =
+  facialAvailable
+
 await loadTodayEarlyExits()
 
 if (isFacialAvailable && navigator.onLine) {

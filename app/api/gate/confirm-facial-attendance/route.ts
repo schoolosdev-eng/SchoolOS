@@ -206,61 +206,6 @@ export async function POST(request: Request) {
       )
     }
 
-    if (
-      !photoEntry ||
-      !(photoEntry instanceof File)
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            'A foto da chegada não foi enviada.',
-        },
-        {
-          status: 400,
-        }
-      )
-    }
-
-    const allowedMimeTypes = new Set([
-      'image/jpeg',
-      'image/jpg',
-      'image/webp',
-    ])
-
-    if (!allowedMimeTypes.has(photoEntry.type)) {
-      return NextResponse.json(
-        {
-          error:
-            'Formato da foto inválido. Utilize JPEG ou WebP.',
-        },
-        {
-          status: 400,
-        }
-      )
-    }
-
-    if (photoEntry.size <= 0) {
-      return NextResponse.json(
-        {
-          error: 'A foto enviada está vazia.',
-        },
-        {
-          status: 400,
-        }
-      )
-    }
-
-    if (photoEntry.size > 2 * 1024 * 1024) {
-      return NextResponse.json(
-        {
-          error:
-            'A foto ultrapassou o limite de 2 MB.',
-        },
-        {
-          status: 400,
-        }
-      )
-    }
 
     const capturedAt = new Date(
       capturedAtValue
@@ -460,361 +405,453 @@ export async function POST(request: Request) {
       })
     }
 
-    /*
-     * 8. Monta o caminho privado da foto.
-     */
-    const extension = getPhotoExtension(
-      photoEntry.type
-    )
+/*
+ * 8. Registra a presença primeiro.
+ *
+ * A presença facial pertence ao funcionamento
+ * normal do modo portaria e não depende do
+ * adicional de foto e WhatsApp.
+ */
+let attendanceRecordId: string
 
-    const [year, month, day] =
-      attendanceDate.split('-')
-
-    uploadedPhotoPath = [
-      schoolId,
-      year,
-      month,
-      day,
-      studentId,
-      `${randomUUID()}.${extension}`,
-    ].join('/')
-
-    const photoBuffer = Buffer.from(
-      await photoEntry.arrayBuffer()
-    )
-
-    const {
-      error: photoUploadError,
-    } = await supabaseAdmin.storage
-      .from(PHOTO_BUCKET)
-      .upload(
-        uploadedPhotoPath,
-        photoBuffer,
-        {
-          contentType: photoEntry.type,
-          cacheControl: '3600',
-          upsert: false,
-        }
-      )
-
-    if (photoUploadError) {
-      console.error(
-        '[CONFIRMAÇÃO FACIAL] erro no upload:',
-        photoUploadError
-      )
-
-      return NextResponse.json(
-        {
-          error:
-            'Não foi possível armazenar a foto da chegada.',
-        },
-        {
-          status: 500,
-        }
-      )
-    }
-
-    /*
-     * 9. Atualiza a presença ausente criada
-     * anteriormente ou cria uma nova presença.
-     */
-    let attendanceRecordId: string
-
-    if (existingAttendance) {
-      const {
-        data: updatedAttendance,
-        error: updateAttendanceError,
-      } = await supabaseAdmin
-        .from('attendance_records')
-        .update({
-          status: 'present',
-          source: 'facial',
-          recorded_by_user_id: user.id,
-          updated_at: capturedAt.toISOString(),
-        })
-        .eq('id', existingAttendance.id)
-        .select('id')
-        .single()
-
-      if (
-        updateAttendanceError ||
-        !updatedAttendance
-      ) {
-        await supabaseAdmin.storage
-          .from(PHOTO_BUCKET)
-          .remove([uploadedPhotoPath])
-
-        uploadedPhotoPath = null
-
-        throw (
-          updateAttendanceError ||
-          new Error(
-            'Presença não atualizada.'
-          )
-        )
-      }
-
-      attendanceRecordId =
-        updatedAttendance.id
-    } else {
-      const {
-        data: insertedAttendance,
-        error: insertAttendanceError,
-      } = await supabaseAdmin
-        .from('attendance_records')
-        .insert({
-          school_id: schoolId,
-          student_id: studentId,
-          class_id: classId,
-          attendance_date: attendanceDate,
-          status: 'present',
-          source: 'facial',
-          recorded_by_user_id: user.id,
-          created_at: capturedAt.toISOString(),
-          updated_at: capturedAt.toISOString(),
-        })
-        .select('id')
-        .single()
-
-      if (
-        insertAttendanceError ||
-        !insertedAttendance
-      ) {
-        await supabaseAdmin.storage
-          .from(PHOTO_BUCKET)
-          .remove([uploadedPhotoPath])
-
-        uploadedPhotoPath = null
-
-        throw (
-          insertAttendanceError ||
-          new Error(
-            'Presença não criada.'
-          )
-        )
-      }
-
-      attendanceRecordId =
-        insertedAttendance.id
-    }
-
-    /*
-     * 10. Confere se a escola contratou
-     * o adicional.
-     */
-    const now = new Date()
-
-    const {
-      data: addonSubscription,
-      error: addonError,
-    } = await supabaseAdmin
-      .from('school_addon_subscriptions')
-      .select(`
-        id,
-        status,
-        current_period_start,
-        current_period_end,
-        student_limit
-      `)
-      .eq('school_id', schoolId)
-      .eq(
-        'addon_code',
-        'arrival_photo_whatsapp'
-      )
-      .eq('status', 'active')
-      .maybeSingle()
-
-    if (addonError) {
-      console.error(
-        '[CONFIRMAÇÃO FACIAL] erro ao consultar adicional:',
-        addonError
-      )
-    }
-
-    const addonStarted =
-      !addonSubscription?.current_period_start ||
-      new Date(
-        addonSubscription.current_period_start
-      ) <= now
-
-    const addonNotExpired =
-      !addonSubscription?.current_period_end ||
-      new Date(
-        addonSubscription.current_period_end
-      ) >= now
-
-    const addonIsActive = Boolean(
-      addonSubscription &&
-      addonStarted &&
-      addonNotExpired
-    )
-
-    /*
-     * O número original continua no perfil.
-     * Aqui criamos apenas uma versão normalizada
-     * para a API do WhatsApp.
-     */
-    const responsibleWhatsApp =
-      normalizeWhatsApp(
-        student.responsible_whatsapp
-      )
-
-    let whatsappStatus:
-      | 'not_contracted'
-      | 'no_phone'
-      | 'queued'
-
-    if (!addonIsActive) {
-      whatsappStatus = 'not_contracted'
-    } else if (!responsibleWhatsApp) {
-      whatsappStatus = 'no_phone'
-    } else {
-      whatsappStatus = 'queued'
-    }
-
-    /*
-     * 11. Cria o comprovante.
-     */
-    const retentionUntil =
-      addFiveYears(capturedAt)
-
-    const {
-      data: evidence,
-      error: evidenceError,
-    } = await supabaseAdmin
-      .from('attendance_evidence')
-      .insert({
-        school_id: schoolId,
-        attendance_record_id:
-          attendanceRecordId,
-        student_id: studentId,
-        class_id: classId,
-        source: 'facial',
-        photo_bucket: PHOTO_BUCKET,
-        photo_path: uploadedPhotoPath,
-        captured_at:
-          capturedAt.toISOString(),
-        retention_until:
-          retentionUntil.toISOString(),
-        device_info: {
-          userAgent:
-            request.headers.get(
-              'user-agent'
-            ) || null,
-        },
-        whatsapp_status:
-          whatsappStatus,
-        created_by_user_id: user.id,
-      })
-      .select('id')
-      .single()
-
-    if (evidenceError || !evidence) {
-      console.error(
-        '[CONFIRMAÇÃO FACIAL] erro ao criar comprovante:',
-        evidenceError
-      )
-
-      await supabaseAdmin.storage
-        .from(PHOTO_BUCKET)
-        .remove([uploadedPhotoPath])
-
-      uploadedPhotoPath = null
-
-      return NextResponse.json(
-        {
-          error:
-            'A presença foi localizada, mas não foi possível criar o comprovante da chegada.',
-        },
-        {
-          status: 500,
-        }
-      )
-    }
-
-    /*
-     * 12. Adiciona a mensagem à fila.
-     *
-     * Nenhuma chamada à API do WhatsApp
-     * é feita neste endpoint.
-     */
-    let whatsappQueued = false
-
-    if (
-      whatsappStatus === 'queued' &&
-      responsibleWhatsApp
-    ) {
-      const {
-        error: queueError,
-      } = await supabaseAdmin
-        .from(
-          'whatsapp_notification_queue'
-        )
-        .insert({
-          school_id: schoolId,
-          student_id: studentId,
-          attendance_evidence_id:
-            evidence.id,
-          destination_phone:
-            responsibleWhatsApp,
-          notification_type:
-            'student_arrival',
-          payload: {
-            studentName:
-              student.full_name,
-            className:
-              schoolClass.name,
-            arrivalTime:
-              capturedAt.toISOString(),
-            attendanceDate,
-            photoBucket:
-              PHOTO_BUCKET,
-            photoPath:
-              uploadedPhotoPath,
-          },
-          status: 'queued',
-          next_attempt_at:
-            new Date().toISOString(),
-        })
-
-      if (queueError) {
-        console.error(
-          '[CONFIRMAÇÃO FACIAL] erro ao enfileirar WhatsApp:',
-          queueError
-        )
-
-        /*
-         * Falha no enfileiramento não desfaz
-         * a presença do aluno.
-         */
-        await supabaseAdmin
-          .from('attendance_evidence')
-          .update({
-            whatsapp_status: 'failed',
-            whatsapp_error:
-              queueError.message,
-          })
-          .eq('id', evidence.id)
-      } else {
-        whatsappQueued = true
-      }
-    }
-
-    return NextResponse.json({
-      success: true,
-      duplicate: false,
-      attendanceRecordId,
-      evidenceId: evidence.id,
-      studentName: student.full_name,
-      className: schoolClass.name,
-      capturedAt:
-        capturedAt.toISOString(),
-      whatsappQueued,
-      whatsappStatus:
-        whatsappQueued
-          ? 'queued'
-          : whatsappStatus,
+if (existingAttendance) {
+  const {
+    data: updatedAttendance,
+    error: updateAttendanceError,
+  } = await supabaseAdmin
+    .from('attendance_records')
+    .update({
+      status: 'present',
+      source: 'facial',
+      recorded_by_user_id: user.id,
+      updated_at: capturedAt.toISOString(),
     })
+    .eq('id', existingAttendance.id)
+    .select('id')
+    .single()
+
+  if (
+    updateAttendanceError ||
+    !updatedAttendance
+  ) {
+    throw (
+      updateAttendanceError ||
+      new Error(
+        'Não foi possível atualizar a presença.'
+      )
+    )
+  }
+
+  attendanceRecordId =
+    updatedAttendance.id
+} else {
+  const {
+    data: insertedAttendance,
+    error: insertAttendanceError,
+  } = await supabaseAdmin
+    .from('attendance_records')
+    .insert({
+      school_id: schoolId,
+      student_id: studentId,
+      class_id: classId,
+      attendance_date: attendanceDate,
+      status: 'present',
+      source: 'facial',
+      recorded_by_user_id: user.id,
+      created_at: capturedAt.toISOString(),
+      updated_at: capturedAt.toISOString(),
+    })
+    .select('id')
+    .single()
+
+  if (
+    insertAttendanceError ||
+    !insertedAttendance
+  ) {
+    throw (
+      insertAttendanceError ||
+      new Error(
+        'Não foi possível criar a presença.'
+      )
+    )
+  }
+
+  attendanceRecordId =
+    insertedAttendance.id
+}
+
+const baseResponse = {
+  success: true,
+  duplicate: false,
+  attendanceRecordId,
+  studentName: student.full_name,
+  className: schoolClass.name,
+  capturedAt: capturedAt.toISOString(),
+}
+
+/*
+ * 9. Verifica especificamente o adicional
+ * de entrada com foto e WhatsApp.
+ */
+const now = new Date()
+
+const {
+  data: addonSubscription,
+  error: addonError,
+} = await supabaseAdmin
+  .from('school_addon_subscriptions')
+  .select(`
+    id,
+    addon_code,
+    status,
+    student_limit,
+    current_period_start,
+    current_period_end
+  `)
+  .eq('school_id', schoolId)
+  .eq(
+    'addon_code',
+    'arrival_photo_whatsapp'
+  )
+  .eq('status', 'active')
+  .maybeSingle()
+
+if (addonError) {
+  console.error(
+    '[CONFIRMAÇÃO FACIAL] erro ao consultar adicional de entrada:',
+    addonError
+  )
+}
+
+const addonStarted =
+  !addonSubscription?.current_period_start ||
+  new Date(
+    addonSubscription.current_period_start
+  ).getTime() <= now.getTime()
+
+const addonNotExpired =
+  !addonSubscription?.current_period_end ||
+  new Date(
+    addonSubscription.current_period_end
+  ).getTime() >= now.getTime()
+
+const arrivalAddonIsActive = Boolean(
+  addonSubscription &&
+  addonStarted &&
+  addonNotExpired
+)
+
+/*
+ * Sem o adicional, encerra aqui.
+ *
+ * A presença já foi registrada, mas a foto
+ * não será armazenada e nenhuma mensagem
+ * será adicionada à fila.
+ */
+if (!arrivalAddonIsActive) {
+  return NextResponse.json({
+    ...baseResponse,
+    addonActive: false,
+    evidenceSaved: false,
+    whatsappQueued: false,
+    whatsappStatus: 'not_contracted',
+  })
+}
+
+/*
+ * 10. A foto só é obrigatória quando o
+ * adicional de entrada estiver ativo.
+ */
+if (
+  !photoEntry ||
+  !(photoEntry instanceof File)
+) {
+  return NextResponse.json({
+    ...baseResponse,
+    addonActive: true,
+    evidenceSaved: false,
+    whatsappQueued: false,
+    whatsappStatus: 'failed',
+    warning:
+      'A presença foi registrada, mas a foto da chegada não foi recebida.',
+  })
+}
+
+const allowedMimeTypes = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+])
+
+if (!allowedMimeTypes.has(photoEntry.type)) {
+  return NextResponse.json({
+    ...baseResponse,
+    addonActive: true,
+    evidenceSaved: false,
+    whatsappQueued: false,
+    whatsappStatus: 'failed',
+    warning:
+      'A presença foi registrada, mas o formato da foto é inválido.',
+  })
+}
+
+if (photoEntry.size <= 0) {
+  return NextResponse.json({
+    ...baseResponse,
+    addonActive: true,
+    evidenceSaved: false,
+    whatsappQueued: false,
+    whatsappStatus: 'failed',
+    warning:
+      'A presença foi registrada, mas a foto recebida está vazia.',
+  })
+}
+
+if (photoEntry.size > 2 * 1024 * 1024) {
+  return NextResponse.json({
+    ...baseResponse,
+    addonActive: true,
+    evidenceSaved: false,
+    whatsappQueued: false,
+    whatsappStatus: 'failed',
+    warning:
+      'A presença foi registrada, mas a foto ultrapassou o limite de 2 MB.',
+  })
+}
+
+/*
+ * 11. Monta o caminho da foto privada.
+ */
+const extension = getPhotoExtension(
+  photoEntry.type
+)
+
+const [year, month, day] =
+  attendanceDate.split('-')
+
+uploadedPhotoPath = [
+  schoolId,
+  year,
+  month,
+  day,
+  studentId,
+  `${randomUUID()}.${extension}`,
+].join('/')
+
+const photoBuffer = Buffer.from(
+  await photoEntry.arrayBuffer()
+)
+
+const {
+  error: photoUploadError,
+} = await supabaseAdmin.storage
+  .from(PHOTO_BUCKET)
+  .upload(
+    uploadedPhotoPath,
+    photoBuffer,
+    {
+      contentType: photoEntry.type,
+      cacheControl: '3600',
+      upsert: false,
+    }
+  )
+
+if (photoUploadError) {
+  console.error(
+    '[CONFIRMAÇÃO FACIAL] erro ao salvar foto:',
+    photoUploadError
+  )
+
+  uploadedPhotoPath = null
+
+  return NextResponse.json({
+    ...baseResponse,
+    addonActive: true,
+    evidenceSaved: false,
+    whatsappQueued: false,
+    whatsappStatus: 'failed',
+    warning:
+      'A presença foi registrada, mas não foi possível armazenar a foto da chegada.',
+  })
+}
+
+/*
+ * 12. Obtém o número atual cadastrado
+ * no perfil do aluno.
+ */
+const responsibleWhatsApp =
+  normalizeWhatsApp(
+    student.responsible_whatsapp
+  )
+
+const whatsappStatus:
+  | 'no_phone'
+  | 'queued' =
+  responsibleWhatsApp
+    ? 'queued'
+    : 'no_phone'
+
+/*
+ * 13. Cria o comprovante da entrada.
+ */
+const retentionUntil =
+  addFiveYears(capturedAt)
+
+const {
+  data: evidence,
+  error: evidenceError,
+} = await supabaseAdmin
+  .from('attendance_evidence')
+  .insert({
+    school_id: schoolId,
+    attendance_record_id:
+      attendanceRecordId,
+    student_id: studentId,
+    class_id: classId,
+    source: 'facial',
+    photo_bucket: PHOTO_BUCKET,
+    photo_path: uploadedPhotoPath,
+    captured_at:
+      capturedAt.toISOString(),
+    retention_until:
+      retentionUntil.toISOString(),
+    device_info: {
+      userAgent:
+        request.headers.get(
+          'user-agent'
+        ) || null,
+    },
+    whatsapp_status:
+      whatsappStatus,
+    created_by_user_id: user.id,
+  })
+  .select('id')
+  .single()
+
+if (evidenceError || !evidence) {
+  console.error(
+    '[CONFIRMAÇÃO FACIAL] erro ao criar comprovante:',
+    evidenceError
+  )
+
+  await supabaseAdmin.storage
+    .from(PHOTO_BUCKET)
+    .remove([uploadedPhotoPath])
+
+  uploadedPhotoPath = null
+
+  return NextResponse.json({
+    ...baseResponse,
+    addonActive: true,
+    evidenceSaved: false,
+    whatsappQueued: false,
+    whatsappStatus: 'failed',
+    warning:
+      'A presença foi registrada, mas não foi possível criar o comprovante da chegada.',
+  })
+}
+
+/*
+ * 14. Sem telefone válido, mantém apenas
+ * a foto e o comprovante.
+ */
+if (!responsibleWhatsApp) {
+  return NextResponse.json({
+    ...baseResponse,
+    addonActive: true,
+    evidenceSaved: true,
+    evidenceId: evidence.id,
+    whatsappQueued: false,
+    whatsappStatus: 'no_phone',
+    warning:
+      'A foto foi armazenada, mas o aluno não possui um WhatsApp válido cadastrado.',
+  })
+}
+
+/*
+ * 15. Coloca o envio na fila.
+ *
+ * A Meta não é chamada aqui.
+ */
+const {
+  error: queueError,
+} = await supabaseAdmin
+  .from('whatsapp_notification_queue')
+  .insert({
+    school_id: schoolId,
+    student_id: studentId,
+
+    attendance_evidence_id:
+      evidence.id,
+
+    regular_exit_id: null,
+
+    destination_phone:
+      responsibleWhatsApp,
+
+    notification_type:
+      'student_arrival',
+
+    payload: {
+      studentName:
+        student.full_name,
+
+      className:
+        schoolClass.name,
+
+      arrivalTime:
+        capturedAt.toISOString(),
+
+      attendanceDate,
+
+      photoBucket:
+        PHOTO_BUCKET,
+
+      photoPath:
+        uploadedPhotoPath,
+    },
+
+    status: 'queued',
+
+    next_attempt_at:
+      new Date().toISOString(),
+  })
+
+if (queueError) {
+  console.error(
+    '[CONFIRMAÇÃO FACIAL] erro ao enfileirar WhatsApp:',
+    queueError
+  )
+
+  await supabaseAdmin
+    .from('attendance_evidence')
+    .update({
+      whatsapp_status: 'failed',
+      whatsapp_error:
+        queueError.message,
+    })
+    .eq('id', evidence.id)
+
+  return NextResponse.json({
+    ...baseResponse,
+    addonActive: true,
+    evidenceSaved: true,
+    evidenceId: evidence.id,
+    whatsappQueued: false,
+    whatsappStatus: 'failed',
+    warning:
+      'A presença e a foto foram registradas, mas a mensagem não pôde ser adicionada à fila.',
+  })
+}
+
+return NextResponse.json({
+  ...baseResponse,
+  addonActive: true,
+  evidenceSaved: true,
+  evidenceId: evidence.id,
+  whatsappQueued: true,
+  whatsappStatus: 'queued',
+})
   } catch (error) {
     console.error(
       '[CONFIRMAÇÃO FACIAL] erro inesperado:',
