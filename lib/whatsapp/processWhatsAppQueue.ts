@@ -10,12 +10,21 @@ const RETRY_DELAYS_MINUTES = [
   180,
 ]
 
+type NotificationType =
+  | 'student_arrival'
+  | 'student_departure'
+
 type QueuePayload = {
   studentName?: string
   className?: string
   schoolName?: string
+
   arrivalTime?: string
   attendanceDate?: string
+
+  departureTime?: string
+  exitDate?: string
+
   photoBucket?: string
   photoPath?: string
 }
@@ -24,7 +33,15 @@ type WhatsAppQueueRow = {
   id: string
   school_id: string
   student_id: string
-  attendance_evidence_id: string
+
+  attendance_evidence_id:
+    | string
+    | null
+
+  regular_exit_id:
+    | string
+    | null
+
   destination_phone: string
   notification_type: string
   payload: QueuePayload | null
@@ -35,11 +52,19 @@ type WhatsAppQueueRow = {
 type WhatsAppConfig = {
   accessToken: string
   phoneNumberId: string
-  templateName: string
+
+  arrivalTemplateName: string
+  departureTemplateName: string
+
   templateLanguage: string
   graphApiVersion: string
   timeZone: string
 }
+
+type LinkedEventStatus =
+  | 'queued'
+  | 'sent'
+  | 'failed'
 
 export type ProcessWhatsAppQueueResult = {
   claimed: number
@@ -56,7 +81,10 @@ function createAdminClient() {
   const serviceRoleKey =
     process.env.SUPABASE_SERVICE_ROLE_KEY
 
-  if (!supabaseUrl || !serviceRoleKey) {
+  if (
+    !supabaseUrl ||
+    !serviceRoleKey
+  ) {
     throw new Error(
       'Variáveis administrativas do Supabase não configuradas.'
     )
@@ -74,6 +102,15 @@ function createAdminClient() {
   )
 }
 
+function isWhatsAppSendingEnabled() {
+  return (
+    process.env
+      .WHATSAPP_SENDING_ENABLED
+      ?.trim()
+      .toLowerCase() === 'true'
+  )
+}
+
 function getWhatsAppConfig(): WhatsAppConfig {
   const accessToken =
     process.env.WHATSAPP_ACCESS_TOKEN
@@ -81,16 +118,23 @@ function getWhatsAppConfig(): WhatsAppConfig {
   const phoneNumberId =
     process.env.WHATSAPP_PHONE_NUMBER_ID
 
-  const templateName =
+  const arrivalTemplateName =
     process.env.WHATSAPP_TEMPLATE_NAME ||
     'student_arrival_photo'
 
+  const departureTemplateName =
+    process.env
+      .WHATSAPP_DEPARTURE_TEMPLATE_NAME ||
+    'student_departure_photo'
+
   const templateLanguage =
-    process.env.WHATSAPP_TEMPLATE_LANGUAGE ||
+    process.env
+      .WHATSAPP_TEMPLATE_LANGUAGE ||
     'pt_BR'
 
   const graphApiVersion =
-    process.env.WHATSAPP_GRAPH_API_VERSION ||
+    process.env
+      .WHATSAPP_GRAPH_API_VERSION ||
     'v25.0'
 
   const timeZone =
@@ -112,11 +156,27 @@ function getWhatsAppConfig(): WhatsAppConfig {
   return {
     accessToken,
     phoneNumberId,
-    templateName,
+    arrivalTemplateName,
+    departureTemplateName,
     templateLanguage,
     graphApiVersion,
     timeZone,
   }
+}
+
+function getNotificationType(
+  value: string
+): NotificationType {
+  if (
+    value === 'student_arrival' ||
+    value === 'student_departure'
+  ) {
+    return value
+  }
+
+  throw new Error(
+    `Tipo de notificação não suportado: ${value}`
+  )
 }
 
 function normalizePhone(
@@ -131,9 +191,10 @@ function normalizePhone(
     )
   }
 
-  const normalized = digits.startsWith('55')
-    ? digits
-    : `55${digits}`
+  const normalized =
+    digits.startsWith('55')
+      ? digits
+      : `55${digits}`
 
   if (
     normalized.length < 12 ||
@@ -158,20 +219,29 @@ function safeText(
     return fallback
   }
 
-  return value.trim().slice(0, 500)
+  return value
+    .trim()
+    .slice(0, 500)
 }
 
-function formatArrivalTime(
+function formatEventTime(
   value: unknown,
   timeZone: string
 ) {
-  if (typeof value !== 'string') {
+  if (
+    typeof value !== 'string'
+  ) {
     return '--:--'
   }
 
-  const date = new Date(value)
+  const date =
+    new Date(value)
 
-  if (Number.isNaN(date.getTime())) {
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
     return '--:--'
   }
 
@@ -186,8 +256,12 @@ function formatArrivalTime(
   ).format(date)
 }
 
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error) {
+function getErrorMessage(
+  error: unknown
+) {
+  if (
+    error instanceof Error
+  ) {
     return error.message
   }
 
@@ -204,37 +278,60 @@ async function readMetaResponse(
 
 async function uploadImageToMeta({
   photoBlob,
+  queueId,
   config,
 }: {
   photoBlob: Blob
+  queueId: string
   config: WhatsAppConfig
 }) {
   const contentType =
-    photoBlob.type === 'image/png'
-      ? 'image/png'
-      : 'image/jpeg'
+    photoBlob.type
+      ?.trim()
+      .toLowerCase()
 
-  const imageBlob =
-    photoBlob.type === contentType
-      ? photoBlob
-      : new Blob(
-          [await photoBlob.arrayBuffer()],
-          {
-            type: contentType,
-          }
-        )
+  const supportedContentTypes =
+    new Set([
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+    ])
 
-  const formData = new FormData()
+  if (
+    !supportedContentTypes.has(
+      contentType
+    )
+  ) {
+    throw new Error(
+      `Formato da foto não suportado pela Meta: ${
+        contentType ||
+        'não informado'
+      }.`
+    )
+  }
+
+  const extension =
+    contentType === 'image/png'
+      ? 'png'
+      : 'jpg'
+
+  const formData =
+    new FormData()
 
   formData.append(
     'messaging_product',
     'whatsapp'
   )
 
+  /*
+   * Não tentamos transformar WebP em JPEG
+   * apenas alterando o MIME, porque isso não
+   * converte os bytes da imagem.
+   */
   formData.append(
     'file',
-    imageBlob,
-    `student-arrival-${Date.now()}.jpg`
+    photoBlob,
+    `schoolos-${queueId}.${extension}`
   )
 
   const response = await fetch(
@@ -249,9 +346,15 @@ async function uploadImageToMeta({
     }
   )
 
-  const data = await readMetaResponse(response)
+  const data =
+    await readMetaResponse(
+      response
+    )
 
-  if (!response.ok || !data?.id) {
+  if (
+    !response.ok ||
+    !data?.id
+  ) {
     const metaMessage =
       data?.error?.message ||
       data?.error?.error_user_msg ||
@@ -270,22 +373,24 @@ async function uploadImageToMeta({
   return String(data.id)
 }
 
-async function sendArrivalTemplate({
+async function sendPhotoTemplate({
   destinationPhone,
   mediaId,
+  templateName,
   studentName,
   className,
   schoolName,
-  arrivalTime,
+  eventTime,
   queueId,
   config,
 }: {
   destinationPhone: string
   mediaId: string
+  templateName: string
   studentName: string
   className: string
   schoolName: string
-  arrivalTime: string
+  eventTime: string
   queueId: string
   config: WhatsAppConfig
 }) {
@@ -296,29 +401,37 @@ async function sendArrivalTemplate({
       headers: {
         Authorization:
           `Bearer ${config.accessToken}`,
+
         'Content-Type':
           'application/json',
       },
       body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
+        messaging_product:
+          'whatsapp',
+
+        recipient_type:
+          'individual',
+
         to: destinationPhone,
+
         type: 'template',
 
-
         template: {
-          name: config.templateName,
+          name: templateName,
 
           language: {
-            code: config.templateLanguage,
+            code:
+              config.templateLanguage,
           },
 
           components: [
             {
               type: 'header',
+
               parameters: [
                 {
                   type: 'image',
+
                   image: {
                     id: mediaId,
                   },
@@ -328,6 +441,7 @@ async function sendArrivalTemplate({
 
             {
               type: 'body',
+
               parameters: [
                 {
                   type: 'text',
@@ -343,19 +457,23 @@ async function sendArrivalTemplate({
                 },
                 {
                   type: 'text',
-                  text: arrivalTime,
+                  text: eventTime,
                 },
               ],
             },
           ],
         },
 
-        biz_opaque_callback_data: queueId,
+        biz_opaque_callback_data:
+          queueId,
       }),
     }
   )
 
-  const data = await readMetaResponse(response)
+  const data =
+    await readMetaResponse(
+      response
+    )
 
   const providerMessageId =
     data?.messages?.[0]?.id
@@ -379,24 +497,197 @@ async function sendArrivalTemplate({
     )
   }
 
-  return String(providerMessageId)
+  return String(
+    providerMessageId
+  )
 }
 
 function getRetryDate(
   attemptNumber: number
 ) {
-  const delayIndex = Math.min(
-    Math.max(attemptNumber - 1, 0),
-    RETRY_DELAYS_MINUTES.length - 1
-  )
+  const delayIndex =
+    Math.min(
+      Math.max(
+        attemptNumber - 1,
+        0
+      ),
+      RETRY_DELAYS_MINUTES
+        .length - 1
+    )
 
   const delayMinutes =
-    RETRY_DELAYS_MINUTES[delayIndex]
+    RETRY_DELAYS_MINUTES[
+      delayIndex
+    ]
 
   return new Date(
     Date.now() +
-      delayMinutes * 60 * 1000
+      delayMinutes *
+        60 *
+        1000
   )
+}
+
+async function updateLinkedEventStatus({
+  supabaseAdmin,
+  message,
+  notificationType,
+  status,
+  providerMessageId,
+  sentAt,
+  errorMessage,
+}: {
+  supabaseAdmin:
+    ReturnType<
+      typeof createAdminClient
+    >
+
+  message:
+    WhatsAppQueueRow
+
+  notificationType:
+    NotificationType
+
+  status:
+    LinkedEventStatus
+
+  providerMessageId?:
+    string | null
+
+  sentAt?:
+    string | null
+
+  errorMessage?:
+    string | null
+}) {
+  if (
+    notificationType ===
+    'student_arrival'
+  ) {
+    if (
+      !message
+        .attendance_evidence_id
+    ) {
+      console.error(
+        '[WHATSAPP WORKER] mensagem de entrada sem attendance_evidence_id:',
+        {
+          queueId: message.id,
+        }
+      )
+
+      return
+    }
+
+    const updatePayload =
+      status === 'sent'
+        ? {
+            whatsapp_status:
+              'sent',
+
+            whatsapp_provider_message_id:
+              providerMessageId ||
+              null,
+
+            whatsapp_sent_at:
+              sentAt || null,
+
+            whatsapp_error:
+              null,
+          }
+        : {
+            whatsapp_status:
+              status,
+
+            whatsapp_error:
+              errorMessage ||
+              null,
+          }
+
+    const {
+      error,
+    } = await supabaseAdmin
+      .from(
+        'attendance_evidence'
+      )
+      .update(updatePayload)
+      .eq(
+        'id',
+        message
+          .attendance_evidence_id
+      )
+
+    if (error) {
+      console.error(
+        '[WHATSAPP WORKER] comprovante de entrada não atualizado:',
+        {
+          queueId: message.id,
+          error,
+        }
+      )
+    }
+
+    return
+  }
+
+  if (
+    !message.regular_exit_id
+  ) {
+    console.error(
+      '[WHATSAPP WORKER] mensagem de saída sem regular_exit_id:',
+      {
+        queueId: message.id,
+      }
+    )
+
+    return
+  }
+
+  const updatePayload =
+    status === 'sent'
+      ? {
+          whatsapp_status:
+            'sent',
+
+          whatsapp_provider_message_id:
+            providerMessageId ||
+            null,
+
+          whatsapp_sent_at:
+            sentAt || null,
+
+          whatsapp_error:
+            null,
+        }
+      : {
+          whatsapp_status:
+            status,
+
+          whatsapp_error:
+            errorMessage ||
+            null,
+        }
+
+  const {
+    error,
+  } = await supabaseAdmin
+    .from(
+      'student_regular_exits'
+    )
+    .update(updatePayload)
+    .eq(
+      'id',
+      message.regular_exit_id
+    )
+
+  if (error) {
+    console.error(
+      '[WHATSAPP WORKER] saída normal não atualizada:',
+      {
+        queueId: message.id,
+        error,
+      }
+    )
+  }
 }
 
 export async function processWhatsAppQueue(
@@ -405,25 +696,18 @@ export async function processWhatsAppQueue(
   const supabaseAdmin =
     createAdminClient()
 
-  const config =
-    getWhatsAppConfig()
-
-  const batchSize = Math.max(
-    1,
-    Math.min(requestedBatchSize, 20)
-  )
-
-  const result: ProcessWhatsAppQueueResult = {
-    claimed: 0,
-    sent: 0,
-    retried: 0,
-    failed: 0,
-    releasedStale: 0,
-  }
+  const result:
+    ProcessWhatsAppQueueResult = {
+      claimed: 0,
+      sent: 0,
+      retried: 0,
+      failed: 0,
+      releasedStale: 0,
+    }
 
   /*
-   * Recupera mensagens que ficaram presas
-   * em processing após alguma interrupção.
+   * Recupera mensagens que ficaram
+   * presas em processing.
    */
   const {
     data: releasedStale,
@@ -439,20 +723,46 @@ export async function processWhatsAppQueue(
     )
   } else {
     result.releasedStale =
-      Number(releasedStale || 0)
+      Number(
+        releasedStale || 0
+      )
   }
 
   /*
-   * Reserva um lote usando FOR UPDATE
-   * SKIP LOCKED na função SQL criada.
+   * Enquanto os modelos estiverem
+   * em análise, o worker não reserva
+   * nenhuma mensagem.
    */
+  if (
+    !isWhatsAppSendingEnabled()
+  ) {
+    console.log(
+      '[WHATSAPP WORKER] envio desativado por WHATSAPP_SENDING_ENABLED.'
+    )
+
+    return result
+  }
+
+  const config =
+    getWhatsAppConfig()
+
+  const batchSize =
+    Math.max(
+      1,
+      Math.min(
+        requestedBatchSize,
+        20
+      )
+    )
+
   const {
     data: claimedMessages,
     error: claimError,
   } = await supabaseAdmin.rpc(
     'claim_whatsapp_notification_queue',
     {
-      batch_size: batchSize,
+      batch_size:
+        batchSize,
     }
   )
 
@@ -466,25 +776,62 @@ export async function processWhatsAppQueue(
     (claimedMessages ||
       []) as WhatsAppQueueRow[]
 
-  result.claimed = messages.length
+  result.claimed =
+    messages.length
 
-  for (const message of messages) {
+  for (
+    const message of messages
+  ) {
     const attemptNumber =
-      Number(message.attempts || 0) + 1
+      Number(
+        message.attempts || 0
+      ) + 1
+
+    let notificationType:
+      | NotificationType
+      | null = null
 
     try {
+      notificationType =
+        getNotificationType(
+          message.notification_type
+        )
+
+      if (
+        notificationType ===
+          'student_arrival' &&
+        !message
+          .attendance_evidence_id
+      ) {
+        throw new Error(
+          'Mensagem de entrada sem referência ao comprovante.'
+        )
+      }
+
+      if (
+        notificationType ===
+          'student_departure' &&
+        !message.regular_exit_id
+      ) {
+        throw new Error(
+          'Mensagem de saída sem referência ao registro de saída.'
+        )
+      }
+
       const payload =
         message.payload || {}
 
-      const photoBucket = safeText(
-        payload.photoBucket,
-        'attendance-proof-photos'
-      )
+      const photoBucket =
+        safeText(
+          payload.photoBucket,
+          'attendance-proof-photos'
+        )
 
-      const photoPath = safeText(
-        payload.photoPath,
-        ''
-      )
+      const photoPath =
+        safeText(
+          payload.photoPath,
+          ''
+        )
 
       if (!photoPath) {
         throw new Error(
@@ -494,59 +841,82 @@ export async function processWhatsAppQueue(
 
       const destinationPhone =
         normalizePhone(
-          message.destination_phone
+          message
+            .destination_phone
         )
 
-      /*
-       * Busca o nome atual da escola.
-       */
       const {
         data: school,
         error: schoolError,
       } = await supabaseAdmin
         .from('schools')
         .select('name')
-        .eq('id', message.school_id)
+        .eq(
+          'id',
+          message.school_id
+        )
         .maybeSingle()
 
-      if (schoolError || !school) {
+      if (
+        schoolError ||
+        !school
+      ) {
         throw new Error(
           'Escola não encontrada para o envio.'
         )
       }
 
-      const studentName = safeText(
-        payload.studentName,
-        'Aluno'
-      )
+      const studentName =
+        safeText(
+          payload.studentName,
+          'Aluno'
+        )
 
-      const className = safeText(
-        payload.className,
-        'Turma não informada'
-      )
+      const className =
+        safeText(
+          payload.className,
+          'Turma não informada'
+        )
 
-      const schoolName = safeText(
-        payload.schoolName,
-        school.name || 'Escola'
-      )
+      const schoolName =
+        safeText(
+          payload.schoolName,
+          school.name ||
+            'Escola'
+        )
 
-      const arrivalTime =
-        formatArrivalTime(
-          payload.arrivalTime,
+      const eventTimestamp =
+        notificationType ===
+        'student_departure'
+          ? payload.departureTime
+          : payload.arrivalTime
+
+      const eventTime =
+        formatEventTime(
+          eventTimestamp,
           config.timeZone
         )
 
-      /*
-       * Baixa a foto do bucket privado.
-       */
+      const templateName =
+        notificationType ===
+        'student_departure'
+          ? config
+              .departureTemplateName
+          : config
+              .arrivalTemplateName
+
       const {
         data: photoBlob,
         error: photoError,
-      } = await supabaseAdmin.storage
+      } = await supabaseAdmin
+        .storage
         .from(photoBucket)
         .download(photoPath)
 
-      if (photoError || !photoBlob) {
+      if (
+        photoError ||
+        !photoBlob
+      ) {
         throw new Error(
           `Erro ao baixar foto: ${
             photoError?.message ||
@@ -555,84 +925,95 @@ export async function processWhatsAppQueue(
         )
       }
 
-      /*
-       * Primeiro envia a foto e recebe media_id.
-       */
       const mediaId =
         await uploadImageToMeta({
           photoBlob,
+          queueId:
+            message.id,
           config,
         })
 
-      /*
-       * Depois envia o template com a foto.
-       */
       const providerMessageId =
-        await sendArrivalTemplate({
+        await sendPhotoTemplate({
           destinationPhone,
           mediaId,
+          templateName,
           studentName,
           className,
           schoolName,
-          arrivalTime,
-          queueId: message.id,
+          eventTime,
+          queueId:
+            message.id,
           config,
         })
 
       const sentAt =
-        new Date().toISOString()
+        new Date()
+          .toISOString()
 
       const {
-        error: queueUpdateError,
+        error:
+          queueUpdateError,
       } = await supabaseAdmin
         .from(
           'whatsapp_notification_queue'
         )
         .update({
           status: 'sent',
-          attempts: attemptNumber,
+
+          attempts:
+            attemptNumber,
+
           provider_message_id:
             providerMessageId,
-          sent_at: sentAt,
-          processing_started_at: null,
-          last_error: null,
-          updated_at: sentAt,
-        })
-        .eq('id', message.id)
 
+          sent_at:
+            sentAt,
+
+          processing_started_at:
+            null,
+
+          last_error:
+            null,
+
+          updated_at:
+            sentAt,
+        })
+        .eq(
+          'id',
+          message.id
+        )
+
+      /*
+       * A mensagem já foi aceita pela
+       * Meta. Portanto não lançamos novo
+       * erro aqui para evitar um reenvio
+       * proposital dentro deste mesmo ciclo.
+       */
       if (queueUpdateError) {
         console.error(
           '[WHATSAPP WORKER] mensagem enviada, mas fila não atualizada:',
           {
-            queueId: message.id,
+            queueId:
+              message.id,
+
             providerMessageId,
-            error: queueUpdateError,
+
+            error:
+              queueUpdateError,
           }
         )
       }
 
-      const {
-        error: evidenceUpdateError,
-      } = await supabaseAdmin
-        .from('attendance_evidence')
-        .update({
-          whatsapp_status: 'sent',
-          whatsapp_provider_message_id:
-            providerMessageId,
-          whatsapp_sent_at: sentAt,
-          whatsapp_error: null,
-        })
-        .eq(
-          'id',
-          message.attendance_evidence_id
-        )
-
-      if (evidenceUpdateError) {
-        console.error(
-          '[WHATSAPP WORKER] comprovante não atualizado:',
-          evidenceUpdateError
-        )
-      }
+      await updateLinkedEventStatus({
+        supabaseAdmin,
+        message,
+        notificationType,
+        status: 'sent',
+        providerMessageId,
+        sentAt,
+        errorMessage: null,
+      })
 
       result.sent++
     } catch (error) {
@@ -640,76 +1021,97 @@ export async function processWhatsAppQueue(
         getErrorMessage(error)
 
       const finalFailure =
-        attemptNumber >= MAX_ATTEMPTS
+        attemptNumber >=
+        MAX_ATTEMPTS
 
       const nextAttemptAt =
-        getRetryDate(attemptNumber)
+        getRetryDate(
+          attemptNumber
+        )
 
       console.error(
         '[WHATSAPP WORKER] falha no envio:',
         {
-          queueId: message.id,
+          queueId:
+            message.id,
+
+          notificationType:
+            message
+              .notification_type,
+
           attemptNumber,
+
           finalFailure,
-          error: errorMessage,
+
+          error:
+            errorMessage,
         }
       )
 
       const {
-        error: failureUpdateError,
+        error:
+          failureUpdateError,
       } = await supabaseAdmin
         .from(
           'whatsapp_notification_queue'
         )
         .update({
-          status: finalFailure
-            ? 'failed'
-            : 'queued',
+          status:
+            finalFailure
+              ? 'failed'
+              : 'queued',
 
-          attempts: attemptNumber,
+          attempts:
+            attemptNumber,
 
           next_attempt_at:
-            nextAttemptAt.toISOString(),
+            nextAttemptAt
+              .toISOString(),
 
-          processing_started_at: null,
+          processing_started_at:
+            null,
 
           last_error:
-            errorMessage.slice(0, 2000),
+            errorMessage.slice(
+              0,
+              2000
+            ),
 
           updated_at:
-            new Date().toISOString(),
+            new Date()
+              .toISOString(),
         })
-        .eq('id', message.id)
+        .eq(
+          'id',
+          message.id
+        )
 
-      if (failureUpdateError) {
+      if (
+        failureUpdateError
+      ) {
         console.error(
           '[WHATSAPP WORKER] erro ao reagendar fila:',
           failureUpdateError
         )
       }
 
-      const {
-        error: evidenceFailureError,
-      } = await supabaseAdmin
-        .from('attendance_evidence')
-        .update({
-          whatsapp_status: finalFailure
-            ? 'failed'
-            : 'queued',
+      if (notificationType) {
+        await updateLinkedEventStatus({
+          supabaseAdmin,
+          message,
+          notificationType,
 
-          whatsapp_error:
-            errorMessage.slice(0, 2000),
+          status:
+            finalFailure
+              ? 'failed'
+              : 'queued',
+
+          errorMessage:
+            errorMessage.slice(
+              0,
+              2000
+            ),
         })
-        .eq(
-          'id',
-          message.attendance_evidence_id
-        )
-
-      if (evidenceFailureError) {
-        console.error(
-          '[WHATSAPP WORKER] erro ao atualizar comprovante:',
-          evidenceFailureError
-        )
       }
 
       if (finalFailure) {
