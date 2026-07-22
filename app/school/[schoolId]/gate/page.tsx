@@ -34,6 +34,11 @@ type PendingFacialConfirmation = {
   capturedAt: string
 }
 
+type GateMode =
+  | 'entry'
+  | 'regular_exit'
+  | 'early_exit'
+
 export default function GatePage() {
   const params = useParams<{ schoolId: string }>()
   const router = useRouter()
@@ -45,7 +50,8 @@ export default function GatePage() {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
   const [manualQrCode, setManualQrCode] = useState('')
   const [manualMode, setManualMode] = useState(false)
-  const [gateMode, setGateMode] = useState<'entry' | 'exit'>('entry')
+  const [gateMode, setGateMode] =
+  useState<GateMode>('entry')
   const [readingMethod, setReadingMethod] = useState<'qr' | 'facial'>('qr')
   const audioContextRef = useRef<AudioContext | null>(null)
   const [loadingOffline, setLoadingOffline] = useState(false)
@@ -76,6 +82,46 @@ const [facialConfirming, setFacialConfirming] =
 
 const facialRestartTimeoutRef =
   useRef<ReturnType<typeof setTimeout> | null>(null)
+
+function changeGateMode(
+  nextMode: GateMode
+) {
+  if (
+    facialRestartTimeoutRef.current
+  ) {
+    clearTimeout(
+      facialRestartTimeoutRef.current
+    )
+
+    facialRestartTimeoutRef.current =
+      null
+  }
+
+  setIsScannerActive(false)
+  setManualMode(false)
+  setManualStudentId('')
+  setManualStudentSearch('')
+
+  setFacialCandidates([])
+  setFacialConfirmationResult(null)
+  setPendingFacialConfirmation(null)
+  setPendingFacialCapture(null)
+  setPendingFacialEmbedding(null)
+
+  setScanResult(null)
+  setGateMode(nextMode)
+
+  /*
+   * Saída normal será facial.
+   * Saída antecipada continua por QR Code.
+   * Entrada começa por QR, mas permite facial.
+   */
+  setReadingMethod(
+    nextMode === 'regular_exit'
+      ? 'facial'
+      : 'qr'
+  )
+}
 
 const [facialEnabled, setFacialEnabled] = useState(false)
 
@@ -746,13 +792,24 @@ if (rawPhone) {
   setAuthorizedByName('')
 }
 
-async function handleGateScan(text: string) {
+async function handleGateScan(
+  text: string
+) {
   if (gateMode === 'entry') {
     await handleOfflineScan(text)
     return
   }
 
-  await handleEarlyExitScan(text)
+  if (gateMode === 'early_exit') {
+    await handleEarlyExitScan(text)
+    return
+  }
+
+  setResultWithTimeout({
+    status: 'error',
+    message:
+      'A saída normal está disponível pelo reconhecimento facial.',
+  })
 }
 
 async function loadTodayEarlyExits() {
@@ -1248,17 +1305,53 @@ function ResponsiveStyles() {
   }
 
 async function handleStartReading() {
-  const initialized = await initializeAttendanceForToday()
-  if (!initialized) return
+  /*
+   * A inicialização das faltas/presenças
+   * pertence ao fluxo de entrada.
+   */
+  if (gateMode === 'entry') {
+    const initialized =
+      await initializeAttendanceForToday()
 
-  // 👇 LIBERA O ÁUDIO AQUI
+    if (!initialized) return
+  }
+
+  if (gateMode === 'regular_exit') {
+    if (!regularExitEnabled) {
+      setResultWithTimeout({
+        status: 'error',
+        message:
+          'A escola não possui o adicional de saída normal ativo.',
+      })
+
+      return
+    }
+
+    if (!navigator.onLine) {
+      setResultWithTimeout({
+        status: 'error',
+        message:
+          'A saída normal por reconhecimento facial precisa de internet.',
+      })
+
+      return
+    }
+
+    setReadingMethod('facial')
+  }
+
+  if (gateMode === 'early_exit') {
+    setReadingMethod('qr')
+  }
+
   if (!audioContextRef.current) {
     const AudioContextClass =
-      window.AudioContext || (window as any).webkitAudioContext
+      window.AudioContext ||
+      (window as any).webkitAudioContext
 
-    const ctx = new AudioContextClass()
+    const ctx =
+      new AudioContextClass()
 
-    // ESSENCIAL no mobile
     if (ctx.state === 'suspended') {
       await ctx.resume()
     }
@@ -1304,9 +1397,23 @@ async function handleStartReading() {
 }
 
   function handleNoCamera() {
-    setIsScannerActive(false)
+  setIsScannerActive(false)
+
+  if (gateMode === 'entry') {
     setManualMode(true)
+    return
   }
+
+  setManualMode(false)
+
+  setResultWithTimeout({
+    status: 'error',
+    message:
+      gateMode === 'regular_exit'
+        ? 'Não foi possível acessar a câmera para registrar a saída normal.'
+        : 'Não foi possível acessar a câmera para ler o QR Code.',
+  })
+}
 
   async function getStudentPhotoUrl(student: any) {
   if ((student as any).profile_photo_data_url) {
@@ -1796,6 +1903,8 @@ async function confirmFacialCandidate(
   }
 
   const student = candidate?.student
+  const isRegularExit =
+  gateMode === 'regular_exit'
 
   if (!student) {
     setResultWithTimeout({
@@ -1805,6 +1914,16 @@ async function confirmFacialCandidate(
 
     return
   }
+
+  if (gateMode === 'early_exit') {
+  setResultWithTimeout({
+    status: 'error',
+    message:
+      'A saída antecipada deve ser registrada pelo QR Code.',
+  })
+
+  return
+}
 
   if (!navigator.onLine) {
     setResultWithTimeout({
@@ -1853,13 +1972,19 @@ async function confirmFacialCandidate(
     )
 
     formData.append(
-      'photo',
-      pendingFacialCapture.blob,
-      `chegada-${student.id}.jpg`
-    )
+  'photo',
+  pendingFacialCapture.blob,
+  isRegularExit
+    ? `saida-${student.id}.jpg`
+    : `chegada-${student.id}.jpg`
+)
 
-    const response = await fetch(
-      '/api/gate/confirm-facial-attendance',
+    const endpoint = isRegularExit
+  ? '/api/gate/confirm-facial-regular-exit'
+  : '/api/gate/confirm-facial-attendance'
+
+const response = await fetch(
+  endpoint,
       {
         method: 'POST',
         headers: {
@@ -1894,33 +2019,39 @@ async function confirmFacialCandidate(
     ).toLocaleTimeString('pt-BR')
 
     const result: ScanResult =
-      data.duplicate
-        ? {
-            status: 'duplicate',
-            message:
-              `${student.full_name} já possui presença registrada hoje.`,
-            student: {
-              name: student.full_name,
-              className:
-                student.class_name,
-              photo:
-                candidate.photoUrl || null,
-            },
-            time: resultTime,
-          }
-        : {
-            status: 'success',
-            message:
-              'Presença registrada com sucesso.',
-            student: {
-              name: student.full_name,
-              className:
-                student.class_name,
-              photo:
-                candidate.photoUrl || null,
-            },
-            time: resultTime,
-          }
+  data.duplicate
+    ? {
+        status: 'duplicate',
+        message: isRegularExit
+          ? `${student.full_name} já possui saída normal registrada hoje.`
+          : `${student.full_name} já possui presença registrada hoje.`,
+        student: {
+          name:
+            student.full_name,
+          className:
+            student.class_name,
+          photo:
+            candidate.photoUrl ||
+            null,
+        },
+        time: resultTime,
+      }
+    : {
+        status: 'success',
+        message: isRegularExit
+          ? 'Saída normal registrada com sucesso.'
+          : 'Presença registrada com sucesso.',
+        student: {
+          name:
+            student.full_name,
+          className:
+            student.class_name,
+          photo:
+            candidate.photoUrl ||
+            null,
+        },
+        time: resultTime,
+      }
 
     setPendingFacialConfirmation(null)
     setFacialConfirmationResult(result)
@@ -1934,16 +2065,20 @@ async function confirmFacialCandidate(
     restartFacialScannerAfterConfirmation()
   } catch (error) {
     console.error(
-      '[FACIAL] erro ao confirmar presença:',
-      error
-    )
+  isRegularExit
+    ? '[FACIAL] erro ao confirmar saída normal:'
+    : '[FACIAL] erro ao confirmar presença:',
+  error
+)
 
     setResultWithTimeout({
       status: 'error',
       message:
         error instanceof Error
           ? error.message
-          : 'Erro ao registrar presença facial.',
+          : isRegularExit
+  ? 'Erro ao registrar saída facial.'
+  : 'Erro ao registrar presença facial.',
     })
   } finally {
     setFacialConfirming(false)
@@ -2036,6 +2171,11 @@ if (isFacialAvailable && navigator.onLine) {
   }
 }, [])
 
+const facialAvailableForCurrentMode =
+  gateMode === 'regular_exit'
+    ? regularExitEnabled
+    : facialEnabled
+
   if (loading) {
     return (
       <main style={pageStyle} className="gate-page">
@@ -2081,8 +2221,9 @@ if (isFacialAvailable && navigator.onLine) {
           <div style={badgeStyle}>Modo portaria</div>
           <h1 style={titleStyle}>{schoolName}</h1>
           <p style={subtitleStyle}>
-            Leitura rápida de presença por QR Code.
-          </p>
+  Controle de entrada e saída por QR Code
+  ou reconhecimento facial.
+</p>
         </div>
 
         <button
@@ -2103,46 +2244,139 @@ if (isFacialAvailable && navigator.onLine) {
           <div style={scannerHeaderStyle}>
             <div>
               <h2 style={sectionTitleStyle}>
-  {gateMode === 'entry' ? 'Leitura de entrada' : 'Registrar saída'}
+  {gateMode === 'entry'
+    ? 'Leitura de entrada'
+    : gateMode === 'regular_exit'
+    ? 'Saída normal'
+    : 'Saída antecipada'}
 </h2>
               <p style={sectionTextStyle}>
-                {gateMode === 'entry'
-  ? 'Aponte o QR Code do aluno para registrar a presença.'
-  : 'Aponte o QR Code do aluno para registrar a saída antecipada.'}
-              </p>
+  {gateMode === 'entry'
+    ? 'Leia o QR Code ou o rosto do aluno para registrar a entrada.'
+    : gateMode === 'regular_exit'
+    ? 'Reconheça o rosto do aluno para registrar e comprovar sua saída.'
+    : 'Leia o QR Code do aluno para registrar uma saída antecipada.'}
+</p>
             </div>
 
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
   <button
-    onClick={() => setGateMode('entry')}
-    style={{
-      ...secondaryButtonStyle,
-      background: gateMode === 'entry' ? '#dbeafe' : '#ffffff',
-      borderColor: gateMode === 'entry' ? '#2563eb' : '#cbd5e1',
-      color: gateMode === 'entry' ? '#1d4ed8' : '#0f172a',
-    }}
-  >
-    Entrada
-  </button>
-
-  <button
-    onClick={() => setGateMode('exit')}
-    style={{
-      ...secondaryButtonStyle,
-      background: gateMode === 'exit' ? '#ffedd5' : '#ffffff',
-      borderColor: gateMode === 'exit' ? '#f97316' : '#cbd5e1',
-      color: gateMode === 'exit' ? '#c2410c' : '#0f172a',
-    }}
-  >
-    Registrar saída
-  </button>
-  <button
-  onClick={() => setReadingMethod('qr')}
+  onClick={() =>
+    changeGateMode('entry')
+  }
   style={{
     ...secondaryButtonStyle,
-    background: readingMethod === 'qr' ? '#dbeafe' : '#ffffff',
-    borderColor: readingMethod === 'qr' ? '#2563eb' : '#cbd5e1',
-    color: readingMethod === 'qr' ? '#1d4ed8' : '#0f172a',
+    background:
+      gateMode === 'entry'
+        ? '#dbeafe'
+        : '#ffffff',
+    borderColor:
+      gateMode === 'entry'
+        ? '#2563eb'
+        : '#cbd5e1',
+    color:
+      gateMode === 'entry'
+        ? '#1d4ed8'
+        : '#0f172a',
+  }}
+>
+  Entrada
+</button>
+
+{regularExitEnabled && (
+  <button
+    onClick={() =>
+      changeGateMode(
+        'regular_exit'
+      )
+    }
+    style={{
+      ...secondaryButtonStyle,
+      background:
+        gateMode ===
+        'regular_exit'
+          ? '#dcfce7'
+          : '#ffffff',
+      borderColor:
+        gateMode ===
+        'regular_exit'
+          ? '#16a34a'
+          : '#cbd5e1',
+      color:
+        gateMode ===
+        'regular_exit'
+          ? '#15803d'
+          : '#0f172a',
+    }}
+  >
+    Saída normal
+  </button>
+)}
+
+<button
+  onClick={() =>
+    changeGateMode('early_exit')
+  }
+  style={{
+    ...secondaryButtonStyle,
+    background:
+      gateMode === 'early_exit'
+        ? '#ffedd5'
+        : '#ffffff',
+    borderColor:
+      gateMode === 'early_exit'
+        ? '#f97316'
+        : '#cbd5e1',
+    color:
+      gateMode === 'early_exit'
+        ? '#c2410c'
+        : '#0f172a',
+  }}
+>
+  Saída antecipada
+</button>
+  <button
+  onClick={() => {
+    if (
+      gateMode ===
+      'regular_exit'
+    ) {
+      setResultWithTimeout({
+        status: 'error',
+        message:
+          'A saída normal está disponível pelo reconhecimento facial.',
+      })
+
+      return
+    }
+
+    setReadingMethod('qr')
+  }}
+  disabled={
+    gateMode === 'regular_exit'
+  }
+  style={{
+    ...secondaryButtonStyle,
+    background:
+      readingMethod === 'qr'
+        ? '#dbeafe'
+        : '#ffffff',
+    borderColor:
+      readingMethod === 'qr'
+        ? '#2563eb'
+        : '#cbd5e1',
+    color:
+      readingMethod === 'qr'
+        ? '#1d4ed8'
+        : '#0f172a',
+    opacity:
+      gateMode === 'regular_exit'
+        ? 0.5
+        : 1,
+    cursor:
+      gateMode === 'regular_exit'
+        ? 'not-allowed'
+        : 'pointer',
   }}
 >
   QR Code
@@ -2150,12 +2384,16 @@ if (isFacialAvailable && navigator.onLine) {
 
 <button
   onClick={() => {
-    if (!facialEnabled) {
+    if (
+  !facialAvailableForCurrentMode
+) {
       setResultWithTimeout({
-        status: 'error',
-        message:
-          'Reconhecimento facial disponível apenas no plano Presença Inteligente.',
-      })
+  status: 'error',
+  message:
+    gateMode === 'regular_exit'
+      ? 'A escola não possui o adicional de saída normal ativo.'
+      : 'Reconhecimento facial disponível apenas no plano Presença Inteligente.',
+})
       return
     }
 
@@ -2186,20 +2424,25 @@ generateFaceEmbeddingFromBlob(
   // Apenas aquece o modelo facial
 })
   }}
-  disabled={gateMode === 'exit'}
+  disabled={
+  gateMode === 'early_exit'
+}
   style={{
     ...secondaryButtonStyle,
     background: readingMethod === 'facial' ? '#dcfce7' : '#ffffff',
     borderColor: readingMethod === 'facial' ? '#16a34a' : '#cbd5e1',
     color: readingMethod === 'facial' ? '#15803d' : '#0f172a',
-    opacity: gateMode === 'exit' ? 0.5 : 1,
-    cursor: gateMode === 'exit' ? 'not-allowed' : 'pointer',
+    opacity: gateMode === 'early_exit' ? 0.5 : 1,
+    cursor: gateMode === 'early_exit' ? 'not-allowed' : 'pointer',
   }}
 >
-  {facialEnabled ? 'Facial' : 'Facial Bloqueado'}
+  {facialAvailableForCurrentMode
+  ? 'Facial'
+  : 'Facial Bloqueado'}
 </button>
 
-{!facialEnabled && (
+{gateMode === 'entry' &&
+  !facialEnabled && (
   <div
     style={{
       fontSize: 12,
@@ -2267,7 +2510,9 @@ generateFaceEmbeddingFromBlob(
                 </button>
               )}
 
-              {!isScannerActive && !manualMode && (
+              {!isScannerActive &&
+  !manualMode &&
+  gateMode === 'entry' && (
                 <button
                   onClick={() => setManualMode(true)}
                   style={secondaryButtonStyle}
@@ -2288,16 +2533,24 @@ generateFaceEmbeddingFromBlob(
   />
 )}
 
-{readingMethod === 'facial' && facialEnabled && (
+{readingMethod === 'facial' &&
+  facialAvailableForCurrentMode && (
   <FacialScanner
-  isActive={isScannerActive && facialEnabled}
+  isActive={
+  isScannerActive &&
+  facialAvailableForCurrentMode
+}
   cameraMode={facialCameraMode}
   onCameraModeChange={setFacialCameraMode}
   onNoCamera={handleNoCamera}
   onFaceCapture={handleFaceCapture}
   onCancel={() => {
   setIsScannerActive(false)
-  setReadingMethod('qr')
+  setReadingMethod(
+  gateMode === 'regular_exit'
+    ? 'facial'
+    : 'qr'
+)
   setFacialCandidates([])
   setFacialConfirmationResult(null)
   setPendingFacialConfirmation(null)
@@ -2363,7 +2616,11 @@ generateFaceEmbeddingFromBlob(
           {!isScannerActive && !manualMode && (
             <div style={idleBoxStyle}>
               Clique em <strong>Iniciar leitura</strong> para começar o registro de{' '}
-{gateMode === 'entry' ? 'entrada.' : 'saída.'}
+{gateMode === 'entry'
+  ? 'entrada.'
+  : gateMode === 'regular_exit'
+  ? 'saída normal.'
+  : 'saída antecipada.'}
             </div>
           )}
         </div>
@@ -2446,7 +2703,7 @@ generateFaceEmbeddingFromBlob(
     boxShadow: '0 12px 40px rgba(15, 23, 42, 0.08)',
   }}
 >
-  <h2 style={sectionTitleStyle}>Saídas registradas hoje</h2>
+  <h2 style={sectionTitleStyle}>Saídas antecipadas registradas hoje</h2>
 
   {todayEarlyExits.length === 0 ? (
     <p style={sectionTextStyle}>
@@ -2580,7 +2837,9 @@ generateFaceEmbeddingFromBlob(
           </h2>
 
           <p style={sectionTextStyle}>
-            Toque na sua foto para confirmar a presença.
+            {gateMode === 'regular_exit'
+  ? 'Toque na sua foto para confirmar a saída.'
+  : 'Toque na sua foto para confirmar a presença.'}
           </p>
 
           {facialPhotosLoading && (
@@ -2779,11 +3038,15 @@ generateFaceEmbeddingFromBlob(
           fontSize: 28,
         }}
       >
-        Confirmar chegada
+        {gateMode === 'regular_exit'
+  ? 'Confirmar saída'
+  : 'Confirmar chegada'}
       </h2>
 
       <p style={sectionTextStyle}>
-        Confira seus dados antes de confirmar.
+        {gateMode === 'regular_exit'
+  ? 'Confira seus dados antes de registrar a saída.'
+  : 'Confira seus dados antes de registrar a chegada.'}
       </p>
 
       {pendingFacialConfirmation
@@ -2907,8 +3170,10 @@ generateFaceEmbeddingFromBlob(
           }}
         >
           {facialConfirming
-            ? 'Confirmando...'
-            : 'Confirmar'}
+  ? 'Confirmando...'
+  : gateMode === 'regular_exit'
+  ? 'Confirmar saída'
+  : 'Confirmar chegada'}
         </button>
 
         <button
