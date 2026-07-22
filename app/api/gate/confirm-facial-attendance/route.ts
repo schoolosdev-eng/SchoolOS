@@ -1,9 +1,16 @@
 import { randomUUID } from 'crypto'
-import { NextResponse } from 'next/server'
+import {
+  after,
+  NextResponse,
+} from 'next/server'
+import {
+  processWhatsAppQueue,
+} from '@/lib/whatsapp/processWhatsAppQueue'
 import { createClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 const PHOTO_BUCKET = 'attendance-proof-photos'
 const SCHOOL_TIMEZONE = 'America/Fortaleza'
@@ -843,6 +850,17 @@ if (queueError) {
       'A presença e a foto foram registradas, mas a mensagem não pôde ser adicionada à fila.',
   })
 }
+
+after(async () => {
+  try {
+    await processWhatsAppQueue(3)
+  } catch (error) {
+    console.error(
+      '[CONFIRMAÇÃO FACIAL] erro no processamento assíncrono do WhatsApp:',
+      error
+    )
+  }
+})
 
 return NextResponse.json({
   ...baseResponse,
