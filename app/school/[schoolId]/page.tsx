@@ -21,6 +21,7 @@ import StudentsListSection from '@/components/StudentsListSection'
 import ClassMapSection from '@/components/ClassMapSection'
 import PlansSection from '@/components/PlansSection'
 import AttendanceFrequencyRanking from '@/components/AttendanceFrequencyRanking'
+import SchoolSettingsSection from '@/components/SchoolSettingsSection'
 import { generateFaceEmbeddingFromBlob } from '@/lib/faceRecognition'
 
 type Student = {
@@ -272,6 +273,7 @@ const [activeSection, setActiveSection] = useState<
   | 'rankings'
   | 'assessments'
   | 'plans'
+  | 'settings'
 >('overview')
 
   const isAdmin = userRole === 'admin'
@@ -3416,6 +3418,7 @@ function handleChangeSection(
     | 'rankings'
     | 'assessments'
     | 'plans'
+    | 'settings'
 ) {
   setActiveSection(section)
 
@@ -3574,6 +3577,24 @@ style={{
 >
   Rankings
 </button>
+
+{(isAdmin || isManager) && (
+  <button
+    onClick={() =>
+      handleChangeSection(
+        'settings'
+      )
+    }
+    style={
+      activeSection ===
+      'settings'
+        ? dashboardNavButtonActiveStyle
+        : dashboardNavButtonStyle
+    }
+  >
+    Configurações
+  </button>
+)}
 
   <button
   onClick={() => handleChangeSection('assessments')}
@@ -4697,6 +4718,27 @@ onClick={() => {
       o módulo de avaliações.
     </div>
   )
+)}
+{activeSection === 'settings' &&
+  (isAdmin || isManager) && (
+    <SchoolSettingsSection
+      schoolId={schoolId}
+      currentUserId={
+        currentUserId
+      }
+      students={students.map(
+        (student) => ({
+          ...student,
+
+          class_name:
+            studentClassMap[
+              student.id
+            ]?.class_name ||
+            'Sem turma',
+        })
+      )}
+      showMessage={showMessage}
+    />
 )}
 {activeSection === 'plans' && (isAdmin || isManager) && (
   <PlansSection
