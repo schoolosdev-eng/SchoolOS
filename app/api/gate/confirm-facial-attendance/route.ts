@@ -497,71 +497,63 @@ const baseResponse = {
 }
 
 /*
- * 9. Verifica especificamente o adicional
- * de entrada com foto e WhatsApp.
+ * 9. Verifica se este aluno possui
+ * acesso ao adicional de entrada.
+ *
+ * A função considera:
+ * - assinatura ativa;
+ * - datas de vigência;
+ * - cobertura para todos;
+ * - ou seleção individual do aluno.
  */
-const now = new Date()
-
 const {
-  data: addonSubscription,
-  error: addonError,
-} = await supabaseAdmin
-  .from('school_addon_subscriptions')
-  .select(`
-    id,
-    addon_code,
-    status,
-    student_limit,
-    current_period_start,
-    current_period_end
-  `)
-  .eq('school_id', schoolId)
-  .eq(
-    'addon_code',
-    'arrival_photo_whatsapp'
-  )
-  .eq('status', 'active')
-  .maybeSingle()
-
-if (addonError) {
-  console.error(
-    '[CONFIRMAÇÃO FACIAL] erro ao consultar adicional de entrada:',
-    addonError
-  )
-}
-
-const addonStarted =
-  !addonSubscription?.current_period_start ||
-  new Date(
-    addonSubscription.current_period_start
-  ).getTime() <= now.getTime()
-
-const addonNotExpired =
-  !addonSubscription?.current_period_end ||
-  new Date(
-    addonSubscription.current_period_end
-  ).getTime() >= now.getTime()
-
-const arrivalAddonIsActive = Boolean(
-  addonSubscription &&
-  addonStarted &&
-  addonNotExpired
+  data: arrivalAddonEligible,
+  error: addonEligibilityError,
+} = await supabaseAdmin.rpc(
+  'student_has_active_school_addon',
+  {
+    p_school_id: schoolId,
+    p_student_id: studentId,
+    p_addon_code:
+      'arrival_photo_whatsapp',
+  }
 )
 
-/*
- * Sem o adicional, encerra aqui.
- *
- * A presença já foi registrada, mas a foto
- * não será armazenada e nenhuma mensagem
- * será adicionada à fila.
- */
-if (!arrivalAddonIsActive) {
+if (addonEligibilityError) {
+  console.error(
+    '[CONFIRMAÇÃO FACIAL] erro ao verificar elegibilidade do aluno:',
+    addonEligibilityError
+  )
+
+  /*
+   * A presença já foi registrada.
+   * Um erro na verificação premium não pode
+   * impedir a entrada nem travar a portaria.
+   */
   return NextResponse.json({
     ...baseResponse,
-    addonActive: false,
+    addonEligible: false,
     evidenceSaved: false,
     whatsappQueued: false,
-    whatsappStatus: 'not_contracted',
+    whatsappStatus:
+      'eligibility_check_failed',
+    warning:
+      'A presença foi registrada, mas não foi possível verificar o adicional de mensagens.',
+  })
+}
+
+/*
+ * Aluno não coberto pelo adicional:
+ * registra apenas a presença.
+ */
+if (arrivalAddonEligible !== true) {
+  return NextResponse.json({
+    ...baseResponse,
+    addonEligible: false,
+    evidenceSaved: false,
+    whatsappQueued: false,
+    whatsappStatus:
+      'not_eligible',
   })
 }
 
@@ -575,7 +567,7 @@ if (
 ) {
   return NextResponse.json({
     ...baseResponse,
-    addonActive: true,
+    addonEligible: true,
     evidenceSaved: false,
     whatsappQueued: false,
     whatsappStatus: 'failed',
@@ -593,7 +585,7 @@ const allowedMimeTypes = new Set([
 if (!allowedMimeTypes.has(photoEntry.type)) {
   return NextResponse.json({
     ...baseResponse,
-    addonActive: true,
+    addonEligible: true,
     evidenceSaved: false,
     whatsappQueued: false,
     whatsappStatus: 'failed',
@@ -605,7 +597,7 @@ if (!allowedMimeTypes.has(photoEntry.type)) {
 if (photoEntry.size <= 0) {
   return NextResponse.json({
     ...baseResponse,
-    addonActive: true,
+    addonEligible: true,
     evidenceSaved: false,
     whatsappQueued: false,
     whatsappStatus: 'failed',
@@ -617,7 +609,7 @@ if (photoEntry.size <= 0) {
 if (photoEntry.size > 2 * 1024 * 1024) {
   return NextResponse.json({
     ...baseResponse,
-    addonActive: true,
+    addonEligible: true,
     evidenceSaved: false,
     whatsappQueued: false,
     whatsappStatus: 'failed',
@@ -673,7 +665,7 @@ if (photoUploadError) {
 
   return NextResponse.json({
     ...baseResponse,
-    addonActive: true,
+    addonEligible: true,
     evidenceSaved: false,
     whatsappQueued: false,
     whatsappStatus: 'failed',
@@ -749,7 +741,7 @@ if (evidenceError || !evidence) {
 
   return NextResponse.json({
     ...baseResponse,
-    addonActive: true,
+    addonEligible: true,
     evidenceSaved: false,
     whatsappQueued: false,
     whatsappStatus: 'failed',
@@ -765,7 +757,7 @@ if (evidenceError || !evidence) {
 if (!responsibleWhatsApp) {
   return NextResponse.json({
     ...baseResponse,
-    addonActive: true,
+    addonEligible: true,
     evidenceSaved: true,
     evidenceId: evidence.id,
     whatsappQueued: false,
@@ -841,7 +833,7 @@ if (queueError) {
 
   return NextResponse.json({
     ...baseResponse,
-    addonActive: true,
+    addonEligible: true,
     evidenceSaved: true,
     evidenceId: evidence.id,
     whatsappQueued: false,
@@ -864,7 +856,7 @@ after(async () => {
 
 return NextResponse.json({
   ...baseResponse,
-  addonActive: true,
+  addonEligible: true,
   evidenceSaved: true,
   evidenceId: evidence.id,
   whatsappQueued: true,
