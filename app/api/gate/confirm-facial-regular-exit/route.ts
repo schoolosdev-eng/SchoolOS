@@ -1,19 +1,28 @@
 import { randomUUID } from 'crypto'
-import {
-  after,
-  NextResponse,
-} from 'next/server'
-import {
-  processWhatsAppQueue,
-} from '@/lib/whatsapp/processWhatsAppQueue'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import sharp from 'sharp'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-const PHOTO_BUCKET = 'attendance-proof-photos'
-const SCHOOL_TIMEZONE = 'America/Fortaleza'
+const PHOTO_BUCKET =
+  'attendance-proof-photos'
+
+const PROFILE_PHOTO_BUCKET =
+  'student-profile-photos'
+
+const SCHOOL_TIMEZONE =
+  'America/Fortaleza'
+
+type RegularExitSource =
+  | 'facial'
+  | 'qr'
+
+type PhotoOrigin =
+  | 'facial_capture'
+  | 'profile_snapshot'
 
 function createAdminClient() {
   const supabaseUrl =
@@ -22,7 +31,10 @@ function createAdminClient() {
   const serviceRoleKey =
     process.env.SUPABASE_SERVICE_ROLE_KEY
 
-  if (!supabaseUrl || !serviceRoleKey) {
+  if (
+    !supabaseUrl ||
+    !serviceRoleKey
+  ) {
     throw new Error(
       'Variáveis administrativas do Supabase não configuradas.'
     )
@@ -40,11 +52,19 @@ function createAdminClient() {
   )
 }
 
-function getBearerToken(request: Request) {
+function getBearerToken(
+  request: Request
+) {
   const authorization =
-    request.headers.get('authorization')
+    request.headers.get(
+      'authorization'
+    )
 
-  if (!authorization?.startsWith('Bearer ')) {
+  if (
+    !authorization?.startsWith(
+      'Bearer '
+    )
+  ) {
     return null
   }
 
@@ -57,29 +77,37 @@ function getDateInTimeZone(
   date: Date,
   timeZone: string
 ) {
-  const parts = new Intl.DateTimeFormat(
-    'en-US',
-    {
-      timeZone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }
-  ).formatToParts(date)
+  const parts =
+    new Intl.DateTimeFormat(
+      'en-US',
+      {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }
+    ).formatToParts(date)
 
   const year = parts.find(
-    (part) => part.type === 'year'
+    (part) =>
+      part.type === 'year'
   )?.value
 
   const month = parts.find(
-    (part) => part.type === 'month'
+    (part) =>
+      part.type === 'month'
   )?.value
 
   const day = parts.find(
-    (part) => part.type === 'day'
+    (part) =>
+      part.type === 'day'
   )?.value
 
-  if (!year || !month || !day) {
+  if (
+    !year ||
+    !month ||
+    !day
+  ) {
     throw new Error(
       'Não foi possível determinar a data da saída.'
     )
@@ -92,30 +120,38 @@ function getTimeInTimeZone(
   date: Date,
   timeZone: string
 ) {
-  const parts = new Intl.DateTimeFormat(
-    'en-GB',
-    {
-      timeZone,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hourCycle: 'h23',
-    }
-  ).formatToParts(date)
+  const parts =
+    new Intl.DateTimeFormat(
+      'en-GB',
+      {
+        timeZone,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hourCycle: 'h23',
+      }
+    ).formatToParts(date)
 
   const hour = parts.find(
-    (part) => part.type === 'hour'
+    (part) =>
+      part.type === 'hour'
   )?.value
 
   const minute = parts.find(
-    (part) => part.type === 'minute'
+    (part) =>
+      part.type === 'minute'
   )?.value
 
   const second = parts.find(
-    (part) => part.type === 'second'
+    (part) =>
+      part.type === 'second'
   )?.value
 
-  if (!hour || !minute || !second) {
+  if (
+    !hour ||
+    !minute ||
+    !second
+  ) {
     throw new Error(
       'Não foi possível determinar o horário da saída.'
     )
@@ -125,18 +161,23 @@ function getTimeInTimeZone(
 }
 
 function normalizeWhatsApp(
-  value: string | null | undefined
+  value:
+    | string
+    | null
+    | undefined
 ) {
   const digits =
-    value?.replace(/\D/g, '') || ''
+    value?.replace(/\D/g, '') ||
+    ''
 
   if (!digits) {
     return null
   }
 
-  const normalized = digits.startsWith('55')
-    ? digits
-    : `55${digits}`
+  const normalized =
+    digits.startsWith('55')
+      ? digits
+      : `55${digits}`
 
   if (
     normalized.length < 12 ||
@@ -148,27 +189,50 @@ function normalizeWhatsApp(
   return normalized
 }
 
-function getPhotoExtension(
-  mimeType: string
+function addFiveYears(
+  date: Date
 ) {
-  if (mimeType === 'image/webp') {
-    return 'webp'
-  }
-
-  return 'jpg'
-}
-
-function addFiveYears(date: Date) {
-  const retentionDate = new Date(date)
+  const retentionDate =
+    new Date(date)
 
   retentionDate.setUTCFullYear(
-    retentionDate.getUTCFullYear() + 5
+    retentionDate.getUTCFullYear() +
+      5
   )
 
   return retentionDate
 }
 
-export async function POST(request: Request) {
+/*
+ * Converte qualquer imagem aceita pelo
+ * Sharp em JPEG, redimensionando imagens
+ * excessivamente grandes.
+ */
+async function normalizePhotoToJpeg(
+  buffer: Buffer
+) {
+  return sharp(buffer)
+    .rotate()
+    .resize({
+      width: 1280,
+      height: 1280,
+      fit: 'inside',
+      withoutEnlargement: true,
+    })
+    .jpeg({
+      quality: 82,
+      mozjpeg: true,
+    })
+    .toBuffer()
+}
+
+export async function POST(
+  request: Request
+) {
+  let uploadedPhotoPath:
+    | string
+    | null = null
+
   try {
     const accessToken =
       getBearerToken(request)
@@ -189,16 +253,20 @@ export async function POST(request: Request) {
       createAdminClient()
 
     /*
-     * 1. Identifica o usuário da portaria.
+     * 1. Identifica o usuário.
      */
     const {
       data: { user },
       error: userError,
-    } = await supabaseAdmin.auth.getUser(
-      accessToken
-    )
+    } =
+      await supabaseAdmin.auth.getUser(
+        accessToken
+      )
 
-    if (userError || !user) {
+    if (
+      userError ||
+      !user
+    ) {
       return NextResponse.json(
         {
           error:
@@ -211,26 +279,41 @@ export async function POST(request: Request) {
     }
 
     /*
-     * 2. Lê os dados enviados pelo tablet.
+     * 2. Lê os dados enviados.
+     *
+     * source é opcional temporariamente
+     * para preservar o fluxo facial atual.
      */
     const formData =
       await request.formData()
 
     const schoolId = String(
-      formData.get('schoolId') || ''
+      formData.get('schoolId') ||
+        ''
     ).trim()
 
     const studentId = String(
-      formData.get('studentId') || ''
+      formData.get('studentId') ||
+        ''
     ).trim()
 
     const classId = String(
-      formData.get('classId') || ''
+      formData.get('classId') ||
+        ''
     ).trim()
 
-    const capturedAtValue = String(
-      formData.get('capturedAt') || ''
-    ).trim()
+    const capturedAtValue =
+      String(
+        formData.get(
+          'capturedAt'
+        ) || ''
+      ).trim()
+
+    const sourceValue =
+      String(
+        formData.get('source') ||
+          'facial'
+      ).trim()
 
     const photoEntry =
       formData.get('photo')
@@ -252,16 +335,38 @@ export async function POST(request: Request) {
       )
     }
 
-    const capturedAt =
-      new Date(capturedAtValue)
-
     if (
-      Number.isNaN(capturedAt.getTime())
+      sourceValue !== 'facial' &&
+      sourceValue !== 'qr'
     ) {
       return NextResponse.json(
         {
           error:
-            'Horário da captura inválido.',
+            'Fonte da saída inválida.',
+        },
+        {
+          status: 400,
+        }
+      )
+    }
+
+    const source =
+      sourceValue as RegularExitSource
+
+    const capturedAt =
+      new Date(
+        capturedAtValue
+      )
+
+    if (
+      Number.isNaN(
+        capturedAt.getTime()
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'Horário da saída inválido.',
         },
         {
           status: 400,
@@ -270,17 +375,28 @@ export async function POST(request: Request) {
     }
 
     /*
-     * 3. Confere a permissão do usuário.
+     * 3. Verifica a permissão.
      */
     const {
       data: membership,
       error: membershipError,
     } = await supabaseAdmin
-      .from('school_memberships')
+      .from(
+        'school_memberships'
+      )
       .select('role, status')
-      .eq('school_id', schoolId)
-      .eq('user_id', user.id)
-      .eq('status', 'active')
+      .eq(
+        'school_id',
+        schoolId
+      )
+      .eq(
+        'user_id',
+        user.id
+      )
+      .eq(
+        'status',
+        'active'
+      )
       .maybeSingle()
 
     if (
@@ -290,7 +406,9 @@ export async function POST(request: Request) {
         'admin',
         'gestor',
         'professor',
-      ].includes(membership.role)
+      ].includes(
+        membership.role
+      )
     ) {
       return NextResponse.json(
         {
@@ -304,8 +422,11 @@ export async function POST(request: Request) {
     }
 
     /*
-     * 4. Verifica obrigatoriamente o adicional
-     * de saída normal.
+     * 4. A escola precisa possuir o
+     * adicional de saída ativo.
+     *
+     * A cobertura individual será
+     * verificada posteriormente.
      */
     const now = new Date()
 
@@ -313,21 +434,28 @@ export async function POST(request: Request) {
       data: addonSubscription,
       error: addonError,
     } = await supabaseAdmin
-      .from('school_addon_subscriptions')
+      .from(
+        'school_addon_subscriptions'
+      )
       .select(`
         id,
-        addon_code,
         status,
-        student_limit,
+        coverage_mode,
         current_period_start,
         current_period_end
       `)
-      .eq('school_id', schoolId)
+      .eq(
+        'school_id',
+        schoolId
+      )
       .eq(
         'addon_code',
         'regular_exit_photo_whatsapp'
       )
-      .eq('status', 'active')
+      .eq(
+        'status',
+        'active'
+      )
       .maybeSingle()
 
     if (addonError) {
@@ -352,27 +480,33 @@ export async function POST(request: Request) {
         ?.current_period_start ||
       new Date(
         addonSubscription.current_period_start
-      ).getTime() <= now.getTime()
+      ).getTime() <=
+        now.getTime()
 
     const addonNotExpired =
       !addonSubscription
         ?.current_period_end ||
       new Date(
         addonSubscription.current_period_end
-      ).getTime() >= now.getTime()
+      ).getTime() >=
+        now.getTime()
 
-    const exitAddonIsActive = Boolean(
-      addonSubscription &&
-      addonStarted &&
-      addonNotExpired
-    )
+    const schoolExitAddonActive =
+      Boolean(
+        addonSubscription &&
+          addonStarted &&
+          addonNotExpired
+      )
 
-    if (!exitAddonIsActive) {
+    if (
+      !schoolExitAddonActive
+    ) {
       return NextResponse.json(
         {
           error:
             'A escola não possui o adicional de saída normal ativo.',
-          code: 'REGULAR_EXIT_ADDON_REQUIRED',
+          code:
+            'REGULAR_EXIT_ADDON_REQUIRED',
         },
         {
           status: 403,
@@ -381,78 +515,7 @@ export async function POST(request: Request) {
     }
 
     /*
-     * 5. Como o recurso contratado inclui
-     * comprovação fotográfica, a foto é
-     * obrigatória.
-     */
-    if (
-      !photoEntry ||
-      !(photoEntry instanceof File)
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            'A foto da saída não foi enviada.',
-        },
-        {
-          status: 400,
-        }
-      )
-    }
-
-    const allowedMimeTypes =
-      new Set([
-        'image/jpeg',
-        'image/jpg',
-        'image/webp',
-      ])
-
-    if (
-      !allowedMimeTypes.has(
-        photoEntry.type
-      )
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            'Formato da foto inválido. Utilize JPEG ou WebP.',
-        },
-        {
-          status: 400,
-        }
-      )
-    }
-
-    if (photoEntry.size <= 0) {
-      return NextResponse.json(
-        {
-          error:
-            'A foto da saída está vazia.',
-        },
-        {
-          status: 400,
-        }
-      )
-    }
-
-    if (
-      photoEntry.size >
-      2 * 1024 * 1024
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            'A foto ultrapassou o limite de 2 MB.',
-        },
-        {
-          status: 400,
-        }
-      )
-    }
-
-    /*
-     * 6. Busca o aluno e o WhatsApp atual
-     * cadastrado no perfil.
+     * 5. Busca o aluno.
      */
     const {
       data: student,
@@ -463,13 +526,20 @@ export async function POST(request: Request) {
         id,
         school_id,
         full_name,
+        profile_photo_path,
         responsible_whatsapp
       `)
       .eq('id', studentId)
-      .eq('school_id', schoolId)
+      .eq(
+        'school_id',
+        schoolId
+      )
       .maybeSingle()
 
-    if (studentError || !student) {
+    if (
+      studentError ||
+      !student
+    ) {
       return NextResponse.json(
         {
           error:
@@ -482,19 +552,27 @@ export async function POST(request: Request) {
     }
 
     /*
-     * 7. Confere a turma.
+     * 6. Confere turma e matrícula.
      */
     const {
       data: schoolClass,
       error: classError,
     } = await supabaseAdmin
       .from('classes')
-      .select('id, school_id, name')
+      .select(
+        'id, school_id, name'
+      )
       .eq('id', classId)
-      .eq('school_id', schoolId)
+      .eq(
+        'school_id',
+        schoolId
+      )
       .maybeSingle()
 
-    if (classError || !schoolClass) {
+    if (
+      classError ||
+      !schoolClass
+    ) {
       return NextResponse.json(
         {
           error:
@@ -506,18 +584,26 @@ export async function POST(request: Request) {
       )
     }
 
-    /*
-     * 8. Confere a matrícula.
-     */
     const {
       data: enrollment,
       error: enrollmentError,
     } = await supabaseAdmin
       .from('enrollments')
-      .select('student_id, class_id')
-      .eq('school_id', schoolId)
-      .eq('student_id', studentId)
-      .eq('class_id', classId)
+      .select(
+        'student_id, class_id'
+      )
+      .eq(
+        'school_id',
+        schoolId
+      )
+      .eq(
+        'student_id',
+        studentId
+      )
+      .eq(
+        'class_id',
+        classId
+      )
       .maybeSingle()
 
     if (
@@ -548,23 +634,36 @@ export async function POST(request: Request) {
       )
 
     /*
-     * 9. A saída comum exige presença
-     * registrada no mesmo dia.
+     * 7. Exige presença registrada.
      */
     const {
       data: attendanceRecord,
       error: attendanceError,
     } = await supabaseAdmin
-      .from('attendance_records')
+      .from(
+        'attendance_records'
+      )
       .select(`
         id,
         status,
         updated_at
       `)
-      .eq('school_id', schoolId)
-      .eq('student_id', studentId)
-      .eq('class_id', classId)
-      .eq('attendance_date', exitDate)
+      .eq(
+        'school_id',
+        schoolId
+      )
+      .eq(
+        'student_id',
+        studentId
+      )
+      .eq(
+        'class_id',
+        classId
+      )
+      .eq(
+        'attendance_date',
+        exitDate
+      )
       .maybeSingle()
 
     if (attendanceError) {
@@ -603,17 +702,21 @@ export async function POST(request: Request) {
     }
 
     /*
-     * 10. Impede uma segunda saída normal.
+     * 8. Impede saída duplicada.
      */
     const {
       data: existingRegularExit,
-      error: regularExitError,
+      error: existingExitError,
     } = await supabaseAdmin
-      .from('student_regular_exits')
+      .from(
+        'student_regular_exits'
+      )
       .select(`
         id,
         exit_time,
-        recorded_at
+        recorded_at,
+        source,
+        whatsapp_status
       `)
       .eq(
         'attendance_record_id',
@@ -621,12 +724,7 @@ export async function POST(request: Request) {
       )
       .maybeSingle()
 
-    if (regularExitError) {
-      console.error(
-        '[SAÍDA NORMAL] erro ao consultar saída existente:',
-        regularExitError
-      )
-
+    if (existingExitError) {
       return NextResponse.json(
         {
           error:
@@ -652,37 +750,47 @@ export async function POST(request: Request) {
           existingRegularExit.exit_time,
         capturedAt:
           existingRegularExit.recorded_at,
+        source:
+          existingRegularExit.source,
         whatsappQueued: false,
         whatsappStatus:
-          'not_queued',
+          existingRegularExit.whatsapp_status,
       })
     }
 
     /*
-     * 11. Uma saída antecipada já registrada
-     * impede a saída normal.
+     * 9. Impede saída normal quando já
+     * existe saída antecipada.
      */
     const {
       data: earlyExits,
       error: earlyExitError,
     } = await supabaseAdmin
-      .from('student_early_exits')
-      .select(`
-        id,
-        exit_time
-      `)
-      .eq('school_id', schoolId)
-      .eq('student_id', studentId)
-      .eq('class_id', classId)
-      .eq('exit_date', exitDate)
+      .from(
+        'student_early_exits'
+      )
+      .select(
+        'id, exit_time'
+      )
+      .eq(
+        'school_id',
+        schoolId
+      )
+      .eq(
+        'student_id',
+        studentId
+      )
+      .eq(
+        'class_id',
+        classId
+      )
+      .eq(
+        'exit_date',
+        exitDate
+      )
       .limit(1)
 
     if (earlyExitError) {
-      console.error(
-        '[SAÍDA NORMAL] erro ao consultar saída antecipada:',
-        earlyExitError
-      )
-
       return NextResponse.json(
         {
           error:
@@ -712,60 +820,231 @@ export async function POST(request: Request) {
     }
 
     /*
-     * 12. Armazena a foto da saída.
+     * 10. Verifica se este aluno possui
+     * foto/WhatsApp do adicional.
      */
-    const extension =
-      getPhotoExtension(
-        photoEntry.type
-      )
-
-    const [year, month, day] =
-      exitDate.split('-')
-
-    const photoPath = [
-      schoolId,
-      year,
-      month,
-      day,
-      studentId,
-      `regular-exit-${randomUUID()}.${extension}`,
-    ].join('/')
-
-    const photoBuffer =
-      Buffer.from(
-        await photoEntry.arrayBuffer()
-      )
-
     const {
-      error: photoUploadError,
-    } = await supabaseAdmin.storage
-      .from(PHOTO_BUCKET)
-      .upload(
-        photoPath,
-        photoBuffer,
-        {
-          contentType:
-            photoEntry.type,
-          cacheControl: '3600',
-          upsert: false,
-        }
-      )
+      data: studentAddonEligible,
+      error: eligibilityError,
+    } = await supabaseAdmin.rpc(
+      'student_has_active_school_addon',
+      {
+        p_school_id:
+          schoolId,
 
-    if (photoUploadError) {
+        p_student_id:
+          studentId,
+
+        p_addon_code:
+          'regular_exit_photo_whatsapp',
+      }
+    )
+
+    let addonEligible =
+      studentAddonEligible ===
+      true
+
+    let eligibilityFailed =
+      false
+
+    if (eligibilityError) {
       console.error(
-        '[SAÍDA NORMAL] erro ao salvar foto:',
-        photoUploadError
+        '[SAÍDA NORMAL] erro ao consultar elegibilidade individual:',
+        eligibilityError
       )
 
-      return NextResponse.json(
-        {
-          error:
-            'Não foi possível armazenar a foto da saída.',
-        },
-        {
-          status: 500,
+      /*
+       * A falha premium não impede
+       * o registro da saída.
+       */
+      addonEligible = false
+      eligibilityFailed = true
+    }
+
+    /*
+     * 11. Obtém a foto premium.
+     *
+     * Facial:
+     * usa a captura atual.
+     *
+     * QR:
+     * baixa e copia a foto de perfil.
+     */
+    let normalizedPhoto:
+      | Buffer
+      | null = null
+
+    let photoOrigin:
+      | PhotoOrigin
+      | null = null
+
+    let photoWarning:
+      | string
+      | null = null
+
+    if (addonEligible) {
+      if (source === 'facial') {
+        if (
+          !photoEntry ||
+          !(
+            photoEntry instanceof
+            File
+          )
+        ) {
+          photoWarning =
+            'A captura facial da saída não foi recebida.'
+        } else if (
+          photoEntry.size <= 0
+        ) {
+          photoWarning =
+            'A captura facial da saída está vazia.'
+        } else if (
+          photoEntry.size >
+          2 * 1024 * 1024
+        ) {
+          photoWarning =
+            'A captura facial ultrapassou o limite de 2 MB.'
+        } else {
+          try {
+            const originalBuffer =
+              Buffer.from(
+                await photoEntry.arrayBuffer()
+              )
+
+            normalizedPhoto =
+              await normalizePhotoToJpeg(
+                originalBuffer
+              )
+
+            photoOrigin =
+              'facial_capture'
+          } catch (error) {
+            console.error(
+              '[SAÍDA NORMAL] erro ao normalizar captura facial:',
+              error
+            )
+
+            photoWarning =
+              'Não foi possível preparar a foto capturada na saída.'
+          }
         }
-      )
+      }
+
+      if (source === 'qr') {
+        if (
+          !student.profile_photo_path
+        ) {
+          photoWarning =
+            'O aluno não possui foto de perfil cadastrada.'
+        } else {
+          const {
+            data: profilePhotoBlob,
+            error:
+              profilePhotoError,
+          } =
+            await supabaseAdmin.storage
+              .from(
+                PROFILE_PHOTO_BUCKET
+              )
+              .download(
+                student.profile_photo_path
+              )
+
+          if (
+            profilePhotoError ||
+            !profilePhotoBlob
+          ) {
+            console.error(
+              '[SAÍDA NORMAL] erro ao baixar foto de perfil:',
+              profilePhotoError
+            )
+
+            photoWarning =
+              'Não foi possível acessar a foto de perfil do aluno.'
+          } else {
+            try {
+              const profileBuffer =
+                Buffer.from(
+                  await profilePhotoBlob.arrayBuffer()
+                )
+
+              normalizedPhoto =
+                await normalizePhotoToJpeg(
+                  profileBuffer
+                )
+
+              photoOrigin =
+                'profile_snapshot'
+            } catch (error) {
+              console.error(
+                '[SAÍDA NORMAL] erro ao normalizar foto de perfil:',
+                error
+              )
+
+              photoWarning =
+                'Não foi possível preparar a foto de perfil do aluno.'
+            }
+          }
+        }
+      }
+    }
+
+    /*
+     * 12. Salva a cópia privada.
+     */
+    if (
+      addonEligible &&
+      normalizedPhoto &&
+      photoOrigin
+    ) {
+      const [
+        year,
+        month,
+        day,
+      ] = exitDate.split('-')
+
+      uploadedPhotoPath = [
+        schoolId,
+        year,
+        month,
+        day,
+        studentId,
+        `regular-exit-${source}-${randomUUID()}.jpg`,
+      ].join('/')
+
+      const {
+        error: uploadError,
+      } =
+        await supabaseAdmin.storage
+          .from(PHOTO_BUCKET)
+          .upload(
+            uploadedPhotoPath,
+            normalizedPhoto,
+            {
+              contentType:
+                'image/jpeg',
+
+              cacheControl:
+                '3600',
+
+              upsert: false,
+            }
+          )
+
+      if (uploadError) {
+        console.error(
+          '[SAÍDA NORMAL] erro ao armazenar foto:',
+          uploadError
+        )
+
+        uploadedPhotoPath =
+          null
+
+        photoOrigin = null
+
+        photoWarning =
+          'A saída foi registrada, mas não foi possível armazenar a foto.'
+      }
     }
 
     const responsibleWhatsApp =
@@ -773,65 +1052,115 @@ export async function POST(request: Request) {
         student.responsible_whatsapp
       )
 
-    const whatsappStatus:
+    let whatsappStatus:
+      | 'not_selected'
+      | 'no_phone'
+      | 'no_photo'
       | 'queued'
-      | 'no_phone' =
-      responsibleWhatsApp
-        ? 'queued'
-        : 'no_phone'
+      | 'failed'
+
+    if (eligibilityFailed) {
+      whatsappStatus = 'failed'
+    } else if (!addonEligible) {
+      whatsappStatus =
+        'not_selected'
+    } else if (
+      !uploadedPhotoPath
+    ) {
+      whatsappStatus =
+        'no_photo'
+    } else if (
+      !responsibleWhatsApp
+    ) {
+      whatsappStatus =
+        'no_phone'
+    } else {
+      whatsappStatus =
+        'queued'
+    }
 
     const retentionUntil =
-      addFiveYears(capturedAt)
+      uploadedPhotoPath
+        ? addFiveYears(
+            capturedAt
+          )
+        : null
 
     /*
-     * 13. Registra a saída normal.
-     *
-     * attendance_records não é alterada.
+     * 13. Registra a saída mesmo que
+     * foto ou WhatsApp falhem.
      */
     const {
       data: regularExit,
       error: insertExitError,
     } = await supabaseAdmin
-      .from('student_regular_exits')
+      .from(
+        'student_regular_exits'
+      )
       .insert({
-        school_id: schoolId,
+        school_id:
+          schoolId,
 
         attendance_record_id:
           attendanceRecord.id,
 
-        student_id: studentId,
+        student_id:
+          studentId,
 
-        class_id: classId,
+        class_id:
+          classId,
 
-        exit_date: exitDate,
+        exit_date:
+          exitDate,
 
-        exit_time: exitTime,
+        exit_time:
+          exitTime,
 
         recorded_at:
           capturedAt.toISOString(),
 
-        source: 'facial',
+        source,
+
+        addon_eligible:
+          addonEligible,
 
         photo_bucket:
-          PHOTO_BUCKET,
+          uploadedPhotoPath
+            ? PHOTO_BUCKET
+            : null,
 
-        photo_path: photoPath,
+        photo_path:
+          uploadedPhotoPath,
+
+        photo_origin:
+          photoOrigin,
 
         captured_at:
-          capturedAt.toISOString(),
+          uploadedPhotoPath
+            ? capturedAt.toISOString()
+            : null,
 
         retention_until:
-          retentionUntil.toISOString(),
+          retentionUntil
+            ?.toISOString() ||
+          null,
 
         device_info: {
           userAgent:
             request.headers.get(
               'user-agent'
             ) || null,
+
+          source,
         },
 
         whatsapp_status:
           whatsappStatus,
+
+        whatsapp_error:
+          eligibilityFailed
+            ? 'Falha ao verificar a elegibilidade individual.'
+            : photoWarning,
 
         recorded_by_user_id:
           user.id,
@@ -848,9 +1177,18 @@ export async function POST(request: Request) {
         insertExitError
       )
 
-      await supabaseAdmin.storage
-        .from(PHOTO_BUCKET)
-        .remove([photoPath])
+      if (
+        uploadedPhotoPath
+      ) {
+        await supabaseAdmin
+          .storage
+          .from(
+            PHOTO_BUCKET
+          )
+          .remove([
+            uploadedPhotoPath,
+          ])
+      }
 
       if (
         insertExitError?.code ===
@@ -893,28 +1231,67 @@ export async function POST(request: Request) {
       exitTime,
       capturedAt:
         capturedAt.toISOString(),
-      photoSaved: true,
+      source,
+      addonEligible,
+      photoSaved:
+        Boolean(
+          uploadedPhotoPath
+        ),
+      photoOrigin,
     }
 
     /*
-     * 14. Sem telefone, mantém a saída
-     * e a foto registradas.
+     * 14. Não cria fila quando o
+     * aluno não pode receber mensagem.
      */
-    if (!responsibleWhatsApp) {
+    if (
+      whatsappStatus !== 'queued' ||
+      !responsibleWhatsApp ||
+      !uploadedPhotoPath
+    ) {
+      const warnings: string[] =
+        []
+
+      if (eligibilityFailed) {
+        warnings.push(
+          'A saída foi registrada, mas não foi possível verificar a cobertura do aluno.'
+        )
+      } else if (
+        !addonEligible
+      ) {
+        warnings.push(
+          'A saída foi registrada. Este aluno não está selecionado para receber foto e WhatsApp.'
+        )
+      }
+
+      if (photoWarning) {
+        warnings.push(
+          photoWarning
+        )
+      }
+
+      if (
+        addonEligible &&
+        !responsibleWhatsApp
+      ) {
+        warnings.push(
+          'O aluno não possui WhatsApp válido cadastrado.'
+        )
+      }
+
       return NextResponse.json({
         ...baseResponse,
-        whatsappQueued: false,
-        whatsappStatus:
-          'no_phone',
+        whatsappQueued:
+          false,
+        whatsappStatus,
         warning:
-          'A saída foi registrada, mas o aluno não possui WhatsApp válido cadastrado.',
+          warnings.join(' ') ||
+          undefined,
       })
     }
 
     /*
-     * 15. Adiciona a mensagem à fila.
-     *
-     * Nenhuma chamada à Meta acontece aqui.
+     * 15. Enfileira a mensagem.
      */
     const {
       error: queueError,
@@ -923,9 +1300,11 @@ export async function POST(request: Request) {
         'whatsapp_notification_queue'
       )
       .insert({
-        school_id: schoolId,
+        school_id:
+          schoolId,
 
-        student_id: studentId,
+        student_id:
+          studentId,
 
         attendance_evidence_id:
           null,
@@ -951,21 +1330,28 @@ export async function POST(request: Request) {
 
           exitDate,
 
+          source,
+
+          photoOrigin,
+
           photoBucket:
             PHOTO_BUCKET,
 
-          photoPath,
+          photoPath:
+            uploadedPhotoPath,
         },
 
-        status: 'queued',
+        status:
+          'queued',
 
         next_attempt_at:
-          new Date().toISOString(),
+          new Date()
+            .toISOString(),
       })
 
     if (queueError) {
       console.error(
-        '[SAÍDA NORMAL] erro ao enfileirar WhatsApp:',
+        '[SAÍDA NORMAL] erro ao enfileirar mensagem:',
         queueError
       )
 
@@ -980,11 +1366,15 @@ export async function POST(request: Request) {
           whatsapp_error:
             queueError.message,
         })
-        .eq('id', regularExit.id)
+        .eq(
+          'id',
+          regularExit.id
+        )
 
       return NextResponse.json({
         ...baseResponse,
-        whatsappQueued: false,
+        whatsappQueued:
+          false,
         whatsappStatus:
           'failed',
         warning:
@@ -992,21 +1382,12 @@ export async function POST(request: Request) {
       })
     }
 
-    after(async () => {
-  try {
-    await processWhatsAppQueue(3)
-  } catch (error) {
-    console.error(
-      '[SAÍDA NORMAL] erro no processamento assíncrono do WhatsApp:',
-      error
-    )
-  }
-})
-
     return NextResponse.json({
       ...baseResponse,
-      whatsappQueued: true,
-      whatsappStatus: 'queued',
+      whatsappQueued:
+        true,
+      whatsappStatus:
+        'queued',
     })
   } catch (error) {
     console.error(
