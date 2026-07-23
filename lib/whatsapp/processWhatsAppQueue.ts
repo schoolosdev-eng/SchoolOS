@@ -970,6 +970,12 @@ export async function processWhatsAppQueue(
           sent_at:
             sentAt,
 
+          provider_status:
+  'accepted',
+
+provider_status_updated_at:
+  sentAt,
+
           processing_started_at:
             null,
 
