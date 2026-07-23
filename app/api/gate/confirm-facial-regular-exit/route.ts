@@ -1,7 +1,13 @@
 import { randomUUID } from 'crypto'
-import { NextResponse } from 'next/server'
+import {
+  after,
+  NextResponse,
+} from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import sharp from 'sharp'
+import {
+  processWhatsAppQueue,
+} from '@/lib/whatsapp/processWhatsAppQueue'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -1381,6 +1387,17 @@ export async function POST(
           'A saída e a foto foram registradas, mas a mensagem não pôde ser adicionada à fila.',
       })
     }
+
+    after(async () => {
+  try {
+    await processWhatsAppQueue(1)
+  } catch (error) {
+    console.error(
+      '[SAÍDA NORMAL] erro no processamento assíncrono do WhatsApp:',
+      error
+    )
+  }
+})
 
     return NextResponse.json({
       ...baseResponse,

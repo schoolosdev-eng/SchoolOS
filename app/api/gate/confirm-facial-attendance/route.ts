@@ -7,6 +7,7 @@ import {
   processWhatsAppQueue,
 } from '@/lib/whatsapp/processWhatsAppQueue'
 import { createClient } from '@supabase/supabase-js'
+import sharp from 'sharp'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -111,14 +112,22 @@ function normalizeWhatsApp(
   return normalized
 }
 
-function getPhotoExtension(
-  mimeType: string
+async function normalizePhotoToJpeg(
+  buffer: Buffer
 ) {
-  if (mimeType === 'image/webp') {
-    return 'webp'
-  }
-
-  return 'jpg'
+  return sharp(buffer)
+    .rotate()
+    .resize({
+      width: 1280,
+      height: 1280,
+      fit: 'inside',
+      withoutEnlargement: true,
+    })
+    .jpeg({
+      quality: 82,
+      mozjpeg: true,
+    })
+    .toBuffer()
 }
 
 function addFiveYears(date: Date) {
@@ -579,6 +588,7 @@ if (
 const allowedMimeTypes = new Set([
   'image/jpeg',
   'image/jpg',
+  'image/png',
   'image/webp',
 ])
 
@@ -619,11 +629,56 @@ if (photoEntry.size > 2 * 1024 * 1024) {
 }
 
 /*
- * 11. Monta o caminho da foto privada.
+ * 11. Normaliza e armazena a foto
+ * como JPEG.
+ *
+ * Assim, JPEG, PNG e WebP gerados pelo
+ * dispositivo terão um formato compatível
+ * com o envio para a Meta.
  */
-const extension = getPhotoExtension(
-  photoEntry.type
-)
+let normalizedPhotoBuffer: Buffer
+
+try {
+  const originalPhotoBuffer =
+    Buffer.from(
+      await photoEntry.arrayBuffer()
+    )
+
+  normalizedPhotoBuffer =
+    await normalizePhotoToJpeg(
+      originalPhotoBuffer
+    )
+} catch (error) {
+  console.error(
+    '[CONFIRMAÇÃO FACIAL] erro ao normalizar foto:',
+    error
+  )
+
+  return NextResponse.json({
+    ...baseResponse,
+    addonEligible: true,
+    evidenceSaved: false,
+    whatsappQueued: false,
+    whatsappStatus: 'failed',
+    warning:
+      'A presença foi registrada, mas não foi possível preparar a foto da chegada.',
+  })
+}
+
+if (
+  normalizedPhotoBuffer.length >
+  2 * 1024 * 1024
+) {
+  return NextResponse.json({
+    ...baseResponse,
+    addonEligible: true,
+    evidenceSaved: false,
+    whatsappQueued: false,
+    whatsappStatus: 'failed',
+    warning:
+      'A presença foi registrada, mas a foto processada ultrapassou o limite de 2 MB.',
+  })
+}
 
 const [year, month, day] =
   attendanceDate.split('-')
@@ -634,12 +689,8 @@ uploadedPhotoPath = [
   month,
   day,
   studentId,
-  `${randomUUID()}.${extension}`,
+  `${randomUUID()}.jpg`,
 ].join('/')
-
-const photoBuffer = Buffer.from(
-  await photoEntry.arrayBuffer()
-)
 
 const {
   error: photoUploadError,
@@ -647,9 +698,9 @@ const {
   .from(PHOTO_BUCKET)
   .upload(
     uploadedPhotoPath,
-    photoBuffer,
+    normalizedPhotoBuffer,
     {
-      contentType: photoEntry.type,
+      contentType: 'image/jpeg',
       cacheControl: '3600',
       upsert: false,
     }
@@ -845,7 +896,7 @@ if (queueError) {
 
 after(async () => {
   try {
-    await processWhatsAppQueue(3)
+    await processWhatsAppQueue(1)
   } catch (error) {
     console.error(
       '[CONFIRMAÇÃO FACIAL] erro no processamento assíncrono do WhatsApp:',
