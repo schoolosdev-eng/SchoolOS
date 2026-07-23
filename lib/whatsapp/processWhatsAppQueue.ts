@@ -357,18 +357,34 @@ async function uploadImageToMeta({
     imageWidth = info.width
     imageHeight = info.height
   } catch (error) {
-    console.error(
-      '[WHATSAPP WORKER] imagem inválida para normalização:',
-      {
-        queueId,
-        error,
-      }
-    )
+  const sharpError =
+    getErrorMessage(error)
 
-    throw new Error(
-      'Não foi possível converter a foto em um JPEG válido.'
-    )
-  }
+  console.error(
+    '[WHATSAPP WORKER] imagem inválida para normalização:',
+    {
+      queueId,
+      originalBytes:
+        originalBuffer.length,
+
+      originalMimeType:
+        photoBlob.type ||
+        'não informado',
+
+      firstBytes:
+        originalBuffer
+          .subarray(0, 16)
+          .toString('hex'),
+
+      error:
+        sharpError,
+    }
+  )
+
+  throw new Error(
+    `Não foi possível converter a foto em um JPEG válido. Detalhe: ${sharpError}`
+  )
+}
 
   if (
     !imageWidth ||
