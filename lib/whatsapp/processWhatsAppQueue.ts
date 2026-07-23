@@ -1,3 +1,4 @@
+import sharp from 'sharp'
 import { createClient } from '@supabase/supabase-js'
 
 const MAX_ATTEMPTS = 5
@@ -285,35 +286,133 @@ async function uploadImageToMeta({
   queueId: string
   config: WhatsAppConfig
 }) {
-  const contentType =
-    photoBlob.type
-      ?.trim()
-      .toLowerCase()
-
-  const supportedContentTypes =
-    new Set([
-      'image/jpeg',
-      'image/jpg',
-      'image/png',
-    ])
-
-  if (
-    !supportedContentTypes.has(
-      contentType
+  /*
+   * Não confiamos apenas no MIME retornado
+   * pelo Storage. Os bytes são decodificados
+   * e gerados novamente como JPEG padrão.
+   */
+  const originalBuffer =
+    Buffer.from(
+      await photoBlob.arrayBuffer()
     )
-  ) {
+
+  if (originalBuffer.length === 0) {
     throw new Error(
-      `Formato da foto não suportado pela Meta: ${
-        contentType ||
-        'não informado'
-      }.`
+      'A foto armazenada está vazia.'
     )
   }
 
-  const extension =
-    contentType === 'image/png'
-      ? 'png'
-      : 'jpg'
+  let normalizedBuffer: Buffer
+  let imageWidth: number | undefined
+  let imageHeight: number | undefined
+
+  try {
+    const {
+      data,
+      info,
+    } = await sharp(
+      originalBuffer
+    )
+      .rotate()
+
+      /*
+       * Remove transparência e gera
+       * somente três canais RGB.
+       */
+      .flatten({
+        background: '#ffffff',
+      })
+
+      .resize({
+        width: 1280,
+        height: 1280,
+        fit: 'inside',
+        withoutEnlargement: true,
+      })
+
+      /*
+       * Força espaço de cores compatível
+       * com imagens comuns para web.
+       */
+      .toColorspace('srgb')
+
+      /*
+       * JPEG tradicional:
+       * - não progressivo;
+       * - sem mozjpeg;
+       * - subsampling padrão 4:2:0.
+       */
+      .jpeg({
+        quality: 85,
+        progressive: false,
+        chromaSubsampling: '4:2:0',
+        mozjpeg: false,
+      })
+
+      .toBuffer({
+        resolveWithObject: true,
+      })
+
+    normalizedBuffer = data
+    imageWidth = info.width
+    imageHeight = info.height
+  } catch (error) {
+    console.error(
+      '[WHATSAPP WORKER] imagem inválida para normalização:',
+      {
+        queueId,
+        error,
+      }
+    )
+
+    throw new Error(
+      'Não foi possível converter a foto em um JPEG válido.'
+    )
+  }
+
+  if (
+    !imageWidth ||
+    !imageHeight ||
+    imageWidth <= 0 ||
+    imageHeight <= 0
+  ) {
+    throw new Error(
+      'A imagem processada possui dimensões inválidas.'
+    )
+  }
+
+  if (
+    normalizedBuffer.length >
+    5 * 1024 * 1024
+  ) {
+    throw new Error(
+      'A imagem processada ultrapassa o limite de 5 MB.'
+    )
+  }
+
+  console.log(
+    '[WHATSAPP WORKER] imagem preparada:',
+    {
+      queueId,
+      width: imageWidth,
+      height: imageHeight,
+      bytes:
+        normalizedBuffer.length,
+      mimeType: 'image/jpeg',
+    }
+  )
+
+  const normalizedBlob =
+    new Blob(
+      [
+        new Uint8Array(
+          normalizedBuffer
+        ),
+      ],
+      {
+        type: 'image/jpeg',
+      }
+    )
 
   const formData =
     new FormData()
@@ -323,25 +422,22 @@ async function uploadImageToMeta({
     'whatsapp'
   )
 
-  /*
-   * Não tentamos transformar WebP em JPEG
-   * apenas alterando o MIME, porque isso não
-   * converte os bytes da imagem.
-   */
   formData.append(
     'file',
-    photoBlob,
-    `schoolos-${queueId}.${extension}`
+    normalizedBlob,
+    `schoolos-${queueId}.jpg`
   )
 
   const response = await fetch(
     `https://graph.facebook.com/${config.graphApiVersion}/${config.phoneNumberId}/media`,
     {
       method: 'POST',
+
       headers: {
         Authorization:
           `Bearer ${config.accessToken}`,
       },
+
       body: formData,
     }
   )
