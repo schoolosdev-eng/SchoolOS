@@ -83,6 +83,12 @@ const [facialConfirming, setFacialConfirming] =
 const facialRestartTimeoutRef =
   useRef<ReturnType<typeof setTimeout> | null>(null)
 
+const regularExitQrProcessingRef =
+  useRef(false)
+
+const regularExitQrRestartTimeoutRef =
+  useRef<ReturnType<typeof setTimeout> | null>(null)
+
 function changeGateMode(
   nextMode: GateMode
 ) {
@@ -96,6 +102,16 @@ function changeGateMode(
     facialRestartTimeoutRef.current =
       null
   }
+  if (
+  regularExitQrRestartTimeoutRef.current
+) {
+  clearTimeout(
+    regularExitQrRestartTimeoutRef.current
+  )
+
+  regularExitQrRestartTimeoutRef.current =
+    null
+}
 
   setIsScannerActive(false)
   setManualMode(false)
@@ -112,15 +128,11 @@ function changeGateMode(
   setGateMode(nextMode)
 
   /*
-   * Saída normal será facial.
-   * Saída antecipada continua por QR Code.
-   * Entrada começa por QR, mas permite facial.
-   */
-  setReadingMethod(
-    nextMode === 'regular_exit'
-      ? 'facial'
-      : 'qr'
-  )
+ * Todos os modos começam pelo QR Code.
+ * Entrada e saída normal também permitem
+ * alternar para reconhecimento facial.
+ */
+setReadingMethod('qr')
 }
 
 const [facialEnabled, setFacialEnabled] = useState(false)
@@ -590,6 +602,274 @@ if (navigator.onLine && student.profile_photo_path) {
   })
 }
 
+async function handleRegularExitQrScan(
+  text: string
+) {
+  if (
+    regularExitQrProcessingRef.current
+  ) {
+    return
+  }
+
+  if (!text?.trim()) {
+    setResultWithTimeout({
+      status: 'error',
+      message:
+        'Código QR inválido.',
+    })
+
+    return
+  }
+
+  if (
+    !text.startsWith(
+      'schoolos:student:'
+    )
+  ) {
+    setResultWithTimeout({
+      status: 'error',
+      message:
+        'Este QR Code não pertence a um aluno.',
+    })
+
+    return
+  }
+
+  if (!navigator.onLine) {
+    setResultWithTimeout({
+      status: 'error',
+      message:
+        'A saída normal por QR Code precisa de internet.',
+    })
+
+    return
+  }
+
+  const token = text
+    .replace(
+      'schoolos:student:',
+      ''
+    )
+    .trim()
+
+  const student =
+    await offlineAttendanceDb.students
+      .where('qr_code_token')
+      .equals(token)
+      .first()
+
+  if (!student) {
+    setResultWithTimeout({
+      status: 'error',
+      message:
+        'Aluno não encontrado nos dados da portaria. Atualize os dados offline.',
+    })
+
+    return
+  }
+
+  if (
+    student.school_id !== schoolId
+  ) {
+    setResultWithTimeout({
+      status: 'error',
+      message:
+        'Aluno não pertence a esta escola.',
+    })
+
+    return
+  }
+
+  regularExitQrProcessingRef.current =
+    true
+
+  setIsScannerActive(false)
+
+  let photoUrl: string | null =
+    null
+
+  try {
+    photoUrl =
+      await getStudentPhotoUrl(
+        student
+      )
+
+    const {
+      data: { session },
+    } =
+      await supabase.auth.getSession()
+
+    if (!session?.access_token) {
+      throw new Error(
+        'Usuário não autenticado.'
+      )
+    }
+
+    const capturedAt =
+      new Date().toISOString()
+
+    const formData =
+      new FormData()
+
+    formData.append(
+      'schoolId',
+      schoolId
+    )
+
+    formData.append(
+      'studentId',
+      student.id
+    )
+
+    formData.append(
+      'classId',
+      student.class_id
+    )
+
+    formData.append(
+      'capturedAt',
+      capturedAt
+    )
+
+    formData.append(
+      'source',
+      'qr'
+    )
+
+    /*
+     * Nenhuma foto é enviada pelo tablet.
+     *
+     * O endpoint copiará a foto atual do
+     * perfil do aluno para o bucket privado.
+     */
+    const response = await fetch(
+      '/api/gate/confirm-facial-regular-exit',
+      {
+        method: 'POST',
+
+        headers: {
+          Authorization:
+            `Bearer ${session.access_token}`,
+        },
+
+        body: formData,
+      }
+    )
+
+    const data = await response
+      .json()
+      .catch(() => ({}))
+
+    if (!response.ok) {
+      throw new Error(
+        data.error ||
+          'Erro ao registrar saída normal.'
+      )
+    }
+
+    const resultTime =
+      data.exitTime ||
+      new Date(
+        data.capturedAt ||
+          capturedAt
+      ).toLocaleTimeString(
+        'pt-BR'
+      )
+
+    const warning =
+      typeof data.warning ===
+        'string' &&
+      data.warning.trim()
+        ? ` ${data.warning.trim()}`
+        : ''
+
+    const result: ScanResult =
+      data.duplicate
+        ? {
+            status:
+              'duplicate',
+
+            message:
+              `${student.full_name} já possui saída normal registrada hoje.`,
+
+            student: {
+              name:
+                student.full_name,
+
+              className:
+                student.class_name,
+
+              photo:
+                photoUrl,
+            },
+
+            time:
+              resultTime,
+          }
+        : {
+            status:
+              'success',
+
+            message:
+              `Saída normal registrada com sucesso.${warning}`,
+
+            student: {
+              name:
+                student.full_name,
+
+              className:
+                student.class_name,
+
+              photo:
+                photoUrl,
+            },
+
+            time:
+              resultTime,
+          }
+
+    setResultWithTimeout(
+      result,
+      true,
+      false
+    )
+  } catch (error) {
+    console.error(
+      '[SAÍDA NORMAL QR] erro:',
+      error
+    )
+
+    setResultWithTimeout(
+      {
+        status: 'error',
+
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Erro ao registrar saída por QR Code.',
+
+        student: {
+          name:
+            student.full_name,
+
+          className:
+            student.class_name,
+
+          photo:
+            photoUrl,
+        },
+      },
+      true,
+      false
+    )
+  } finally {
+    regularExitQrProcessingRef.current =
+      false
+
+    restartRegularExitQrScanner()
+  }
+}
+
 async function handleEarlyExitScan(text: string) {
   if (!text?.trim()) {
     setResultWithTimeout({
@@ -800,16 +1080,17 @@ async function handleGateScan(
     return
   }
 
-  if (gateMode === 'early_exit') {
-    await handleEarlyExitScan(text)
+  if (
+    gateMode === 'regular_exit'
+  ) {
+    await handleRegularExitQrScan(
+      text
+    )
+
     return
   }
 
-  setResultWithTimeout({
-    status: 'error',
-    message:
-      'A saída normal está disponível pelo reconhecimento facial.',
-  })
+  await handleEarlyExitScan(text)
 }
 
 async function loadTodayEarlyExits() {
@@ -1316,29 +1597,45 @@ async function handleStartReading() {
     if (!initialized) return
   }
 
-  if (gateMode === 'regular_exit') {
-    if (!regularExitEnabled) {
-      setResultWithTimeout({
-        status: 'error',
-        message:
-          'A escola não possui o adicional de saída normal ativo.',
-      })
+  if (
+  gateMode === 'regular_exit'
+) {
+  if (!regularExitEnabled) {
+    setResultWithTimeout({
+      status: 'error',
+      message:
+        'A escola não possui o adicional de saída normal ativo.',
+    })
 
-      return
-    }
-
-    if (!navigator.onLine) {
-      setResultWithTimeout({
-        status: 'error',
-        message:
-          'A saída normal por reconhecimento facial precisa de internet.',
-      })
-
-      return
-    }
-
-    setReadingMethod('facial')
+    return
   }
+
+  /*
+   * Tanto o QR Code quanto o facial da
+   * saída normal dependem do backend.
+   */
+  if (!navigator.onLine) {
+    setResultWithTimeout({
+      status: 'error',
+      message:
+        'A saída normal precisa de internet.',
+    })
+
+    return
+  }
+
+  if (
+    readingMethod === 'facial'
+  ) {
+    await loadFacialEmbeddingsFromSupabase(
+      false
+    )
+
+    await loadFacialStudentsFromSupabase(
+      false
+    )
+  }
+}
 
   if (gateMode === 'early_exit') {
     setReadingMethod('qr')
@@ -1409,9 +1706,11 @@ async function handleStartReading() {
   setResultWithTimeout({
     status: 'error',
     message:
-      gateMode === 'regular_exit'
-        ? 'Não foi possível acessar a câmera para registrar a saída normal.'
-        : 'Não foi possível acessar a câmera para ler o QR Code.',
+  gateMode === 'regular_exit'
+    ? readingMethod === 'facial'
+      ? 'Não foi possível acessar a câmera para o reconhecimento facial da saída.'
+      : 'Não foi possível acessar a câmera para ler o QR Code da saída.'
+    : 'Não foi possível acessar a câmera para ler o QR Code.',
   })
 }
 
@@ -1892,6 +2191,27 @@ function restartFacialScannerAfterConfirmation() {
     }, 2000)
 }
 
+function restartRegularExitQrScanner() {
+  if (
+    regularExitQrRestartTimeoutRef.current
+  ) {
+    clearTimeout(
+      regularExitQrRestartTimeoutRef.current
+    )
+  }
+
+  setIsScannerActive(false)
+
+  regularExitQrRestartTimeoutRef.current =
+    setTimeout(() => {
+      setReadingMethod('qr')
+      setIsScannerActive(true)
+
+      regularExitQrRestartTimeoutRef.current =
+        null
+    }, 2000)
+}
+
 async function confirmFacialCandidate(
   candidate: any
 ) {
@@ -1971,6 +2291,13 @@ async function confirmFacialCandidate(
       pendingFacialCapture.capturedAt
     )
 
+    if (isRegularExit) {
+  formData.append(
+    'source',
+    'facial'
+  )
+}
+
     formData.append(
   'photo',
   pendingFacialCapture.blob,
@@ -2000,11 +2327,15 @@ const response = await fetch(
       .catch(() => ({}))
 
     if (!response.ok) {
-      throw new Error(
-        data.error ||
-          'Erro ao registrar presença.'
+  throw new Error(
+    data.error ||
+      (
+        isRegularExit
+          ? 'Erro ao registrar saída normal.'
+          : 'Erro ao registrar presença.'
       )
-    }
+  )
+}
 
     /*
      * Mantém o aprendizado facial atual.
@@ -2168,6 +2499,14 @@ if (isFacialAvailable && navigator.onLine) {
         facialRestartTimeoutRef.current
       )
     }
+
+    if (
+      regularExitQrRestartTimeoutRef.current
+    ) {
+      clearTimeout(
+        regularExitQrRestartTimeoutRef.current
+      )
+    }
   }
 }, [])
 
@@ -2254,7 +2593,7 @@ const facialAvailableForCurrentMode =
   {gateMode === 'entry'
     ? 'Leia o QR Code ou o rosto do aluno para registrar a entrada.'
     : gateMode === 'regular_exit'
-    ? 'Reconheça o rosto do aluno para registrar e comprovar sua saída.'
+    ? 'Leia o QR Code ou reconheça o rosto do aluno para registrar sua saída.'
     : 'Leia o QR Code do aluno para registrar uma saída antecipada.'}
 </p>
             </div>
@@ -2339,44 +2678,47 @@ const facialAvailableForCurrentMode =
   onClick={() => {
     if (
       gateMode ===
-      'regular_exit'
+        'regular_exit' &&
+      !navigator.onLine
     ) {
       setResultWithTimeout({
         status: 'error',
         message:
-          'A saída normal está disponível pelo reconhecimento facial.',
+          'A saída normal por QR Code precisa de internet.',
       })
 
       return
     }
 
     setReadingMethod('qr')
+
+    setResultWithTimeout(
+      {
+        status: 'success',
+        message:
+          'Clique em iniciar leitura.',
+      },
+      false,
+      false
+    )
   }}
-  disabled={
-    gateMode === 'regular_exit'
-  }
   style={{
     ...secondaryButtonStyle,
+
     background:
       readingMethod === 'qr'
         ? '#dbeafe'
         : '#ffffff',
+
     borderColor:
       readingMethod === 'qr'
         ? '#2563eb'
         : '#cbd5e1',
+
     color:
       readingMethod === 'qr'
         ? '#1d4ed8'
         : '#0f172a',
-    opacity:
-      gateMode === 'regular_exit'
-        ? 0.5
-        : 1,
-    cursor:
-      gateMode === 'regular_exit'
-        ? 'not-allowed'
-        : 'pointer',
   }}
 >
   QR Code
