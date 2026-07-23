@@ -1018,24 +1018,29 @@ export async function POST(
         `regular-exit-${source}-${randomUUID()}.jpg`,
       ].join('/')
 
-      const {
-        error: uploadError,
-      } =
-        await supabaseAdmin.storage
-          .from(PHOTO_BUCKET)
-          .upload(
-            uploadedPhotoPath,
-            normalizedPhoto,
-            {
-              contentType:
-                'image/jpeg',
+      const photoUploadBytes =
+  Uint8Array.from(
+    normalizedPhoto
+  )
 
-              cacheControl:
-                '3600',
+const {
+  error: uploadError,
+} =
+  await supabaseAdmin.storage
+    .from(PHOTO_BUCKET)
+    .upload(
+      uploadedPhotoPath,
+      photoUploadBytes,
+      {
+        contentType:
+          'image/jpeg',
 
-              upsert: false,
-            }
-          )
+        cacheControl:
+          '3600',
+
+        upsert: false,
+      }
+    )
 
       if (uploadError) {
         console.error(

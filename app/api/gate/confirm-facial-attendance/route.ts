@@ -692,13 +692,18 @@ uploadedPhotoPath = [
   `${randomUUID()}.jpg`,
 ].join('/')
 
+const photoUploadBytes =
+  Uint8Array.from(
+    normalizedPhotoBuffer
+  )
+
 const {
   error: photoUploadError,
 } = await supabaseAdmin.storage
   .from(PHOTO_BUCKET)
   .upload(
     uploadedPhotoPath,
-    normalizedPhotoBuffer,
+    photoUploadBytes,
     {
       contentType: 'image/jpeg',
       cacheControl: '3600',
