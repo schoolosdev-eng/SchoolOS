@@ -115,19 +115,112 @@ function normalizeWhatsApp(
 async function normalizePhotoToJpeg(
   buffer: Buffer
 ) {
-  return sharp(buffer)
+  const {
+    data,
+    info,
+  } = await sharp(buffer)
     .rotate()
+
+    /*
+     * Remove transparência e garante
+     * uma imagem RGB com fundo branco.
+     */
+    .flatten({
+      background: {
+        r: 255,
+        g: 255,
+        b: 255,
+      },
+    })
+
     .resize({
       width: 1280,
       height: 1280,
       fit: 'inside',
       withoutEnlargement: true,
     })
+
+    /*
+     * Força espaço de cores padrão.
+     */
+    .toColourspace('srgb')
+
+    /*
+     * JPEG básico, não progressivo
+     * e sem otimização MozJPEG.
+     */
     .jpeg({
-      quality: 82,
-      mozjpeg: true,
+      quality: 85,
+      progressive: false,
+      chromaSubsampling: '4:2:0',
+      mozjpeg: false,
+      optimiseCoding: true,
     })
-    .toBuffer()
+
+    .toBuffer({
+      resolveWithObject: true,
+    })
+
+  /*
+   * Confere o arquivo final já codificado.
+   */
+  const metadata =
+    await sharp(data).metadata()
+
+  if (
+    info.format !== 'jpeg' ||
+    metadata.format !== 'jpeg' ||
+    metadata.channels !== 3 ||
+    metadata.depth !== 'uchar' ||
+    metadata.isProgressive === true
+  ) {
+    console.error(
+      '[FOTO DE CHEGADA] JPEG incompatível:',
+      {
+        info,
+        metadata: {
+          format:
+            metadata.format,
+          space:
+            metadata.space,
+          channels:
+            metadata.channels,
+          depth:
+            metadata.depth,
+          isProgressive:
+            metadata.isProgressive,
+          width:
+            metadata.width,
+          height:
+            metadata.height,
+        },
+      }
+    )
+
+    throw new Error(
+      'A foto não pôde ser convertida para JPEG RGB de 8 bits.'
+    )
+  }
+
+  console.log(
+    '[FOTO DE CHEGADA] JPEG validado:',
+    {
+      width:
+        metadata.width,
+      height:
+        metadata.height,
+      channels:
+        metadata.channels,
+      depth:
+        metadata.depth,
+      progressive:
+        metadata.isProgressive,
+      bytes:
+        data.length,
+    }
+  )
+
+  return Buffer.from(data)
 }
 
 function addFiveYears(date: Date) {
