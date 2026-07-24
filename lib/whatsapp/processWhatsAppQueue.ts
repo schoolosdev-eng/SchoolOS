@@ -1,4 +1,3 @@
-import sharp from 'sharp'
 import { createClient } from '@supabase/supabase-js'
 
 const MAX_ATTEMPTS = 5
@@ -277,217 +276,10 @@ async function readMetaResponse(
     .catch(() => null)
 }
 
-async function uploadImageToMeta({
-  photoBlob,
-  queueId,
-  config,
-}: {
-  photoBlob: Blob
-  queueId: string
-  config: WhatsAppConfig
-}) {
-  /*
-   * Não confiamos apenas no MIME retornado
-   * pelo Storage. Os bytes são decodificados
-   * e gerados novamente como JPEG padrão.
-   */
-  const originalBuffer =
-    Buffer.from(
-      await photoBlob.arrayBuffer()
-    )
-
-  if (originalBuffer.length === 0) {
-    throw new Error(
-      'A foto armazenada está vazia.'
-    )
-  }
-
-  let normalizedBuffer: Buffer
-  let imageWidth: number | undefined
-  let imageHeight: number | undefined
-
-  try {
-    const {
-      data,
-      info,
-    } = await sharp(
-      originalBuffer
-    )
-      .rotate()
-
-      /*
-       * Remove transparência e gera
-       * somente três canais RGB.
-       */
-      .flatten({
-        background: '#ffffff',
-      })
-
-      .resize({
-        width: 1280,
-        height: 1280,
-        fit: 'inside',
-        withoutEnlargement: true,
-      })
-
-      /*
-       * Força espaço de cores compatível
-       * com imagens comuns para web.
-       */
-      .toColorspace('srgb')
-
-      /*
-       * JPEG tradicional:
-       * - não progressivo;
-       * - sem mozjpeg;
-       * - subsampling padrão 4:2:0.
-       */
-      .jpeg({
-        quality: 85,
-        progressive: false,
-        chromaSubsampling: '4:2:0',
-        mozjpeg: false,
-      })
-
-      .toBuffer({
-        resolveWithObject: true,
-      })
-
-    normalizedBuffer = data
-    imageWidth = info.width
-    imageHeight = info.height
-  } catch (error) {
-  const sharpError =
-    getErrorMessage(error)
-
-  console.error(
-    '[WHATSAPP WORKER] imagem inválida para normalização:',
-    {
-      queueId,
-      originalBytes:
-        originalBuffer.length,
-
-      originalMimeType:
-        photoBlob.type ||
-        'não informado',
-
-      firstBytes:
-        originalBuffer
-          .subarray(0, 16)
-          .toString('hex'),
-
-      error:
-        sharpError,
-    }
-  )
-
-  throw new Error(
-    `Não foi possível converter a foto em um JPEG válido. Detalhe: ${sharpError}`
-  )
-}
-
-  if (
-    !imageWidth ||
-    !imageHeight ||
-    imageWidth <= 0 ||
-    imageHeight <= 0
-  ) {
-    throw new Error(
-      'A imagem processada possui dimensões inválidas.'
-    )
-  }
-
-  if (
-    normalizedBuffer.length >
-    5 * 1024 * 1024
-  ) {
-    throw new Error(
-      'A imagem processada ultrapassa o limite de 5 MB.'
-    )
-  }
-
-  console.log(
-    '[WHATSAPP WORKER] imagem preparada:',
-    {
-      queueId,
-      width: imageWidth,
-      height: imageHeight,
-      bytes:
-        normalizedBuffer.length,
-      mimeType: 'image/jpeg',
-    }
-  )
-
-  const normalizedBlob =
-    new Blob(
-      [
-        new Uint8Array(
-          normalizedBuffer
-        ),
-      ],
-      {
-        type: 'image/jpeg',
-      }
-    )
-
-  const formData =
-    new FormData()
-
-  formData.append(
-    'messaging_product',
-    'whatsapp'
-  )
-
-  formData.append(
-    'file',
-    normalizedBlob,
-    `schoolos-${queueId}.jpg`
-  )
-
-  const response = await fetch(
-    `https://graph.facebook.com/${config.graphApiVersion}/${config.phoneNumberId}/media`,
-    {
-      method: 'POST',
-
-      headers: {
-        Authorization:
-          `Bearer ${config.accessToken}`,
-      },
-
-      body: formData,
-    }
-  )
-
-  const data =
-    await readMetaResponse(
-      response
-    )
-
-  if (
-    !response.ok ||
-    !data?.id
-  ) {
-    const metaMessage =
-      data?.error?.message ||
-      data?.error?.error_user_msg ||
-      'A Meta não retornou o ID da mídia.'
-
-    const metaCode =
-      data?.error?.code
-        ? ` Código: ${data.error.code}.`
-        : ''
-
-    throw new Error(
-      `Erro ao enviar foto para a Meta: ${metaMessage}.${metaCode}`
-    )
-  }
-
-  return String(data.id)
-}
 
 async function sendPhotoTemplate({
   destinationPhone,
-  mediaId,
+  mediaLink,
   templateName,
   studentName,
   className,
@@ -497,7 +289,7 @@ async function sendPhotoTemplate({
   config,
 }: {
   destinationPhone: string
-  mediaId: string
+  mediaLink: string
   templateName: string
   studentName: string
   className: string
@@ -545,7 +337,7 @@ async function sendPhotoTemplate({
                   type: 'image',
 
                   image: {
-                    id: mediaId,
+                    id: mediaLink,
                   },
                 },
               ],
@@ -1017,38 +809,59 @@ export async function processWhatsAppQueue(
           : config
               .arrivalTemplateName
 
-      const {
-        data: photoBlob,
-        error: photoError,
-      } = await supabaseAdmin
-        .storage
-        .from(photoBucket)
-        .download(photoPath)
+      /*
+ * A Meta acessará temporariamente a foto
+ * diretamente no Storage.
+ *
+ * O bucket continua privado; a URL assinada
+ * expira após uma hora.
+ */
+const {
+  data: signedPhotoData,
+  error: signedPhotoError,
+} = await supabaseAdmin
+  .storage
+  .from(photoBucket)
+  .createSignedUrl(
+    photoPath,
+    60 * 60
+  )
 
-      if (
-        photoError ||
-        !photoBlob
-      ) {
-        throw new Error(
-          `Erro ao baixar foto: ${
-            photoError?.message ||
-            'arquivo não encontrado'
-          }`
-        )
-      }
+if (
+  signedPhotoError ||
+  !signedPhotoData?.signedUrl
+) {
+  throw new Error(
+    `Não foi possível gerar a URL temporária da foto: ${
+      signedPhotoError?.message ||
+      'URL não retornada'
+    }`
+  )
+}
 
-      const mediaId =
-        await uploadImageToMeta({
-          photoBlob,
-          queueId:
-            message.id,
-          config,
-        })
+const mediaLink =
+  signedPhotoData.signedUrl
+
+console.log(
+  '[WHATSAPP WORKER] URL temporária da imagem preparada:',
+  {
+    queueId:
+      message.id,
+
+    photoBucket,
+
+    photoPath,
+
+    expiresInSeconds:
+      60 * 60,
+  }
+)
+
 
       const providerMessageId =
-        await sendPhotoTemplate({
-          destinationPhone,
-          mediaId,
+  await sendPhotoTemplate({
+    destinationPhone,
+    mediaLink,
           templateName,
           studentName,
           className,
