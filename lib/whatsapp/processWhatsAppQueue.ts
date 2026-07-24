@@ -298,10 +298,92 @@ async function sendPhotoTemplate({
   queueId: string
   config: WhatsAppConfig
 }) {
+  const normalizedMediaLink =
+    mediaLink.trim()
+
+  if (
+    !normalizedMediaLink.startsWith(
+      'https://'
+    )
+  ) {
+    throw new Error(
+      'A URL temporária da foto não utiliza HTTPS.'
+    )
+  }
+
+  /*
+   * O objeto image deve possuir somente
+   * link. Não deixe id/mediaId junto.
+   */
+  const requestPayload = {
+    messaging_product:
+      'whatsapp',
+
+    recipient_type:
+      'individual',
+
+    to: destinationPhone,
+
+    type: 'template',
+
+    template: {
+      name: templateName,
+
+      language: {
+        code:
+          config.templateLanguage,
+      },
+
+      components: [
+        {
+          type: 'header',
+
+          parameters: [
+            {
+              type: 'image',
+
+              image: {
+                link:
+                  normalizedMediaLink,
+              },
+            },
+          ],
+        },
+
+        {
+          type: 'body',
+
+          parameters: [
+            {
+              type: 'text',
+              text: studentName,
+            },
+            {
+              type: 'text',
+              text: className,
+            },
+            {
+              type: 'text',
+              text: schoolName,
+            },
+            {
+              type: 'text',
+              text: eventTime,
+            },
+          ],
+        },
+      ],
+    },
+
+    biz_opaque_callback_data:
+      queueId,
+  }
+
   const response = await fetch(
     `https://graph.facebook.com/${config.graphApiVersion}/${config.phoneNumberId}/messages`,
     {
       method: 'POST',
+
       headers: {
         Authorization:
           `Bearer ${config.accessToken}`,
@@ -309,68 +391,10 @@ async function sendPhotoTemplate({
         'Content-Type':
           'application/json',
       },
-      body: JSON.stringify({
-        messaging_product:
-          'whatsapp',
 
-        recipient_type:
-          'individual',
-
-        to: destinationPhone,
-
-        type: 'template',
-
-        template: {
-          name: templateName,
-
-          language: {
-            code:
-              config.templateLanguage,
-          },
-
-          components: [
-            {
-              type: 'header',
-
-              parameters: [
-                {
-                  type: 'image',
-
-                  image: {
-                    id: mediaLink,
-                  },
-                },
-              ],
-            },
-
-            {
-              type: 'body',
-
-              parameters: [
-                {
-                  type: 'text',
-                  text: studentName,
-                },
-                {
-                  type: 'text',
-                  text: className,
-                },
-                {
-                  type: 'text',
-                  text: schoolName,
-                },
-                {
-                  type: 'text',
-                  text: eventTime,
-                },
-              ],
-            },
-          ],
-        },
-
-        biz_opaque_callback_data:
-          queueId,
-      }),
+      body: JSON.stringify(
+        requestPayload
+      ),
     }
   )
 
@@ -388,16 +412,73 @@ async function sendPhotoTemplate({
   ) {
     const metaMessage =
       data?.error?.message ||
-      data?.error?.error_user_msg ||
+      data?.error
+        ?.error_user_msg ||
       'A Meta não retornou o ID da mensagem.'
+
+    const metaDetails =
+      data?.error?.error_data
+        ?.details ||
+      null
 
     const metaCode =
       data?.error?.code
-        ? ` Código: ${data.error.code}.`
-        : ''
+        ? String(
+            data.error.code
+          )
+        : null
+
+    const metaSubcode =
+      data?.error
+        ?.error_subcode
+        ? String(
+            data.error
+              .error_subcode
+          )
+        : null
+
+    console.error(
+      '[WHATSAPP WORKER] resposta de erro da Meta:',
+      {
+        queueId,
+        httpStatus:
+          response.status,
+        code:
+          metaCode,
+        subcode:
+          metaSubcode,
+        message:
+          metaMessage,
+        details:
+          metaDetails,
+
+        /*
+         * Não registramos a URL assinada,
+         * pois ela contém um token temporário.
+         */
+        mediaLinkLength:
+          normalizedMediaLink.length,
+      }
+    )
+
+    const errorParts = [
+      `Erro ao enviar template: ${metaMessage}`,
+
+      metaDetails
+        ? `Detalhes: ${metaDetails}`
+        : null,
+
+      metaCode
+        ? `Código: ${metaCode}`
+        : null,
+
+      metaSubcode
+        ? `Subcódigo: ${metaSubcode}`
+        : null,
+    ].filter(Boolean)
 
     throw new Error(
-      `Erro ao enviar template: ${metaMessage}.${metaCode}`
+      errorParts.join(' | ')
     )
   }
 
