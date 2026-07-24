@@ -7,6 +7,7 @@ import {
   type CSSProperties,
 } from 'react'
 import { supabase } from '@/lib/supabase'
+import WhatsAppMessagesAdmin from '@/components/settings/WhatsAppMessagesAdmin'
 
 type AddonCode =
   | 'arrival_photo_whatsapp'
@@ -1069,6 +1070,16 @@ export default function SchoolSettingsSection({
     subscriptions
       .regular_exit_photo_whatsapp
 
+  const arrivalActive =
+  isSubscriptionActive(
+    arrivalSubscription
+  )
+
+const departureActive =
+  isSubscriptionActive(
+    departureSubscription
+  )    
+
   const showStudentSelection =
     (
       isSubscriptionActive(
@@ -1170,6 +1181,14 @@ export default function SchoolSettingsSection({
           })}
         </div>
       </div>
+
+      <WhatsAppMessagesAdmin
+  schoolId={schoolId}
+  currentUserId={currentUserId}
+  arrivalEnabled={arrivalActive}
+  departureEnabled={departureActive}
+  showMessage={showMessage}
+/>
 
       {showStudentSelection && (
         <div style={settingsCardStyle}>
