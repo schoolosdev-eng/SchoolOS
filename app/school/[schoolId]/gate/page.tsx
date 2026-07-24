@@ -1123,100 +1123,410 @@ async function syncOfflineAttendance() {
   setLoadingSync(true)
 
   try {
-  if (!navigator.onLine) {
-    setResultWithTimeout({
-      status: 'error',
-      message: 'Sem internet. A sincronização será feita quando a conexão voltar.',
-    })
-    return
-  }
+    if (!navigator.onLine) {
+      setResultWithTimeout({
+        status: 'error',
+        message:
+          'Sem internet. A sincronização será feita quando a conexão voltar.',
+      })
 
-const pendingRecords = await offlineAttendanceDb.attendance
-  .filter((record) => record.synced === false)
-  .toArray()
-
- if (pendingRecords.length === 0) {
-  await syncEarlyExits()
-
-  setResultWithTimeout({
-    status: 'success',
-    message: 'Sincronização verificada.',
-  })
-
-  return
-}
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  let syncedCount = 0
-
-  for (const record of pendingRecords) {
-    const { data: existingAttendance, error: existingError } = await supabase
-      .from('attendance_records')
-      .select('id, status')
-      .eq('school_id', record.school_id)
-      .eq('student_id', record.student_id)
-      .eq('class_id', record.class_id)
-      .eq('attendance_date', record.attendance_date)
-      .maybeSingle()
-
-    if (existingError) {
-      continue
+      return
     }
 
-    if (existingAttendance) {
-      const { error: updateError } = await supabase
-        .from('attendance_records')
-        .update({
-          status: 'present',
-          source: record.source,
-          recorded_by_user_id: user?.id || null,
-          updated_at: record.recorded_at,
-        })
-        .eq('id', existingAttendance.id)
+    const pendingRecords =
+      await offlineAttendanceDb.attendance
+        .filter(
+          (record) =>
+            record.synced === false
+        )
+        .toArray()
 
-      if (!updateError) {
-        await offlineAttendanceDb.attendance.update(record.id, {
-          synced: true,
-        })
+    if (pendingRecords.length === 0) {
+      await syncEarlyExits()
 
-        syncedCount++
+      setResultWithTimeout({
+        status: 'success',
+        message:
+          'Sincronização verificada. Não há presenças pendentes.',
+      })
+
+      return
+    }
+
+    const {
+      data: { session },
+      error: sessionError,
+    } =
+      await supabase.auth.getSession()
+
+    if (
+      sessionError ||
+      !session?.access_token ||
+      !session.user
+    ) {
+      setResultWithTimeout({
+        status: 'error',
+        message:
+          'Sessão expirada. Entre novamente para sincronizar as presenças.',
+      })
+
+      return
+    }
+
+    let syncedCount = 0
+    let whatsappQueuedCount = 0
+    let warningCount = 0
+
+    const synchronizationErrors:
+      string[] = []
+
+    for (
+      const record of pendingRecords
+    ) {
+      /*
+       * Entradas por QR Code utilizam o
+       * novo endpoint, que também cria:
+       *
+       * - comprovante;
+       * - foto privada;
+       * - fila do WhatsApp.
+       */
+      if (record.source === 'qr') {
+        try {
+          const response = await fetch(
+            '/api/gate/sync-qr-arrival',
+            {
+              method: 'POST',
+
+              headers: {
+                Authorization:
+                  `Bearer ${session.access_token}`,
+
+                'Content-Type':
+                  'application/json',
+              },
+
+              body: JSON.stringify({
+                schoolId:
+                  record.school_id,
+
+                studentId:
+                  record.student_id,
+
+                classId:
+                  record.class_id,
+
+                attendanceDate:
+                  record.attendance_date,
+
+                recordedAt:
+                  record.recorded_at,
+              }),
+            }
+          )
+
+          const data =
+            await response
+              .json()
+              .catch(() => ({}))
+
+          if (!response.ok) {
+            const errorMessage =
+              typeof data.error ===
+                'string'
+                ? data.error
+                : 'Erro ao sincronizar entrada por QR Code.'
+
+            console.error(
+              '[SINCRONIZAÇÃO QR]',
+              {
+                recordId:
+                  record.id,
+
+                studentId:
+                  record.student_id,
+
+                status:
+                  response.status,
+
+                error:
+                  errorMessage,
+              }
+            )
+
+            synchronizationErrors.push(
+              errorMessage
+            )
+
+            /*
+             * Não marca como sincronizado.
+             * Na próxima tentativa, o endpoint
+             * idempotente retomará o processo.
+             */
+            continue
+          }
+
+          await offlineAttendanceDb
+            .attendance
+            .update(
+              record.id,
+              {
+                synced: true,
+              }
+            )
+
+          syncedCount++
+
+          if (
+            data.whatsappQueued ===
+            true
+          ) {
+            whatsappQueuedCount++
+          }
+
+          if (
+            typeof data.warning ===
+              'string' &&
+            data.warning.trim()
+          ) {
+            warningCount++
+
+            console.warn(
+              '[SINCRONIZAÇÃO QR] aviso:',
+              data.warning
+            )
+          }
+
+          console.log(
+            '[SINCRONIZAÇÃO QR] concluída:',
+            {
+              recordId:
+                record.id,
+
+              studentId:
+                record.student_id,
+
+              duplicate:
+                data.duplicate,
+
+              addonEligible:
+                data.addonEligible,
+
+              evidenceSaved:
+                data.evidenceSaved,
+
+              whatsappQueued:
+                data.whatsappQueued,
+
+              whatsappStatus:
+                data.whatsappStatus,
+
+              queueId:
+                data.queueId,
+            }
+          )
+        } catch (error) {
+          console.error(
+            '[SINCRONIZAÇÃO QR] erro de rede:',
+            error
+          )
+
+          synchronizationErrors.push(
+            error instanceof Error
+              ? error.message
+              : 'Erro de comunicação durante a sincronização QR.'
+          )
+        }
+
+        continue
       }
 
-      continue
+      /*
+       * Presenças manuais continuam usando
+       * o funcionamento atual e não geram
+       * foto nem mensagem automática.
+       */
+      try {
+        const {
+          data:
+            existingAttendance,
+
+          error:
+            existingError,
+        } = await supabase
+          .from(
+            'attendance_records'
+          )
+          .select('id, status')
+          .eq(
+            'school_id',
+            record.school_id
+          )
+          .eq(
+            'student_id',
+            record.student_id
+          )
+          .eq(
+            'class_id',
+            record.class_id
+          )
+          .eq(
+            'attendance_date',
+            record.attendance_date
+          )
+          .maybeSingle()
+
+        if (existingError) {
+          synchronizationErrors.push(
+            existingError.message
+          )
+
+          continue
+        }
+
+        if (existingAttendance) {
+          const {
+            error:
+              updateError,
+          } = await supabase
+            .from(
+              'attendance_records'
+            )
+            .update({
+              status:
+                'present',
+
+              source:
+                record.source,
+
+              recorded_by_user_id:
+                session.user.id,
+
+              updated_at:
+                record.recorded_at,
+            })
+            .eq(
+              'id',
+              existingAttendance.id
+            )
+
+          if (updateError) {
+            synchronizationErrors.push(
+              updateError.message
+            )
+
+            continue
+          }
+        } else {
+          const {
+            error:
+              insertError,
+          } = await supabase
+            .from(
+              'attendance_records'
+            )
+            .insert({
+              school_id:
+                record.school_id,
+
+              student_id:
+                record.student_id,
+
+              class_id:
+                record.class_id,
+
+              attendance_date:
+                record.attendance_date,
+
+              status:
+                'present',
+
+              source:
+                record.source,
+
+              recorded_by_user_id:
+                session.user.id,
+
+              created_at:
+                record.recorded_at,
+
+              updated_at:
+                record.recorded_at,
+            })
+
+          if (insertError) {
+            synchronizationErrors.push(
+              insertError.message
+            )
+
+            continue
+          }
+        }
+
+        await offlineAttendanceDb
+          .attendance
+          .update(
+            record.id,
+            {
+              synced: true,
+            }
+          )
+
+        syncedCount++
+      } catch (error) {
+        console.error(
+          '[SINCRONIZAÇÃO MANUAL] erro:',
+          error
+        )
+
+        synchronizationErrors.push(
+          error instanceof Error
+            ? error.message
+            : 'Erro ao sincronizar presença manual.'
+        )
+      }
     }
 
-    const { error: insertError } = await supabase
-      .from('attendance_records')
-      .insert({
-        school_id: record.school_id,
-        student_id: record.student_id,
-        class_id: record.class_id,
-        attendance_date: record.attendance_date,
-        status: 'present',
-        source: record.source,
-        recorded_by_user_id: user?.id || null,
-        created_at: record.recorded_at,
-        updated_at: record.recorded_at,
-      })
+    await syncEarlyExits()
 
-    if (!insertError) {
-      await offlineAttendanceDb.attendance.update(record.id, {
-        synced: true,
-      })
+    const messageParts = [
+      `Registros sincronizados: ${syncedCount}.`,
+    ]
 
-      syncedCount++
+    if (
+      whatsappQueuedCount > 0
+    ) {
+      messageParts.push(
+        `Mensagens de chegada enfileiradas: ${whatsappQueuedCount}.`
+      )
     }
-  }
 
-  setResultWithTimeout({
-    status: 'success',
-    message: `Sincronização concluída. Registros enviados: ${syncedCount}`,
-  })
-  await syncEarlyExits()
-    } finally {
+    if (warningCount > 0) {
+      messageParts.push(
+        `Avisos: ${warningCount}.`
+      )
+    }
+
+    if (
+      synchronizationErrors.length >
+      0
+    ) {
+      messageParts.push(
+        `Pendentes por erro: ${synchronizationErrors.length}. Uma nova tentativa será feita posteriormente.`
+      )
+    }
+
+    setResultWithTimeout({
+      status:
+        synchronizationErrors.length >
+        0
+          ? 'error'
+          : 'success',
+
+      message:
+        messageParts.join(' '),
+    })
+  } finally {
     setLoadingSync(false)
   }
 }
