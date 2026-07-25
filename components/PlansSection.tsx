@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import AddonPlansSection from '@/components/subscriptions/AddonPlansSection'
 
 type Props = {
   schoolId: string
@@ -834,7 +835,9 @@ if (!session?.access_token) {
 ) : plan.price <= 0 ? (
   <button
     disabled={loading}
-    onClick={() => handlePixCheckout(plan)}
+    onClick={() =>
+  handleCheckout(plan)
+}
     style={actionButtonStyle(false)}
   >
     Ativar Plano Gratuito
@@ -855,6 +858,10 @@ if (!session?.access_token) {
           )
         })}
       </section>
+      <AddonPlansSection
+  schoolId={schoolId}
+  showMessage={showMessage}
+/>
     </section>
   )
 }
