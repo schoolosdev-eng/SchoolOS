@@ -91,32 +91,36 @@ function isSubscriptionActive(
 ) {
   if (
     !subscription ||
-    subscription.status !== 'active'
+    subscription.status !== 'active' ||
+    !subscription.student_limit ||
+    subscription.student_limit <= 0 ||
+    !subscription.current_period_start ||
+    !subscription.current_period_end
+  ) {
+    return false
+  }
+
+  const start = new Date(
+    subscription.current_period_start
+  ).getTime()
+
+  const end = new Date(
+    subscription.current_period_end
+  ).getTime()
+
+  if (
+    Number.isNaN(start) ||
+    Number.isNaN(end)
   ) {
     return false
   }
 
   const now = Date.now()
 
-  if (
-    subscription.current_period_start &&
-    new Date(
-      subscription.current_period_start
-    ).getTime() > now
-  ) {
-    return false
-  }
-
-  if (
-    subscription.current_period_end &&
-    new Date(
-      subscription.current_period_end
-    ).getTime() < now
-  ) {
-    return false
-  }
-
-  return true
+  return (
+    start <= now &&
+    end > now
+  )
 }
 
 function formatDate(
@@ -137,6 +141,22 @@ function formatDate(
   return date.toLocaleDateString(
     'pt-BR'
   )
+}
+
+function getErrorMessage(
+  error: unknown,
+  fallback: string
+) {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof error.message === 'string'
+  ) {
+    return error.message
+  }
+
+  return fallback
 }
 
 export default function SchoolSettingsSection({
@@ -556,6 +576,23 @@ export default function SchoolSettingsSection({
     const subscription =
       subscriptions[addonCode]
 
+    const studentLimit =
+  Number(
+    subscription?.student_limit ||
+      0
+  )
+
+if (
+  coverageMode === 'all' &&
+  students.length > studentLimit
+) {
+  showMessage(
+    `A escola possui ${students.length} alunos, mas este pacote permite até ${studentLimit}. Utilize “Alunos selecionados” ou aumente o pacote.`
+  )
+
+  return
+}  
+
     if (
       !isSubscriptionActive(
         subscription
@@ -631,193 +668,178 @@ export default function SchoolSettingsSection({
       )
 
       showMessage(
-        error instanceof Error
-          ? error.message
-          : 'Erro ao alterar cobertura.'
-      )
+  getErrorMessage(
+    error,
+    'Erro ao alterar cobertura.'
+  )
+)
     } finally {
       setSavingCoverage(null)
     }
   }
 
   async function toggleStudentAddon(
-    studentId: string,
-    addonCode: AddonCode
-  ) {
-    const subscription =
-      subscriptions[addonCode]
+  studentId: string,
+  addonCode: AddonCode
+) {
+  const subscription =
+    subscriptions[addonCode]
 
-    if (
-      !isSubscriptionActive(
-        subscription
-      )
-    ) {
-      showMessage(
-        'Este adicional não está ativo.'
-      )
-
-      return
-    }
-
-    if (
+  if (
+    !isSubscriptionActive(
       subscription
-        ?.coverage_mode !==
-      'selected'
-    ) {
-      showMessage(
-        'Altere a cobertura para “Alunos selecionados”.'
-      )
-
-      return
-    }
-
-    const assignmentKey =
-      `${studentId}:${addonCode}`
-
-    if (
-      savingAssignment ===
-      assignmentKey
-    ) {
-      return
-    }
-
-    const currentlySelected =
-      selectedStudents[
-        addonCode
-      ].has(studentId)
-
-    setSavingAssignment(
-      assignmentKey
+    )
+  ) {
+    showMessage(
+      'Este adicional não está ativo ou está fora do período de vigência.'
     )
 
-    try {
-      if (currentlySelected) {
-        const {
-          error,
-        } = await supabase
-          .from(
-            'school_addon_student_assignments'
-          )
-          .update({
-            is_active: false,
+    return
+  }
 
-            deactivated_at:
-              new Date()
-                .toISOString(),
+  if (
+    subscription
+      ?.coverage_mode !==
+    'selected'
+  ) {
+    showMessage(
+      'Altere a cobertura para “Alunos selecionados”.'
+    )
 
-            updated_at:
-              new Date()
-                .toISOString(),
-          })
-          .eq(
-            'school_id',
-            schoolId
+    return
+  }
+
+  const assignmentKey =
+    `${studentId}:${addonCode}`
+
+  if (
+    savingAssignment ===
+    assignmentKey
+  ) {
+    return
+  }
+
+  const currentlySelected =
+    selectedStudents[
+      addonCode
+    ].has(studentId)
+
+  const studentLimit =
+    Number(
+      subscription.student_limit ||
+        0
+    )
+
+  const selectedCount =
+    selectedStudents[
+      addonCode
+    ].size
+
+  /*
+   * Proteção visual imediata.
+   * O banco continuará sendo a proteção
+   * definitiva contra concorrência.
+   */
+  if (
+    !currentlySelected &&
+    selectedCount >= studentLimit
+  ) {
+    showMessage(
+      `O limite deste pacote foi atingido. É possível selecionar até ${studentLimit} alunos.`
+    )
+
+    return
+  }
+
+  setSavingAssignment(
+    assignmentKey
+  )
+
+  try {
+    const {
+      data,
+      error,
+    } = await supabase.rpc(
+      'toggle_school_addon_student_assignment',
+      {
+        p_school_id:
+          schoolId,
+
+        p_student_id:
+          studentId,
+
+        p_addon_code:
+          addonCode,
+      }
+    )
+
+    if (error) {
+      throw error
+    }
+
+    const result =
+      data as {
+        selected?: boolean
+        selectedCount?: number
+        studentLimit?: number
+      } | null
+
+    const selectedAfter =
+      Boolean(
+        result?.selected
+      )
+
+    setSelectedStudents(
+      (previous) => {
+        const nextSet =
+          new Set(
+            previous[
+              addonCode
+            ]
           )
-          .eq(
-            'student_id',
+
+        if (selectedAfter) {
+          nextSet.add(
             studentId
           )
-          .eq(
-            'addon_code',
-            addonCode
+        } else {
+          nextSet.delete(
+            studentId
           )
-
-        if (error) {
-          throw error
         }
-      } else {
-        const now =
-          new Date()
-            .toISOString()
 
-        const {
-          error,
-        } = await supabase
-          .from(
-            'school_addon_student_assignments'
-          )
-          .upsert(
-            {
-              school_id:
-                schoolId,
+        return {
+          ...previous,
 
-              student_id:
-                studentId,
-
-              addon_code:
-                addonCode,
-
-              is_active:
-                true,
-
-              activated_at:
-                now,
-
-              deactivated_at:
-                null,
-
-              created_by_user_id:
-                currentUserId,
-
-              updated_at:
-                now,
-            },
-            {
-              onConflict:
-                'school_id,student_id,addon_code',
-            }
-          )
-
-        if (error) {
-          throw error
+          [addonCode]:
+            nextSet,
         }
       }
+    )
 
-      setSelectedStudents(
-        (previous) => {
-          const nextSet =
-            new Set(
-              previous[
-                addonCode
-              ]
-            )
+    showMessage(
+      selectedAfter
+        ? 'Aluno incluído no adicional.'
+        : 'Aluno removido do adicional.'
+    )
+  } catch (error) {
+    console.error(
+      '[CONFIGURAÇÕES] erro ao alterar aluno:',
+      error
+    )
 
-          if (
-            currentlySelected
-          ) {
-            nextSet.delete(
-              studentId
-            )
-          } else {
-            nextSet.add(
-              studentId
-            )
-          }
-
-          return {
-            ...previous,
-            [addonCode]:
-              nextSet,
-          }
-        }
+    showMessage(
+      getErrorMessage(
+        error,
+        'Erro ao alterar aluno.'
       )
-    } catch (error) {
-      console.error(
-        '[CONFIGURAÇÕES] erro ao alterar aluno:',
-        error
-      )
-
-      showMessage(
-        error instanceof Error
-          ? error.message
-          : 'Erro ao alterar aluno.'
-      )
-    } finally {
-      setSavingAssignment(
-        null
-      )
-    }
+    )
+  } finally {
+    setSavingAssignment(
+      null
+    )
   }
+}
 
   function renderAddonCard({
     addonCode,
@@ -840,6 +862,25 @@ export default function SchoolSettingsSection({
       selectedStudents[
         addonCode
       ].size
+
+    const studentLimit =
+  Number(
+    subscription
+      ?.student_limit ||
+      0
+  )
+
+const allStudentsAllowed =
+  active &&
+  studentLimit > 0 &&
+  students.length <=
+    studentLimit
+
+const selectedLimitReached =
+  active &&
+  studentLimit > 0 &&
+  selectedCount >=
+    studentLimit  
 
     return (
       <div style={addonCardStyle}>
@@ -950,10 +991,11 @@ export default function SchoolSettingsSection({
         >
           <button
             disabled={
-              !active ||
-              savingCoverage ===
-                addonCode
-            }
+  !active ||
+  !allStudentsAllowed ||
+  savingCoverage ===
+    addonCode
+}
             onClick={() =>
               changeCoverageMode(
                 addonCode,
@@ -985,7 +1027,16 @@ export default function SchoolSettingsSection({
                   : '#334155',
 
               opacity:
-                active ? 1 : 0.55,
+  active &&
+  allStudentsAllowed
+    ? 1
+    : 0.55,
+
+cursor:
+  active &&
+  allStudentsAllowed
+    ? 'pointer'
+    : 'not-allowed',
             }}
           >
             <strong>
@@ -1046,8 +1097,64 @@ export default function SchoolSettingsSection({
               Ative somente para quem
               utilizará o serviço.
             </span>
-          </button>
+                    </button>
         </div>
+
+        {active &&
+          !allStudentsAllowed && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: 12,
+                borderRadius: 14,
+                border:
+                  '1px solid #fed7aa',
+                background:
+                  '#fff7ed',
+                color:
+                  '#9a3412',
+                fontSize: 13,
+                fontWeight: 800,
+                lineHeight: 1.5,
+              }}
+            >
+              A escola possui{' '}
+              {students.length} alunos,
+              mas este pacote permite até{' '}
+              {studentLimit}. Utilize
+              “Alunos selecionados” ou
+              aumente o pacote.
+            </div>
+          )}
+
+        {subscription
+          ?.coverage_mode ===
+            'selected' &&
+          selectedLimitReached && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: 12,
+                borderRadius: 14,
+                border:
+                  '1px solid #fecaca',
+                background:
+                  '#fef2f2',
+                color:
+                  '#b91c1c',
+                fontSize: 13,
+                fontWeight: 800,
+                lineHeight: 1.5,
+              }}
+            >
+              O limite do pacote foi
+              atingido: {selectedCount}/
+              {studentLimit} alunos.
+              Remova um aluno ou aumente
+              o pacote para selecionar
+              outro.
+            </div>
+          )}
       </div>
     )
   }
@@ -1275,6 +1382,32 @@ const departureActive =
                         student.id
                       )
 
+                  const arrivalLimit =
+  Number(
+    arrivalSubscription
+      ?.student_limit ||
+      0
+  )
+
+const departureLimit =
+  Number(
+    departureSubscription
+      ?.student_limit ||
+      0
+  )
+
+const arrivalLimitReached =
+  arrivalLimit > 0 &&
+  selectedStudents
+    .arrival_photo_whatsapp
+    .size >= arrivalLimit
+
+const departureLimitReached =
+  departureLimit > 0 &&
+  selectedStudents
+    .regular_exit_photo_whatsapp
+    .size >= departureLimit    
+
                   return (
                     <div
                       key={student.id}
@@ -1373,13 +1506,17 @@ const departureActive =
 
                           <StudentAddonButton
                             enabled={
-                              isSubscriptionActive(
-                                arrivalSubscription
-                              ) &&
-                              arrivalSubscription
-                                ?.coverage_mode ===
-                                'selected'
-                            }
+  isSubscriptionActive(
+    arrivalSubscription
+  ) &&
+  arrivalSubscription
+    ?.coverage_mode ===
+    'selected' &&
+  (
+    arrivalSelected ||
+    !arrivalLimitReached
+  )
+}
                             selected={
                               arrivalSelected
                             }
@@ -1408,13 +1545,17 @@ const departureActive =
 
                           <StudentAddonButton
                             enabled={
-                              isSubscriptionActive(
-                                departureSubscription
-                              ) &&
-                              departureSubscription
-                                ?.coverage_mode ===
-                                'selected'
-                            }
+  isSubscriptionActive(
+    departureSubscription
+  ) &&
+  departureSubscription
+    ?.coverage_mode ===
+    'selected' &&
+  (
+    departureSelected ||
+    !departureLimitReached
+  )
+}
                             selected={
                               departureSelected
                             }
