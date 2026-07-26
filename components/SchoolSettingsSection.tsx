@@ -88,7 +88,7 @@ function isSubscriptionActive(
   subscription:
     | AddonSubscription
     | null
-) {
+): subscription is AddonSubscription {
   if (
     !subscription ||
     subscription.status !== 'active' ||
@@ -570,52 +570,51 @@ export default function SchoolSettingsSection({
   ])
 
   async function changeCoverageMode(
-    addonCode: AddonCode,
-    coverageMode: CoverageMode
-  ) {
-    const subscription =
-      subscriptions[addonCode]
-
-    const studentLimit =
-  Number(
-    subscription?.student_limit ||
-      0
-  )
-
-if (
-  coverageMode === 'all' &&
-  students.length > studentLimit
+  addonCode: AddonCode,
+  coverageMode: CoverageMode
 ) {
-  showMessage(
-    `A escola possui ${students.length} alunos, mas este pacote permite até ${studentLimit}. Utilize “Alunos selecionados” ou aumente o pacote.`
-  )
+  const subscription =
+    subscriptions[addonCode]
 
-  return
-}  
-
-    if (
-      !isSubscriptionActive(
-        subscription
-      )
-    ) {
-      showMessage(
-        'Este adicional não está ativo.'
-      )
-
-      return
-    }
-
-    if (
+  if (
+    !isSubscriptionActive(
       subscription
-        ?.coverage_mode ===
-      coverageMode
-    ) {
-      return
-    }
-
-    setSavingCoverage(
-      addonCode
     )
+  ) {
+    showMessage(
+      'Este adicional não está ativo ou está fora do período de vigência.'
+    )
+
+    return
+  }
+
+  const studentLimit =
+    Number(
+      subscription.student_limit ||
+        0
+    )
+
+  if (
+    coverageMode === 'all' &&
+    students.length > studentLimit
+  ) {
+    showMessage(
+      `A escola possui ${students.length} alunos, mas este pacote permite até ${studentLimit}. Utilize “Alunos selecionados” ou aumente o pacote.`
+    )
+
+    return
+  }
+
+  if (
+    subscription.coverage_mode ===
+    coverageMode
+  ) {
+    return
+  }
+
+  setSavingCoverage(addonCode)
+
+  // restante da função permanece igual
 
     try {
       const {
