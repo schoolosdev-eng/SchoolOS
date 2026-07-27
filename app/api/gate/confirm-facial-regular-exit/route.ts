@@ -540,6 +540,7 @@ export async function POST(
         id,
         status,
         coverage_mode,
+        student_limit,
         current_period_start,
         current_period_end
       `)
@@ -574,28 +575,46 @@ export async function POST(
       )
     }
 
-    const addonStarted =
-      !addonSubscription
-        ?.current_period_start ||
-      new Date(
+    const addonStartTime =
+  addonSubscription
+    ?.current_period_start
+    ? new Date(
         addonSubscription.current_period_start
-      ).getTime() <=
-        now.getTime()
+      ).getTime()
+    : Number.NaN
 
-    const addonNotExpired =
-      !addonSubscription
-        ?.current_period_end ||
-      new Date(
+const addonEndTime =
+  addonSubscription
+    ?.current_period_end
+    ? new Date(
         addonSubscription.current_period_end
-      ).getTime() >=
-        now.getTime()
+      ).getTime()
+    : Number.NaN
 
-    const schoolExitAddonActive =
-      Boolean(
-        addonSubscription &&
-          addonStarted &&
-          addonNotExpired
-      )
+const addonStudentLimit =
+  Number(
+    addonSubscription
+      ?.student_limit ||
+      0
+  )
+
+const schoolExitAddonActive =
+  Boolean(
+    addonSubscription &&
+      addonSubscription.status ===
+        'active' &&
+      addonStudentLimit > 0 &&
+      Number.isFinite(
+        addonStartTime
+      ) &&
+      Number.isFinite(
+        addonEndTime
+      ) &&
+      addonStartTime <=
+        now.getTime() &&
+      addonEndTime >
+        now.getTime()
+  )
 
     if (
       !schoolExitAddonActive
