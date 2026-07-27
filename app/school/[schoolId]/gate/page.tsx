@@ -347,22 +347,31 @@ async function fetchSubscription() {
 }
 
 async function fetchRegularExitAddon() {
-  const { data, error } = await supabase
-    .from('school_addon_subscriptions')
-    .select(`
-      status,
-      addon_code,
-      student_limit,
-      current_period_start,
-      current_period_end
-    `)
-    .eq('school_id', schoolId)
-    .eq(
-      'addon_code',
-      'regular_exit_photo_whatsapp'
-    )
-    .eq('status', 'active')
-    .maybeSingle()
+  const { data, error } =
+    await supabase
+      .from(
+        'school_addon_subscriptions'
+      )
+      .select(`
+        status,
+        addon_code,
+        student_limit,
+        current_period_start,
+        current_period_end
+      `)
+      .eq(
+        'school_id',
+        schoolId
+      )
+      .eq(
+        'addon_code',
+        'regular_exit_photo_whatsapp'
+      )
+      .eq(
+        'status',
+        'active'
+      )
+      .maybeSingle()
 
   if (error) {
     console.error(
@@ -371,28 +380,47 @@ async function fetchRegularExitAddon() {
     )
 
     setRegularExitEnabled(false)
+
     return false
   }
 
-  const now = Date.now()
+  const startTime =
+    data?.current_period_start
+      ? new Date(
+          data.current_period_start
+        ).getTime()
+      : Number.NaN
 
-  const started =
-    !data?.current_period_start ||
-    new Date(
-      data.current_period_start
-    ).getTime() <= now
+  const endTime =
+    data?.current_period_end
+      ? new Date(
+          data.current_period_end
+        ).getTime()
+      : Number.NaN
 
-  const notExpired =
-    !data?.current_period_end ||
-    new Date(
-      data.current_period_end
-    ).getTime() >= now
+  const studentLimit =
+    Number(
+      data?.student_limit || 0
+    )
 
-  const enabled = Boolean(
-    data &&
-    started &&
-    notExpired
-  )
+  const now =
+    Date.now()
+
+  const enabled =
+    Boolean(
+      data &&
+        data.status ===
+          'active' &&
+        studentLimit > 0 &&
+        Number.isFinite(
+          startTime
+        ) &&
+        Number.isFinite(
+          endTime
+        ) &&
+        startTime <= now &&
+        endTime > now
+    )
 
   console.log(
     '[ADICIONAL SAÍDA]',
@@ -402,7 +430,9 @@ async function fetchRegularExitAddon() {
     }
   )
 
-  setRegularExitEnabled(enabled)
+  setRegularExitEnabled(
+    enabled
+  )
 
   return enabled
 }
@@ -1910,18 +1940,8 @@ async function handleStartReading() {
   if (
   gateMode === 'regular_exit'
 ) {
-  if (!regularExitEnabled) {
-    setResultWithTimeout({
-      status: 'error',
-      message:
-        'A escola não possui o adicional de saída normal ativo.',
-    })
-
-    return
-  }
-
   /*
-   * Tanto o QR Code quanto o facial da
+   * Tanto QR Code quanto facial da
    * saída normal dependem do backend.
    */
   if (!navigator.onLine) {
@@ -1929,6 +1949,25 @@ async function handleStartReading() {
       status: 'error',
       message:
         'A saída normal precisa de internet.',
+    })
+
+    return
+  }
+
+  /*
+   * Consulta novamente antes de iniciar.
+   * Isso impede usar um estado antigo caso
+   * o adicional tenha vencido enquanto a
+   * página da portaria permaneceu aberta.
+   */
+  const addonAvailable =
+    await fetchRegularExitAddon()
+
+  if (!addonAvailable) {
+    setResultWithTimeout({
+      status: 'error',
+      message:
+        'A escola não possui o adicional de saída normal ativo ou o período de vigência terminou.',
     })
 
     return
