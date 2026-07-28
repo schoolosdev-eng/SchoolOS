@@ -1507,7 +1507,7 @@ const {
 
     after(async () => {
   try {
-    await processWhatsAppQueue(1)
+    await processWhatsAppQueue(3)
   } catch (error) {
     console.error(
       '[SAÍDA NORMAL] erro no processamento assíncrono do WhatsApp:',

@@ -994,7 +994,7 @@ if (queueError) {
 
 after(async () => {
   try {
-    await processWhatsAppQueue(1)
+    await processWhatsAppQueue(3)
   } catch (error) {
     console.error(
       '[CONFIRMAÇÃO FACIAL] erro no processamento assíncrono do WhatsApp:',

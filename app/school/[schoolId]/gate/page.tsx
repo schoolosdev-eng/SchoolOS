@@ -3524,7 +3524,7 @@ generateFaceEmbeddingFromBlob(
       {!facialConfirmationResult ? (
         <>
           <h2 style={{ ...sectionTitleStyle, fontSize: 28 }}>
-            Quem é você?
+            Confirme seu Reconhecimento Facial.
           </h2>
 
           <p style={sectionTextStyle}>
@@ -3727,6 +3727,7 @@ generateFaceEmbeddingFromBlob(
         style={{
           ...sectionTitleStyle,
           fontSize: 28,
+          alignItems: 'center',
         }}
       >
         {gateMode === 'regular_exit'
