@@ -153,7 +153,7 @@ textAlign: 'center',
                 color: '#0f172a',
               }}
             >
-              Tudo que sua escola precisa em um só painel.
+              Controle de presença inteligente para sua escola. E muito mais:
             </h1>
 
             <p
