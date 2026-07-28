@@ -3755,8 +3755,8 @@ generateFaceEmbeddingFromBlob(
           style={{
             width: 160,
             height: 160,
-            alignItems: 'center',
-            justifyContent: 'center',
+            display: 'block',
+            margin: '20px auto 0',
             borderRadius: '50%',
             objectFit: 'cover',
             border: '5px solid #bfdbfe',
