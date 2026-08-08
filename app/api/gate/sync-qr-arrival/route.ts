@@ -1182,7 +1182,7 @@ export async function POST(
         after(async () => {
           try {
             await processWhatsAppQueue(
-              3
+              1
             )
           } catch (error) {
             console.error(
@@ -1389,7 +1389,7 @@ export async function POST(
         after(async () => {
           try {
             await processWhatsAppQueue(
-              3
+              1
             )
           } catch (error) {
             console.error(
@@ -1473,7 +1473,7 @@ export async function POST(
     after(async () => {
       try {
         await processWhatsAppQueue(
-          3
+          1
         )
       } catch (error) {
         console.error(
