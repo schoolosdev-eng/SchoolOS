@@ -4964,7 +4964,7 @@ onClick={() => {
   </div>
 )}
 <a
-  href="https://wa.me/5588921826192?text=Olá!%20Tenho%20dúvidas%20sobre%20o%20SchoolOS."
+  href="https://wa.me/5588999766370?text=Olá!%20Tenho%20dúvidas%20sobre%20o%20SchoolOS."
   target="_blank"
   rel="noopener noreferrer"
   style={{
