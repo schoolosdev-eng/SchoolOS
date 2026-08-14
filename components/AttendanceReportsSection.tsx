@@ -1155,85 +1155,102 @@ disabled={analyticsLoading || !isSubscriptionActive}
     : ''}
 </td>
 <td className="hide-on-print" style={tdStyle}>
-
   {(() => {
-  const earlyExit = earlyExitMap.get(
-    `${r.student_id}_${r.attendance_date}`
-  )
+    const earlyExit = earlyExitMap.get(
+      `${r.student_id}_${r.attendance_date}`
+    )
 
-  if (!earlyExit) return null
+    if (!earlyExit) return null
 
-  if (!student?.responsible_whatsapp) {
+    if (!student?.responsible_whatsapp) {
+      return (
+        <span style={{ color: '#94a3b8', fontWeight: 800 }}>
+          Sem WhatsApp
+        </span>
+      )
+    }
+
+    const cleanPhone = student.responsible_whatsapp.replace(/\D/g, '')
+    const phone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`
+
+    const authorizedText = earlyExit.authorized_by_name
+      ? ` Autorizado/retirado por: ${earlyExit.authorized_by_name}.`
+      : ''
+
+    const message = encodeURIComponent(
+      `Olá! Informamos que o(a) aluno(a) ${
+        student.full_name || student.name
+      }, da turma ${
+        schoolClass?.name || '---'
+      }, registrou saída antecipada da escola às ${
+        earlyExit.exit_time
+      }. Motivo: ${earlyExit.reason}.${authorizedText}`
+    )
+
     return (
-      <span style={{ color: '#94a3b8', fontWeight: 800 }}>
+      <button
+        onClick={() =>
+          window.open(`https://wa.me/${phone}?text=${message}`, '_blank')
+        }
+        style={{
+          padding: '8px 10px',
+          borderRadius: 10,
+          border: 'none',
+          background: '#25D366',
+          color: '#ffffff',
+          fontWeight: 800,
+          cursor: 'pointer',
+          fontSize: 12,
+        }}
+      >
+        Avisar saída
+      </button>
+    )
+  })()}
+
+  {r.status === 'absent' ? (
+    studentLicense ? (
+      <span
+        style={{
+          padding: '8px 10px',
+          borderRadius: 10,
+          border: '1px solid #fed7aa',
+          background: '#fff7ed',
+          color: '#c2410c',
+          fontWeight: 800,
+          fontSize: 12,
+          display: 'inline-block',
+        }}
+      >
+        Falta justificada
+      </span>
+    ) : student?.responsible_whatsapp ? (
+      <button
+        onClick={() =>
+          sendSingleWhatsapp(
+            student.full_name || student.name || 'Aluno',
+            student.responsible_whatsapp || '',
+            r.attendance_date
+          )
+        }
+        style={{
+          padding: '8px 10px',
+          borderRadius: 10,
+          border: 'none',
+          background: '#25D366',
+          color: '#ffffff',
+          fontWeight: 800,
+          cursor: 'pointer',
+          fontSize: 12,
+        }}
+      >
+        WhatsApp
+      </button>
+    ) : (
+      <span style={{ color: '#94a3b8', fontWeight: 700 }}>
         Sem WhatsApp
       </span>
     )
-  }
-
-  const cleanPhone = student.responsible_whatsapp.replace(/\D/g, '')
-  const phone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`
-
-  const authorizedText = earlyExit.authorized_by_name
-    ? ` Autorizado/retirado por: ${earlyExit.authorized_by_name}.`
-    : ''
-
-  const message = encodeURIComponent(
-    `Olá! Informamos que o(a) aluno(a) ${
-      student.full_name || student.name
-    }, da turma ${
-      schoolClass?.name || '---'
-    }, registrou saída antecipada da escola às ${
-      earlyExit.exit_time
-    }. Motivo: ${earlyExit.reason}.${authorizedText}`
-  )
-
-  return (
-    <button
-      onClick={() =>
-        window.open(`https://wa.me/${phone}?text=${message}`, '_blank')
-      }
-      style={{
-        padding: '8px 10px',
-        borderRadius: 10,
-        border: 'none',
-        background: '#25D366',
-        color: '#ffffff',
-        fontWeight: 800,
-        cursor: 'pointer',
-        fontSize: 12,
-      }}
-    >
-      Avisar saída
-    </button>
-  )
-})()}
-  {r.status === 'absent' && student?.responsible_whatsapp ? (
-    <button
-      onClick={() =>
-        sendSingleWhatsapp(
-          student.full_name || student.name || 'Aluno',
-          student.responsible_whatsapp || '',
-          r.attendance_date
-        )
-      }
-      style={{
-        padding: '8px 10px',
-        borderRadius: 10,
-        border: 'none',
-        background: '#25D366',
-        color: '#ffffff',
-        fontWeight: 800,
-        cursor: 'pointer',
-        fontSize: 12,
-      }}
-    >
-      WhatsApp
-    </button>
-  ) : r.status === 'absent' ? (
-    <span style={{ color: '#94a3b8', fontWeight: 700 }}>
-      Sem WhatsApp
-    </span>
   ) : (
     ''
   )}
