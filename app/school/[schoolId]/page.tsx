@@ -120,6 +120,20 @@ type EarlyExitRecord = {
   authorized_by_name?: string | null
 }
 
+type StudentLicenseReportRecord = {
+  id: string
+  student_id: string
+  class_id: string | null
+  license_type:
+    | 'medical_certificate'
+    | 'medical_leave'
+    | 'other'
+  start_date: string
+  end_date: string
+  notes: string | null
+  cancelled_at: string | null
+}
+
 export default function SchoolPage() {
   const params = useParams<{ schoolId: string }>()
   const router = useRouter()
@@ -245,6 +259,9 @@ const [annualRankingData, setAnnualRankingData] = useState<AttendanceRankingItem
   const [absenceAlerts, setAbsenceAlerts] = useState<AlertStudent[]>([])
   const [alertsLoading, setAlertsLoading] = useState(false)
   const [earlyExits, setEarlyExits] = useState<EarlyExitRecord[]>([])
+  const [reportLicenses, setReportLicenses] = useState<
+  StudentLicenseReportRecord[]
+>([])
 
   const [guardianEmail, setGuardianEmail] = useState('')
   const [guardianWhatsapp, setGuardianWhatsapp] = useState('')
@@ -1416,6 +1433,52 @@ async function handleGenerateAttendanceReport() {
     showMessage(`Erro ao gerar relatório: ${error.message}`)
     return
   }
+
+  let licensesQuery = supabase
+  .from('student_licenses')
+  .select(`
+    id,
+    student_id,
+    class_id,
+    license_type,
+    start_date,
+    end_date,
+    notes,
+    cancelled_at
+  `)
+  .eq('school_id', schoolId)
+  .is('cancelled_at', null)
+
+  /*
+   * Busca apenas licenças cujo período
+   * cruza o período do relatório.
+   *
+   * Exemplo:
+   * relatório 10/08 até 20/08
+   * licença 14/08 até 18/08
+   * => encontrada.
+   */
+  .lte('start_date', reportEndDate)
+  .gte('end_date', reportStartDate)
+
+const {
+  data: licensesData,
+  error: licensesError,
+} = await licensesQuery
+
+if (licensesError) {
+  setReportLoading(false)
+
+  showMessage(
+    `Erro ao buscar licenças dos alunos: ${licensesError.message}`
+  )
+
+  return
+}
+
+setReportLicenses(
+  (licensesData || []) as StudentLicenseReportRecord[]
+)
 
   let earlyExitQuery = supabase
     .from('student_early_exits')
@@ -4596,6 +4659,7 @@ onClick={() => {
 }))}
             classes={classes}
             records={reportRecords}
+            licenses={reportLicenses}
             selectedClassId={reportClassId}
             setSelectedClassId={setReportClassId}
             filterStatus={reportStatus}

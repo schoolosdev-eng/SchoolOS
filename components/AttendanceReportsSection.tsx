@@ -35,6 +35,20 @@ type EarlyExitRecord = {
   authorized_by_name?: string | null
 }
 
+type StudentLicense = {
+  id: string
+  student_id: string
+  class_id: string | null
+  license_type:
+    | 'medical_certificate'
+    | 'medical_leave'
+    | 'other'
+  start_date: string
+  end_date: string
+  notes: string | null
+  cancelled_at: string | null
+}
+
 type DailyEvolutionItem = {
   attendance_date: string
   total_records: number
@@ -76,6 +90,7 @@ type AttendanceReportsSectionProps = {
   students: Student[]
   classes: SchoolClass[]
   records: AttendanceRecord[]
+  licenses: StudentLicense[]
   selectedClassId: string
   setSelectedClassId: (value: string) => void
   filterStatus: 'all' | 'present' | 'absent' | 'early_exit'
@@ -98,6 +113,7 @@ export default function AttendanceReportsSection({
   students,
   classes,
   records,
+  licenses,
   selectedClassId,
   setSelectedClassId,
   filterStatus,
@@ -286,6 +302,87 @@ function formatTimeBR(dateString?: string) {
 const studentMap = new Map(
   students.map((s) => [s.id, s])
 )
+
+const licensesByStudent = useMemo(() => {
+  const map = new Map<
+    string,
+    StudentLicense[]
+  >()
+
+  licenses.forEach((license) => {
+    /*
+     * Canceladas nunca justificam
+     * uma falta no relatório.
+     */
+    if (license.cancelled_at) {
+      return
+    }
+
+    const current =
+      map.get(license.student_id) || []
+
+    current.push(license)
+
+    map.set(
+      license.student_id,
+      current
+    )
+  })
+
+  return map
+}, [licenses])
+
+function getLicenseForRecord(
+  record: AttendanceRecord
+) {
+  const studentLicenses =
+    licensesByStudent.get(
+      record.student_id
+    ) || []
+
+  return studentLicenses.find(
+    (license) =>
+      /*
+       * A data da falta precisa estar
+       * dentro do período da licença.
+       */
+      license.start_date <=
+        record.attendance_date &&
+      license.end_date >=
+        record.attendance_date &&
+
+      /*
+       * Se houver turma gravada,
+       * ela deve coincidir.
+       *
+       * Licenças antigas sem class_id
+       * continuam válidas.
+       */
+      (
+        !license.class_id ||
+        license.class_id ===
+          record.class_id
+      )
+  )
+}
+
+function getLicenseTypeLabel(
+  type: StudentLicense['license_type']
+) {
+  if (
+    type === 'medical_certificate'
+  ) {
+    return 'Atestado médico'
+  }
+
+  if (
+    type === 'medical_leave'
+  ) {
+    return 'Licença médica'
+  }
+
+  return 'Licença'
+}
 
 async function loadAttendanceAnalytics() {
   if (!schoolId) {
@@ -933,12 +1030,73 @@ disabled={analyticsLoading || !isSubscriptionActive}
     return nameA.localeCompare(nameB, 'pt-BR')
   })
   .map((r) => {
-                    const student = students.find((s) => s.id === r.student_id)
+  const student =
+    students.find(
+      (s) =>
+        s.id === r.student_id
+    )
 
-                    return (
+  const studentLicense =
+    r.status === 'absent'
+      ? getLicenseForRecord(r)
+      : undefined
+
+  return (
                       <tr key={r.id}>
                         <td style={tdNameStyle}>
-  {student?.full_name || student?.name}
+  <div
+    style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 7,
+      flexWrap: 'wrap',
+    }}
+  >
+    <span>
+      {student?.full_name ||
+        student?.name}
+    </span>
+
+    {studentLicense && (
+      <span
+        style={{
+          padding: '3px 7px',
+          borderRadius: 999,
+          background: '#fff7ed',
+          border:
+            '1px solid #fed7aa',
+          color: '#c2410c',
+          fontSize: 10,
+          fontWeight: 900,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {getLicenseTypeLabel(
+          studentLicense.license_type
+        )}
+      </span>
+    )}
+  </div>
+
+  {studentLicense && (
+    <div
+      style={{
+        marginTop: 4,
+        fontSize: 10,
+        color: '#9a3412',
+        fontWeight: 600,
+      }}
+    >
+      Licença: {' '}
+      {formatDateBR(
+        studentLicense.start_date
+      )}
+      {' até '}
+      {formatDateBR(
+        studentLicense.end_date
+      )}
+    </div>
+  )}
 </td>
 
                         <td style={tdStyle}>
