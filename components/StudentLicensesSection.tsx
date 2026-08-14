@@ -301,98 +301,80 @@ export default function StudentLicensesSection({
     fetchLicenses()
   }, [schoolId])
 
-  const sortedStudents =
-    useMemo(() => {
-      const search =
-        studentSearch
-          .trim()
-          .toLowerCase()
+  const studentsFromSelectedClass =
+  useMemo(() => {
+    if (!selectedClassId) {
+      return []
+    }
 
-      return [...students]
-        .filter((student) => {
-          if (!search) {
-            return true
-          }
-
-          const name =
-            (
-              student.full_name ||
-              student.name ||
-              ''
-            ).toLowerCase()
-
-          return name.includes(search)
-        })
-        .sort((a, b) => {
-          const nameA =
-            a.full_name ||
-            a.name ||
-            ''
-
-          const nameB =
-            b.full_name ||
-            b.name ||
-            ''
-
-          return nameA.localeCompare(
-            nameB,
-            'pt-BR'
+    const enrolledStudentIds =
+      new Set(
+        enrollments
+          .filter(
+            (enrollment) =>
+              enrollment.class_id ===
+              selectedClassId
           )
-        })
-    }, [students, studentSearch])
-
-  const availableClasses =
-    useMemo(() => {
-      if (!selectedStudentId) {
-        return []
-      }
-
-      const classIds =
-        new Set(
-          enrollments
-            .filter(
-              (enrollment) =>
-                enrollment.student_id ===
-                selectedStudentId
-            )
-            .map(
-              (enrollment) =>
-                enrollment.class_id
-            )
-        )
-
-      return classes.filter(
-        (schoolClass) =>
-          classIds.has(
-            schoolClass.id
+          .map(
+            (enrollment) =>
+              enrollment.student_id
           )
       )
-    }, [
-      selectedStudentId,
-      enrollments,
-      classes,
-    ])
+
+    const search =
+      studentSearch
+        .trim()
+        .toLowerCase()
+
+    return students
+      .filter((student) =>
+        enrolledStudentIds.has(
+          student.id
+        )
+      )
+      .filter((student) => {
+        if (!search) {
+          return true
+        }
+
+        const name =
+          (
+            student.full_name ||
+            student.name ||
+            ''
+          ).toLowerCase()
+
+        return name.includes(search)
+      })
+      .sort((a, b) => {
+        const nameA =
+          a.full_name ||
+          a.name ||
+          ''
+
+        const nameB =
+          b.full_name ||
+          b.name ||
+          ''
+
+        return nameA.localeCompare(
+          nameB,
+          'pt-BR'
+        )
+      })
+  }, [
+    selectedClassId,
+    enrollments,
+    students,
+    studentSearch,
+  ])
 
   useEffect(() => {
-    if (!selectedStudentId) {
-      setSelectedClassId('')
-      return
-    }
+  setSelectedStudentId('')
+  setStudentSearch('')
+}, [selectedClassId])
 
-    if (
-      availableClasses.length === 1
-    ) {
-      setSelectedClassId(
-        availableClasses[0].id
-      )
-      return
-    }
-
-    setSelectedClassId('')
-  }, [
-    selectedStudentId,
-    availableClasses,
-  ])
+  
 
   const filteredLicenses =
     useMemo(() => {
@@ -527,12 +509,35 @@ export default function StudentLicensesSection({
       return
     }
 
+    if (!selectedClassId) {
+  showMessage(
+    'Selecione a turma.'
+  )
+  return
+}
+
     if (!selectedStudentId) {
       showMessage(
         'Selecione o aluno.'
       )
       return
     }
+
+      const studentBelongsToClass =
+    enrollments.some(
+      (enrollment) =>
+        enrollment.class_id ===
+          selectedClassId &&
+        enrollment.student_id ===
+          selectedStudentId
+    )
+
+  if (!studentBelongsToClass) {
+    showMessage(
+      'O aluno selecionado não pertence à turma informada.'
+    )
+    return
+  }
 
     if (!startDate || !endDate) {
       showMessage(
@@ -1054,124 +1059,122 @@ export default function StudentLicensesSection({
             gap: 14,
           }}
         >
-          <div>
-            <label
-              style={labelStyle}
-            >
-              Buscar aluno
-            </label>
+          
+            <div>
+  <label style={labelStyle}>
+    Turma
+  </label>
 
-            <input
-              type="text"
-              value={
-                studentSearch
-              }
-              onChange={(e) =>
-                setStudentSearch(
-                  e.target.value
-                )
-              }
-              placeholder="Digite o nome..."
-              style={inputStyle}
-            />
-          </div>
+  <select
+    value={selectedClassId}
+    onChange={(e) =>
+      setSelectedClassId(
+        e.target.value
+      )
+    }
+    style={inputStyle}
+  >
+    <option value="">
+      Selecione a turma
+    </option>
 
-          <div>
-            <label
-              style={labelStyle}
-            >
-              Aluno
-            </label>
+    {[...classes]
+      .sort((a, b) =>
+        a.name.localeCompare(
+          b.name,
+          'pt-BR'
+        )
+      )
+      .map((schoolClass) => (
+        <option
+          key={schoolClass.id}
+          value={schoolClass.id}
+        >
+          {schoolClass.name}
+        </option>
+      ))}
+  </select>
+</div>
 
-            <select
-              value={
-                selectedStudentId
-              }
-              onChange={(e) =>
-                setSelectedStudentId(
-                  e.target.value
-                )
-              }
-              style={inputStyle}
-            >
-              <option value="">
-                Selecione
-              </option>
+<div>
+  <label style={labelStyle}>
+    Buscar aluno
+  </label>
 
-              {sortedStudents.map(
-                (student) => (
-                  <option
-                    key={
-                      student.id
-                    }
-                    value={
-                      student.id
-                    }
-                  >
-                    {student.full_name ||
-                      student.name}
-                  </option>
-                )
-              )}
-            </select>
-          </div>
+  <input
+    type="text"
+    value={studentSearch}
+    onChange={(e) =>
+      setStudentSearch(
+        e.target.value
+      )
+    }
+    disabled={!selectedClassId}
+    placeholder={
+      selectedClassId
+        ? 'Digite o nome...'
+        : 'Selecione a turma primeiro'
+    }
+    style={{
+      ...inputStyle,
+      opacity:
+        selectedClassId
+          ? 1
+          : 0.6,
+      cursor:
+        selectedClassId
+          ? 'text'
+          : 'not-allowed',
+    }}
+  />
+</div>
 
-          <div>
-            <label
-              style={labelStyle}
-            >
-              Turma
-            </label>
+<div>
+  <label style={labelStyle}>
+    Aluno
+  </label>
 
-            <select
-              value={
-                selectedClassId
-              }
-              onChange={(e) =>
-                setSelectedClassId(
-                  e.target.value
-                )
-              }
-              disabled={
-                !selectedStudentId ||
-                availableClasses.length ===
-                  0
-              }
-              style={{
-                ...inputStyle,
-                opacity:
-                  !selectedStudentId ||
-                  availableClasses.length ===
-                    0
-                    ? 0.65
-                    : 1,
-              }}
-            >
-              <option value="">
-                {availableClasses.length ===
-                0
-                  ? 'Sem turma vinculada'
-                  : 'Selecione'}
-              </option>
+  <select
+    value={selectedStudentId}
+    onChange={(e) =>
+      setSelectedStudentId(
+        e.target.value
+      )
+    }
+    disabled={!selectedClassId}
+    style={{
+      ...inputStyle,
+      opacity:
+        selectedClassId
+          ? 1
+          : 0.6,
+      cursor:
+        selectedClassId
+          ? 'pointer'
+          : 'not-allowed',
+    }}
+  >
+    <option value="">
+      {!selectedClassId
+        ? 'Selecione uma turma primeiro'
+        : studentsFromSelectedClass.length === 0
+        ? 'Nenhum aluno encontrado'
+        : 'Selecione o aluno'}
+    </option>
 
-              {availableClasses.map(
-                (schoolClass) => (
-                  <option
-                    key={
-                      schoolClass.id
-                    }
-                    value={
-                      schoolClass.id
-                    }
-                  >
-                    {
-                      schoolClass.name
-                    }
-                  </option>
-                )
-              )}
-            </select>
-          </div>
+    {studentsFromSelectedClass.map(
+      (student) => (
+        <option
+          key={student.id}
+          value={student.id}
+        >
+          {student.full_name ||
+            student.name}
+        </option>
+      )
+    )}
+  </select>
+</div>
 
           <div>
             <label
