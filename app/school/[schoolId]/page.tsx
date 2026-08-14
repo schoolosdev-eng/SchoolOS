@@ -22,6 +22,7 @@ import ClassMapSection from '@/components/ClassMapSection'
 import PlansSection from '@/components/PlansSection'
 import AttendanceFrequencyRanking from '@/components/AttendanceFrequencyRanking'
 import SchoolSettingsSection from '@/components/SchoolSettingsSection'
+import StudentLicensesSection from '@/components/StudentLicensesSection'
 import { generateFaceEmbeddingFromBlob } from '@/lib/faceRecognition'
 
 type Student = {
@@ -269,6 +270,7 @@ const [activeSection, setActiveSection] = useState<
   | 'classes'
   | 'class-map'
   | 'attendance'
+  | 'licenses'
   | 'reports'
   | 'rankings'
   | 'assessments'
@@ -3414,6 +3416,7 @@ function handleChangeSection(
     | 'classes'
     | 'class-map'
     | 'attendance'
+    | 'licenses'
     | 'reports'
     | 'rankings'
     | 'assessments'
@@ -3555,6 +3558,19 @@ style={{
   >
     Presença
   </button>
+
+  {(isAdmin || isManager) && (
+  <button
+    onClick={() => handleChangeSection('licenses')}
+    style={
+      activeSection === 'licenses'
+        ? dashboardNavButtonActiveStyle
+        : dashboardNavButtonStyle
+    }
+  >
+    Licenças
+  </button>
+)}
 
   <button
     onClick={() => handleChangeSection('reports')}
@@ -4539,6 +4555,16 @@ onClick={() => {
     schoolName={schoolName}
     classes={classes}
     students={students}
+    enrollments={enrollments}
+    showMessage={showMessage}
+  />
+)}
+
+{activeSection === 'licenses' && (isAdmin || isManager) && (
+  <StudentLicensesSection
+    schoolId={schoolId}
+    students={students}
+    classes={classes}
     enrollments={enrollments}
     showMessage={showMessage}
   />
