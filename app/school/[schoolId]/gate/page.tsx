@@ -2189,6 +2189,57 @@ async function loadFacialStudentsFromSupabase(forceReload = false) {
   return facialStudentsCacheRef.current
 }
 
+const FACE_AUTO_SELECT_MAX_DISTANCE = 0.40
+const FACE_AUTO_SELECT_MIN_GAP = 0.08
+
+function shouldAutoSelectFaceCandidate(
+  candidates: any[]
+) {
+  if (candidates.length === 0) {
+    return false
+  }
+
+  const bestCandidate =
+    candidates[0]
+
+  if (
+    typeof bestCandidate?.distance !==
+      'number' ||
+    bestCandidate.distance >
+      FACE_AUTO_SELECT_MAX_DISTANCE
+  ) {
+    return false
+  }
+
+  const secondCandidate =
+    candidates[1]
+
+  /*
+   * Existe apenas um candidato dentro do
+   * limite geral e ele passou do limite
+   * de alta confiança.
+   */
+  if (!secondCandidate) {
+    return true
+  }
+
+  if (
+    typeof secondCandidate.distance !==
+      'number'
+  ) {
+    return false
+  }
+
+  const distanceGap =
+    secondCandidate.distance -
+    bestCandidate.distance
+
+  return (
+    distanceGap >=
+    FACE_AUTO_SELECT_MIN_GAP
+  )
+}
+
   async function findFaceCandidates(embedding: number[]) {
   const allEmbeddings = await loadFacialEmbeddingsFromSupabase()
 
@@ -2362,14 +2413,80 @@ const candidates = await findFaceCandidates(embedding)
   return false
 }
 
-    setFacialCandidates(candidates)
-    setIsScannerActive(false)
+    const shouldAutoSelect =
+  shouldAutoSelectFaceCandidate(
+    candidates
+  )
 
-    loadCandidatePhotos(candidates)
+if (shouldAutoSelect) {
+  const bestCandidate =
+    candidates[0]
 
-    console.log('[FACIAL DEBUG] retorno true: candidatos exibidos')
+  const secondCandidate =
+    candidates.length > 1
+      ? candidates[1]
+      : null
 
-    return true
+  const photoUrl =
+    await getStudentPhotoUrl(
+      bestCandidate.student
+    )
+
+  const selectedCandidate = {
+    ...bestCandidate,
+    photoUrl,
+  }
+
+  console.log(
+    '[FACIAL AUTO SELECT]',
+    {
+      student:
+        bestCandidate.student
+          .full_name,
+
+      bestDistance:
+        bestCandidate.distance,
+
+      secondDistance:
+        secondCandidate
+          ?.distance ?? null,
+
+      gap:
+        secondCandidate
+          ? secondCandidate.distance -
+            bestCandidate.distance
+          : null,
+    }
+  )
+
+  setFacialCandidates([])
+
+  setIsScannerActive(false)
+
+  setPendingFacialConfirmation({
+    candidate:
+      selectedCandidate,
+
+    capturedAt,
+  })
+
+  console.log(
+    '[FACIAL DEBUG] retorno true: candidato selecionado automaticamente'
+  )
+
+  return true
+}
+
+setFacialCandidates(candidates)
+setIsScannerActive(false)
+
+loadCandidatePhotos(candidates)
+
+console.log(
+  '[FACIAL DEBUG] retorno true: candidatos exibidos'
+)
+
+return true
   } catch (error) {
   console.error(
     '[FACIAL DEBUG] erro no handleFaceCapture:',
@@ -3578,7 +3695,10 @@ loadFaceModels().catch((error) => {
   </div>
 )}
 
-{facialCandidates.length > 0 &&
+{(
+  facialCandidates.length > 0 ||
+  facialConfirmationResult
+) &&
   !pendingFacialConfirmation && (
   <div style={modalOverlayStyle}>
     <div
