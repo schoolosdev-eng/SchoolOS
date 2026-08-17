@@ -81,8 +81,13 @@ const [
 const [facialConfirming, setFacialConfirming] =
   useState(false)
 
+const [
+  nextReadCountdown,
+  setNextReadCountdown,
+] = useState<number | null>(null)   
+
 const facialRestartTimeoutRef =
-  useRef<ReturnType<typeof setTimeout> | null>(null)
+  useRef<ReturnType<typeof setTimeout> | null>(null) 
 
 const regularExitQrProcessingRef =
   useRef(false)
@@ -103,6 +108,7 @@ function changeGateMode(
     facialRestartTimeoutRef.current =
       null
   }
+  setNextReadCountdown(null)
   if (
   regularExitQrRestartTimeoutRef.current
 ) {
@@ -2522,10 +2528,59 @@ function restartFacialScannerAfterConfirmation() {
     clearTimeout(
       facialRestartTimeoutRef.current
     )
+
+    facialRestartTimeoutRef.current = null
   }
 
+  /*
+   * O scanner permanece realmente desligado
+   * durante toda a contagem.
+   */
   setIsScannerActive(false)
 
+  /*
+   * A contagem só começa porque esta função
+   * é chamada depois da confirmação ter sido
+   * processada pelo backend.
+   */
+  setNextReadCountdown(6)
+}
+
+useEffect(() => {
+  if (nextReadCountdown === null) {
+    return
+  }
+
+  if (nextReadCountdown > 0) {
+    const countdownTimeout =
+      setTimeout(() => {
+        setNextReadCountdown(
+          (current) => {
+            if (current === null) {
+              return null
+            }
+
+            return Math.max(
+              current - 1,
+              0
+            )
+          }
+        )
+      }, 1000)
+
+    return () => {
+      clearTimeout(
+        countdownTimeout
+      )
+    }
+  }
+
+  /*
+   * nextReadCountdown === 0
+   *
+   * Mantém o zero na tela por aproximadamente
+   * 200 ms antes de liberar outra leitura.
+   */
   facialRestartTimeoutRef.current =
     setTimeout(() => {
       setFacialCandidates([])
@@ -2534,12 +2589,28 @@ function restartFacialScannerAfterConfirmation() {
       setPendingFacialCapture(null)
       setPendingFacialEmbedding(null)
 
+      setNextReadCountdown(null)
+
       setReadingMethod('facial')
       setIsScannerActive(true)
 
-      facialRestartTimeoutRef.current = null
-    }, 2000)
-}
+      facialRestartTimeoutRef.current =
+        null
+    }, 200)
+
+  return () => {
+    if (
+      facialRestartTimeoutRef.current
+    ) {
+      clearTimeout(
+        facialRestartTimeoutRef.current
+      )
+
+      facialRestartTimeoutRef.current =
+        null
+    }
+  }
+}, [nextReadCountdown])
 
 function restartRegularExitQrScanner() {
   if (
@@ -3697,6 +3768,48 @@ loadFaceModels().catch((error) => {
               {facialConfirmationResult.time}
             </strong>
           )}
+          {nextReadCountdown !== null && (
+  <div
+    style={{
+      marginTop: 18,
+      padding: '16px 28px',
+      borderRadius: 20,
+      background: '#eff6ff',
+      border: '1px solid #bfdbfe',
+      color: '#1e3a8a',
+      minWidth: 220,
+    }}
+  >
+    <div
+      style={{
+        fontSize: 16,
+        fontWeight: 800,
+      }}
+    >
+      Próxima leitura em
+    </div>
+
+    <div
+      style={{
+        fontSize: 58,
+        lineHeight: 1,
+        fontWeight: 900,
+        margin: '10px 0 6px',
+      }}
+    >
+      {nextReadCountdown}
+    </div>
+
+    <div
+      style={{
+        fontSize: 15,
+        fontWeight: 700,
+      }}
+    >
+      segundos
+    </div>
+  </div>
+)}
         </div>
       )}
     </div>
