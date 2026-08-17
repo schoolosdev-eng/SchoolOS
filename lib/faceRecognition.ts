@@ -1,5 +1,6 @@
 let faceapi: any = null
 let modelsLoaded = false
+let modelsLoadingPromise: Promise<void> | null = null
 
 function loadScript(src: string) {
   return new Promise<void>((resolve, reject) => {
@@ -21,23 +22,53 @@ function loadScript(src: string) {
 export async function loadFaceModels() {
   if (modelsLoaded) return
 
-  if (typeof window === 'undefined') return
-
-  await loadScript(
-    'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js'
-  )
-
-  faceapi = (window as any).faceapi
-
-  if (!faceapi) {
-    throw new Error('face-api.js não carregado.')
+  if (modelsLoadingPromise) {
+    return modelsLoadingPromise
   }
 
-  await faceapi.nets.tinyFaceDetector.loadFromUri('/models')
-  await faceapi.nets.faceRecognitionNet.loadFromUri('/models')
-  await faceapi.nets.faceLandmark68Net.loadFromUri('/models')
+  modelsLoadingPromise = (async () => {
+    if (typeof window === 'undefined') {
+      return
+    }
 
-  modelsLoaded = true
+    await loadScript(
+      'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js'
+    )
+
+    faceapi = (window as any).faceapi
+
+    if (!faceapi) {
+      throw new Error(
+        'face-api.js não carregado.'
+      )
+    }
+
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(
+        '/models'
+      ),
+
+      faceapi.nets.faceRecognitionNet.loadFromUri(
+        '/models'
+      ),
+
+      faceapi.nets.faceLandmark68Net.loadFromUri(
+        '/models'
+      ),
+    ])
+
+    modelsLoaded = true
+
+    console.log(
+      '[FACE API] modelos carregados com sucesso'
+    )
+  })()
+
+  try {
+    await modelsLoadingPromise
+  } finally {
+    modelsLoadingPromise = null
+  }
 }
 
 export async function generateFaceEmbeddingFromBlob(

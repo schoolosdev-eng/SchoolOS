@@ -11,6 +11,7 @@ import FacialScanner from '@/components/FacialScanner'
 import {
   generateFaceEmbeddingFromBlob,
   calculateFaceDistance,
+  loadFaceModels,
 } from '@/lib/faceRecognition'
 
 type ScanResult = {
@@ -2804,14 +2805,12 @@ if (isFacialAvailable && navigator.onLine) {
   Promise.all([
     loadFacialEmbeddingsFromSupabase(true),
     loadFacialStudentsFromSupabase(true),
+    loadFaceModels(),
   ]).catch((error) => {
-    console.error('[FACIAL ONLINE] erro no pré-carregamento:', error)
-  })
-
-  generateFaceEmbeddingFromBlob(
-    new Blob([], { type: 'image/jpeg' })
-  ).catch(() => {
-    // Apenas aquece o modelo facial
+    console.error(
+      '[FACIAL ONLINE] erro no pré-carregamento:',
+      error
+    )
   })
 }
     } catch (error) {
@@ -3109,10 +3108,11 @@ setResultWithTimeout(
   false
 )
 
-generateFaceEmbeddingFromBlob(
-  new Blob([], { type: 'image/jpeg' })
-).catch(() => {
-  // Apenas aquece o modelo facial
+loadFaceModels().catch((error) => {
+  console.error(
+    '[FACE API] erro ao carregar modelos:',
+    error
+  )
 })
   }}
   disabled={
