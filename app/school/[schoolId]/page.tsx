@@ -5213,40 +5213,192 @@ onClick={() => {
         </button>
       </div>
 
-      <div style={{ color: '#475569', fontWeight: 700, marginBottom: 8 }}>
-        Turma: {selectedNotification.className}
-      </div>
-
-      <div style={{ color: '#475569', fontWeight: 700, marginBottom: 14 }}>
-        Datas: {selectedNotification.absentDates.map(formatDateBR).join(', ')}
-      </div>
-
       <div
-        style={{
-          display: 'inline-flex',
-          padding: '8px 12px',
-          borderRadius: 999,
-          background: '#fee2e2',
-          color: '#b91c1c',
-          fontWeight: 900,
-          fontSize: 13,
-          marginBottom: 20,
-        }}
-      >
-        {selectedNotification.alertType === 'three_consecutive_absences'
-          ? '3 faltas consecutivas'
-          : '3 faltas em 15 dias'}
-      </div>
+  style={{
+    color: '#475569',
+    fontWeight: 700,
+    marginBottom: 8,
+  }}
+>
+  Turma: {selectedNotification.className}
+</div>
 
-      <button
-        onClick={() => handleSendAlertWhatsapp(selectedNotification)}
-        style={{
-          ...dashboardWhatsappButtonStyle,
-          width: '100%',
-        }}
-      >
-        Enviar WhatsApp
-      </button>
+<div
+  style={{
+    color: '#475569',
+    fontWeight: 700,
+    marginBottom: 14,
+  }}
+>
+  Datas:{' '}
+  {selectedNotification.absentDates
+    .map(formatDateBR)
+    .join(', ')}
+</div>
+
+<div
+  style={{
+    display: 'flex',
+    gap: 10,
+    flexWrap: 'wrap',
+    marginBottom: 16,
+  }}
+>
+  {selectedNotification.justifiedDates.length > 0 && (
+    <div
+      style={{
+        padding: '8px 11px',
+        borderRadius: 12,
+        background: '#ecfdf5',
+        border: '1px solid #bbf7d0',
+        color: '#15803d',
+        fontSize: 13,
+        fontWeight: 900,
+      }}
+    >
+      Justificadas:{' '}
+      {selectedNotification.justifiedDates.length}
+    </div>
+  )}
+
+  {selectedNotification.unjustifiedDates.length > 0 && (
+    <div
+      style={{
+        padding: '8px 11px',
+        borderRadius: 12,
+        background: '#fef2f2',
+        border: '1px solid #fecaca',
+        color: '#b91c1c',
+        fontSize: 13,
+        fontWeight: 900,
+      }}
+    >
+      Sem justificativa:{' '}
+      {selectedNotification.unjustifiedDates.length}
+    </div>
+  )}
+</div>
+
+{selectedNotification.justifiedDates.length > 0 && (
+  <div
+    style={{
+      padding: 14,
+      borderRadius: 14,
+      background: '#f0fdf4',
+      border: '1px solid #bbf7d0',
+      marginBottom: 12,
+    }}
+  >
+    <div
+      style={{
+        color: '#166534',
+        fontWeight: 900,
+        fontSize: 13,
+        marginBottom: 5,
+      }}
+    >
+      Faltas justificadas
+    </div>
+
+    <div
+      style={{
+        color: '#15803d',
+        fontWeight: 700,
+        fontSize: 13,
+        lineHeight: 1.5,
+      }}
+    >
+      {selectedNotification.justifiedDates
+        .map(formatDateBR)
+        .join(', ')}
+    </div>
+  </div>
+)}
+
+{selectedNotification.unjustifiedDates.length > 0 && (
+  <div
+    style={{
+      padding: 14,
+      borderRadius: 14,
+      background: '#fff7ed',
+      border: '1px solid #fed7aa',
+      marginBottom: 16,
+    }}
+  >
+    <div
+      style={{
+        color: '#9a3412',
+        fontWeight: 900,
+        fontSize: 13,
+        marginBottom: 5,
+      }}
+    >
+      Acompanhamento necessário
+    </div>
+
+    <div
+      style={{
+        color: '#c2410c',
+        fontWeight: 700,
+        fontSize: 13,
+        lineHeight: 1.5,
+      }}
+    >
+      {selectedNotification.unjustifiedDates
+        .map(formatDateBR)
+        .join(', ')}
+    </div>
+  </div>
+)}
+
+<div
+  style={{
+    display: 'inline-flex',
+    padding: '8px 12px',
+    borderRadius: 999,
+    background: '#fee2e2',
+    color: '#b91c1c',
+    fontWeight: 900,
+    fontSize: 13,
+    marginBottom: 20,
+  }}
+>
+  {selectedNotification.alertType ===
+  'three_consecutive_absences'
+    ? '3 faltas consecutivas'
+    : '3 faltas em 15 dias'}
+</div>
+
+{selectedNotification.unjustifiedDates.length === 0 ? (
+  <div
+    style={{
+      width: '100%',
+      padding: '13px 16px',
+      borderRadius: 14,
+      background: '#ecfdf5',
+      border: '1px solid #bbf7d0',
+      color: '#15803d',
+      fontWeight: 900,
+      textAlign: 'center',
+    }}
+  >
+    Faltas justificadas
+  </div>
+) : (
+  <button
+    onClick={() =>
+      handleSendAlertWhatsapp(
+        selectedNotification
+      )
+    }
+    style={{
+      ...dashboardWhatsappButtonStyle,
+      width: '100%',
+    }}
+  >
+    Enviar WhatsApp
+  </button>
+)}
     </div>
   </div>
 )}
