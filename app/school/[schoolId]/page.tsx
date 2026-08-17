@@ -54,7 +54,22 @@ type AlertStudent = {
   classId: string
   className: string
   absentDates: string[]
-  alertType: 'three_consecutive_absences' | 'three_absences_in_15_days'
+
+  justifiedDates: string[]
+  unjustifiedDates: string[]
+
+  alertType:
+    | 'three_consecutive_absences'
+    | 'three_absences_in_15_days'
+}
+
+type AbsenceAlertLicense = {
+  id: string
+  student_id: string
+  class_id: string | null
+  start_date: string
+  end_date: string
+  cancelled_at: string | null
 }
 
 type Teacher = {
@@ -441,6 +456,32 @@ useEffect(() => {
 
 useEffect(() => {
   if (!schoolId) return
+
+  const channel = supabase
+    .channel(
+      `student-license-alert-changes-${schoolId}`
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'student_licenses',
+        filter: `school_id=eq.${schoolId}`,
+      },
+      () => {
+        generateAbsenceAlertsSilent()
+      }
+    )
+    .subscribe()
+
+  return () => {
+    supabase.removeChannel(channel)
+  }
+}, [schoolId])
+
+useEffect(() => {
+  if (!schoolId) return
   if (!currentUserId) return
   if (loading) return
 
@@ -481,6 +522,46 @@ function formatTimeBR(date?: string | Date | null) {
 
 function getAlertId(alert: AlertStudent) {
   return `${alert.studentId}-${alert.classId}-${alert.alertType}`
+}
+
+function splitAbsenceDatesByLicense({
+  studentId,
+  classId,
+  dates,
+  licenses,
+}: {
+  studentId: string
+  classId: string
+  dates: string[]
+  licenses: AbsenceAlertLicense[]
+}) {
+  const justifiedDates: string[] = []
+  const unjustifiedDates: string[] = []
+
+  for (const date of dates) {
+    const hasLicense = licenses.some(
+      (license) =>
+        license.student_id === studentId &&
+        !license.cancelled_at &&
+        (
+          !license.class_id ||
+          license.class_id === classId
+        ) &&
+        license.start_date <= date &&
+        license.end_date >= date
+    )
+
+    if (hasLicense) {
+      justifiedDates.push(date)
+    } else {
+      unjustifiedDates.push(date)
+    }
+  }
+
+  return {
+    justifiedDates,
+    unjustifiedDates,
+  }
 }
 
   async function ensureAccess() {
@@ -2017,10 +2098,41 @@ async function handleGenerateAbsenceAlerts() {
 
   setAlertsLoading(false)
 
+  const {
+  data: licensesData,
+  error: licensesError,
+} = await supabase
+  .from('student_licenses')
+  .select(`
+    id,
+    student_id,
+    class_id,
+    start_date,
+    end_date,
+    cancelled_at
+  `)
+  .eq('school_id', schoolId)
+  .is('cancelled_at', null)
+  .lte('start_date', endDate)
+  .gte('end_date', startDate)
+
   if (error) {
     showMessage(`Erro ao gerar alertas: ${error.message}`)
     return
   }
+
+  if (licensesError) {
+  setAlertsLoading(false)
+
+  showMessage(
+    `Erro ao verificar licenças: ${licensesError.message}`
+  )
+
+  return
+}
+
+const alertLicenses =
+  (licensesData || []) as AbsenceAlertLicense[]
 
   const typedRecords = (records || []) as {
     id: string
@@ -2092,27 +2204,54 @@ updated_at?: string
     }
 
     if (hasThreeConsecutive) {
-      alerts.push({
-        studentId: group.student_id,
-        studentName,
-        classId: group.class_id,
-        className,
-        absentDates: consecutiveDates,
-        alertType: 'three_consecutive_absences',
-      })
-      return
-    }
+  const {
+    justifiedDates,
+    unjustifiedDates,
+  } = splitAbsenceDatesByLicense({
+    studentId: group.student_id,
+    classId: group.class_id,
+    dates: consecutiveDates,
+    licenses: alertLicenses,
+  })
+
+  alerts.push({
+    studentId: group.student_id,
+    studentName,
+    classId: group.class_id,
+    className,
+    absentDates: consecutiveDates,
+    justifiedDates,
+    unjustifiedDates,
+    alertType:
+      'three_consecutive_absences',
+  })
+
+  return
+}
 
     if (absentDates.length >= 3) {
-      alerts.push({
-        studentId: group.student_id,
-        studentName,
-        classId: group.class_id,
-        className,
-        absentDates,
-        alertType: 'three_absences_in_15_days',
-      })
-    }
+  const {
+    justifiedDates,
+    unjustifiedDates,
+  } = splitAbsenceDatesByLicense({
+    studentId: group.student_id,
+    classId: group.class_id,
+    dates: absentDates,
+    licenses: alertLicenses,
+  })
+
+  alerts.push({
+    studentId: group.student_id,
+    studentName,
+    classId: group.class_id,
+    className,
+    absentDates,
+    justifiedDates,
+    unjustifiedDates,
+    alertType:
+      'three_absences_in_15_days',
+  })
+}
   })
 
   setAbsenceAlerts(alerts)
@@ -2140,6 +2279,34 @@ async function generateAbsenceAlertsSilent() {
     .gte('attendance_date', startDate)
     .lte('attendance_date', endDate)
     .order('attendance_date', { ascending: true })
+
+  const {
+  data: licensesData,
+  error: licensesError,
+} = await supabase
+  .from('student_licenses')
+  .select(`
+    id,
+    student_id,
+    class_id,
+    start_date,
+    end_date,
+    cancelled_at
+  `)
+  .eq('school_id', schoolId)
+  .is('cancelled_at', null)
+  .lte('start_date', endDate)
+  .gte('end_date', startDate)
+
+if (
+  licensesError ||
+  !licensesData
+) {
+  return
+}
+
+const alertLicenses =
+  licensesData as AbsenceAlertLicense[]  
 
   if (error || !records) return
 
@@ -2208,54 +2375,138 @@ if (daysSinceLastAbsence > 7) return
     }
 
     if (hasThreeConsecutive) {
-      alerts.push({
-        studentId: group.student_id,
-        studentName,
-        classId: group.class_id,
-        className,
-        absentDates: consecutiveDates,
-        alertType: 'three_consecutive_absences',
-      })
-      return
-    }
+  const {
+    justifiedDates,
+    unjustifiedDates,
+  } = splitAbsenceDatesByLicense({
+    studentId: group.student_id,
+    classId: group.class_id,
+    dates: consecutiveDates,
+    licenses: alertLicenses,
+  })
+
+  alerts.push({
+    studentId: group.student_id,
+    studentName,
+    classId: group.class_id,
+    className,
+    absentDates: consecutiveDates,
+    justifiedDates,
+    unjustifiedDates,
+    alertType:
+      'three_consecutive_absences',
+  })
+
+  return
+}
 
     if (absentDates.length >= 3) {
-      alerts.push({
-        studentId: group.student_id,
-        studentName,
-        classId: group.class_id,
-        className,
-        absentDates,
-        alertType: 'three_absences_in_15_days',
-      })
-    }
+  const {
+    justifiedDates,
+    unjustifiedDates,
+  } = splitAbsenceDatesByLicense({
+    studentId: group.student_id,
+    classId: group.class_id,
+    dates: absentDates,
+    licenses: alertLicenses,
+  })
+
+  alerts.push({
+    studentId: group.student_id,
+    studentName,
+    classId: group.class_id,
+    className,
+    absentDates,
+    justifiedDates,
+    unjustifiedDates,
+    alertType:
+      'three_absences_in_15_days',
+  })
+}
   })
 
   setAbsenceAlerts(alerts)
 }
 
-function handleSendAlertWhatsapp(alert: AlertStudent) {
-  const student = students.find((s) => s.id === alert.studentId)
-
-  const rawPhone = student?.responsible_whatsapp?.replace(/\D/g, '')
-
-  if (!rawPhone) {
-    showMessage('Esse aluno não possui WhatsApp do responsável cadastrado.')
+function handleSendAlertWhatsapp(
+  alert: AlertStudent
+) {
+  if (
+    alert.unjustifiedDates.length === 0
+  ) {
+    showMessage(
+      'Todas as faltas deste alerta já possuem justificativa cadastrada.'
+    )
     return
   }
 
-  const phone = rawPhone.startsWith('55') ? rawPhone : `55${rawPhone}`
+  const student =
+    students.find(
+      (s) =>
+        s.id === alert.studentId
+    )
 
-  const datesText = alert.absentDates.map(formatDateBR).join(', ')
+  const rawPhone =
+    student
+      ?.responsible_whatsapp
+      ?.replace(/\D/g, '')
+
+  if (!rawPhone) {
+    showMessage(
+      'Esse aluno não possui WhatsApp do responsável cadastrado.'
+    )
+    return
+  }
+
+  const phone =
+    rawPhone.startsWith('55')
+      ? rawPhone
+      : `55${rawPhone}`
+
+  const allDatesText =
+    alert.absentDates
+      .map(formatDateBR)
+      .join(', ')
+
+  const unjustifiedDatesText =
+    alert.unjustifiedDates
+      .map(formatDateBR)
+      .join(', ')
+
+  const justifiedCount =
+    alert.justifiedDates.length
+
+  const justificationText =
+    justifiedCount > 0
+      ? ` Destas, ${justifiedCount} já ${
+          justifiedCount === 1
+            ? 'possui justificativa'
+            : 'possuem justificativa'
+        } cadastrada na escola.`
+      : ''
+
+  const pendingText =
+    ` ${
+      alert.unjustifiedDates.length === 1
+        ? 'A falta ainda sem justificativa é'
+        : 'As faltas ainda sem justificativa são'
+    }: ${unjustifiedDatesText}.`
 
   const text =
-    alert.alertType === 'three_consecutive_absences'
-      ? `Olá! Informamos que o(a) aluno(a) ${alert.studentName}, da turma ${alert.className}, registrou 3 faltas seguidas nas datas: ${datesText}. Pedimos que a família acompanhe a situação junto à escola.`
-      : `Olá! Informamos que o(a) aluno(a) ${alert.studentName}, da turma ${alert.className}, registrou 3 faltas no intervalo recente de 15 dias, nas datas: ${datesText}. Pedimos que a família acompanhe a situação junto à escola.`
+    alert.alertType ===
+    'three_consecutive_absences'
+      ? `Olá! Informamos que o(a) aluno(a) ${alert.studentName}, da turma ${alert.className}, registrou faltas consecutivas nas datas: ${allDatesText}.${justificationText}${pendingText} Pedimos que a família acompanhe a situação junto à escola.`
+      : `Olá! Informamos que o(a) aluno(a) ${alert.studentName}, da turma ${alert.className}, registrou faltas no intervalo recente de 15 dias, nas datas: ${allDatesText}.${justificationText}${pendingText} Pedimos que a família acompanhe a situação junto à escola.`
 
-  const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`
+  const url =
+    `https://wa.me/${phone}?text=${encodeURIComponent(
+      text
+    )}`
 
-  window.open(url, '_blank')
+  window.open(
+    url,
+    '_blank'
+  )
 }
 
 async function handleCreateStudent(photoOverride?: File | null) {
@@ -4308,6 +4559,31 @@ onClick={() => {
                     <div style={dashboardAlertTextStyle}>
                       Datas: {alert.absentDates.map(formatDateBR).join(', ')}
                     </div>
+                    {alert.justifiedDates.length > 0 && (
+  <div
+    style={{
+      fontSize: 13,
+      color: '#15803d',
+      fontWeight: 800,
+      marginTop: 5,
+    }}
+  >
+    Justificadas: {alert.justifiedDates.length}
+  </div>
+)}
+
+{alert.unjustifiedDates.length > 0 && (
+  <div
+    style={{
+      fontSize: 13,
+      color: '#b91c1c',
+      fontWeight: 800,
+      marginTop: 3,
+    }}
+  >
+    Sem justificativa: {alert.unjustifiedDates.length}
+  </div>
+)}
                     <div style={dashboardAlertTypeStyle}>
                       {alert.alertType === 'three_consecutive_absences'
                         ? '3 faltas consecutivas'
@@ -4315,12 +4591,31 @@ onClick={() => {
                     </div>
                   </div>
 
-<button
-  onClick={() => handleSendAlertWhatsapp(alert)}
-  style={dashboardWhatsappButtonStyle}
->
-  Enviar WhatsApp
-</button>
+{alert.unjustifiedDates.length === 0 ? (
+  <span
+    style={{
+      padding: '9px 11px',
+      borderRadius: 12,
+      background: '#ecfdf5',
+      border: '1px solid #bbf7d0',
+      color: '#15803d',
+      fontWeight: 900,
+      fontSize: 12,
+      whiteSpace: 'nowrap',
+    }}
+  >
+    Faltas justificadas
+  </span>
+) : (
+  <button
+    onClick={() =>
+      handleSendAlertWhatsapp(alert)
+    }
+    style={dashboardWhatsappButtonStyle}
+  >
+    Enviar WhatsApp
+  </button>
+)}
                 </div>
               ))
             )}
