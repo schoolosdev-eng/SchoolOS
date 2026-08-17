@@ -220,24 +220,52 @@ facingMode: {
       cameraRef.current = null
     }
 
-    const stream = videoRef.current?.srcObject as MediaStream | null
+    const stream =
+      videoRef.current?.srcObject as MediaStream | null
 
     if (stream) {
-      stream.getTracks().forEach((track) => track.stop())
+      stream
+        .getTracks()
+        .forEach((track) => track.stop())
     }
 
     if (videoRef.current) {
-  videoRef.current.srcObject = null
-  videoRef.current.pause()
-  videoRef.current.removeAttribute('src')
-  videoRef.current.load()
-}
+      videoRef.current.srcObject = null
+      videoRef.current.pause()
+      videoRef.current.removeAttribute('src')
+      videoRef.current.load()
+    }
+
+    const faceDetection =
+      faceDetectionRef.current
 
     faceDetectionRef.current = null
+
+    if (
+      faceDetection &&
+      typeof faceDetection.close === 'function'
+    ) {
+      Promise.resolve(
+        faceDetection.close()
+      ).catch((error) => {
+        console.warn(
+          '[FACIAL] erro ao fechar MediaPipe:',
+          error
+        )
+      })
+    }
+
     captureInProgressRef.current = false
     startedRef.current = false
+
+    console.log(
+      '[FACIAL] câmera e MediaPipe encerrados'
+    )
   } catch (error) {
-    console.error('[FACIAL] erro ao parar câmera:', error)
+    console.error(
+      '[FACIAL] erro ao parar câmera:',
+      error
+    )
   }
 }
 
