@@ -32,7 +32,9 @@ type StudentsSectionProps = {
   setGuardianEmail: (value: string) => void
   setGuardianWhatsapp: (value: string) => void
   setStudentPhoto: (file: File | null) => void
-  handleCreateStudent: (photoOverride?: File | null) => void
+  handleCreateStudent: (
+  photoOverride?: File | null
+) => void | Promise<void>
   handleCreateStudentsBatch: (students: {
   full_name: string
   email: string
@@ -70,6 +72,8 @@ export default function StudentsSection({
 
   const [quickBatchOpen, setQuickBatchOpen] = useState(false)
   const [batchPasteText, setBatchPasteText] = useState('')
+
+  const [creatingStudent, setCreatingStudent] = useState(false)
 
 const [batchStudents, setBatchStudents] = useState([
   {
@@ -297,20 +301,24 @@ const filteredStudents = useMemo(() => {
 
 
 async function handleCreateStudentWithAdjustedPhoto() {
-  /*
-   * studentPhoto já é o JPEG 512x512 final.
-   * Não fazemos nenhum novo recorte aqui.
-   */
-  await handleCreateStudent(studentPhoto)
+  if (creatingStudent) return
 
-  setStudentPhoto(null)
-  setStudentPhotoPreview(null)
-  setPhotoSource(null)
-  setPhotoEditorOpen(false)
+  try {
+    setCreatingStudent(true)
 
-  setPhotoInputKey(
-    (prev) => prev + 1
-  )
+    await handleCreateStudent(studentPhoto)
+
+    setStudentPhoto(null)
+    setStudentPhotoPreview(null)
+    setPhotoSource(null)
+    setPhotoEditorOpen(false)
+
+    setPhotoInputKey(
+      (prev) => prev + 1
+    )
+  } finally {
+    setCreatingStudent(false)
+  }
 }
 
   function handlePrintFilteredQRCodes() {
@@ -546,8 +554,19 @@ setTimeout(() => {
     marginTop: 12,
   }}
 >
-  <button onClick={handleCreateStudentWithAdjustedPhoto} style={primaryButtonStyle}>
-  Cadastrar aluno
+  <button
+  type="button"
+  onClick={handleCreateStudentWithAdjustedPhoto}
+  disabled={creatingStudent}
+  style={{
+    ...primaryButtonStyle,
+    opacity: creatingStudent ? 0.7 : 1,
+    cursor: creatingStudent ? 'wait' : 'pointer',
+  }}
+>
+  {creatingStudent
+    ? 'Cadastrando...'
+    : 'Cadastrar aluno'}
 </button>
 
 <button
