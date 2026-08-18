@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
 import { supabase } from '@/lib/supabase'
+import EditProfilePhotoModal from './EditProfilePhotoModal'
 
 type Student = {
   id: string
@@ -48,6 +49,7 @@ export default function StudentsSection({
   studentEmail,
   guardianEmail,
   guardianWhatsapp,
+  studentPhoto,
   setStudentName,
   setStudentBirthDate,
   setStudentEmail,
@@ -60,6 +62,8 @@ export default function StudentsSection({
   const [studentSearch, setStudentSearch] = useState('')
   const [selectedClassFilter, setSelectedClassFilter] = useState('')
   const [studentPhotoPreview, setStudentPhotoPreview] = useState<string | null>(null)
+  const [photoSource, setPhotoSource] =
+  useState<File | null>(null)
   const [photoPositionX, setPhotoPositionX] = useState(50)
   const [photoPositionY, setPhotoPositionY] = useState(50)
   const [photoZoom, setPhotoZoom] = useState(1)
@@ -111,25 +115,51 @@ useEffect(() => {
   })
 }, [students])
 
-function handleStudentPhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+function handleStudentPhotoChange(
+  e: React.ChangeEvent<HTMLInputElement>
+) {
   const file = e.target.files?.[0] || null
 
-  setStudentPhoto(file)
-  setPhotoPositionX(50)
-  setPhotoPositionY(50)
-  setPhotoZoom(1)
-
-  if (studentPhotoPreview) {
-    URL.revokeObjectURL(studentPhotoPreview)
-  }
-
   if (!file) {
-    setStudentPhotoPreview(null)
-    setPhotoEditorOpen(false)
     return
   }
 
-  setStudentPhotoPreview(URL.createObjectURL(file))
+  const allowedTypes = [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+  ]
+
+  const maxFileSize =
+    10 * 1024 * 1024
+
+  if (!allowedTypes.includes(file.type)) {
+    alert(
+      'Formato de imagem não permitido. Escolha uma imagem JPEG, PNG ou WebP.'
+    )
+
+    setPhotoInputKey((prev) => prev + 1)
+
+    return
+  }
+
+  if (file.size > maxFileSize) {
+    alert(
+      'A imagem é muito grande. Escolha um arquivo de até 10 MB.'
+    )
+
+    setPhotoInputKey((prev) => prev + 1)
+
+    return
+  }
+
+  /*
+   * Guardamos apenas o arquivo ORIGINAL.
+   * O studentPhoto só será preenchido
+   * depois que o modal gerar o JPEG 512x512.
+   */
+  setPhotoSource(file)
+
   setPhotoEditorOpen(true)
 }
 
@@ -320,19 +350,20 @@ async function createAdjustedStudentPhotoFile() {
 }
 
 async function handleCreateStudentWithAdjustedPhoto() {
-  const adjustedPhoto = await createAdjustedStudentPhotoFile()
+  /*
+   * studentPhoto já é o JPEG 512x512 final.
+   * Não fazemos nenhum novo recorte aqui.
+   */
+  await handleCreateStudent(studentPhoto)
 
-  await handleCreateStudent(adjustedPhoto)
-
-  if (studentPhotoPreview) {
-    URL.revokeObjectURL(studentPhotoPreview)
-  }
-
+  setStudentPhoto(null)
   setStudentPhotoPreview(null)
+  setPhotoSource(null)
   setPhotoEditorOpen(false)
-  setPhotoPositionX(50)
-  setPhotoPositionY(50)
-  setPhotoZoom(1)
+
+  setPhotoInputKey(
+    (prev) => prev + 1
+  )
 }
 
   function handlePrintFilteredQRCodes() {
@@ -510,13 +541,10 @@ setTimeout(() => {
         <img
           src={studentPhotoPreview}
           alt="Prévia da foto do aluno"
-style={{
+          style={{
   width: '100%',
   height: '100%',
   objectFit: 'cover',
-  objectPosition: `${photoPositionX}% ${photoPositionY}%`,
-  transform: `scale(${photoZoom})`,
-  transformOrigin: `${photoPositionX}% ${photoPositionY}%`,
 }}
         />
       ) : (
@@ -530,7 +558,7 @@ style={{
         <input
           key={photoInputKey}
           type="file"
-          accept="image/*"
+          accept="image/jpeg,image/png,image/webp"
           onChange={handleStudentPhotoChange}
           style={{ display: 'none' }}
         />
@@ -585,109 +613,36 @@ style={{
 </div>
 
       </div>
-      {photoEditorOpen && studentPhotoPreview && (
-        <div
-          onClick={() => setPhotoEditorOpen(false)}
-          style={photoModalOverlayStyle}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={photoModalCardStyle}
-          >
-            <div style={photoModalHeaderStyle}>
-              <div>
-                <div style={photoModalEyebrowStyle}>Foto do aluno</div>
-                <h2 style={photoModalTitleStyle}>Ajustar foto</h2>
-                <p style={photoModalTextStyle}>
-                  Posicione o rosto dentro do círculo e ajuste o zoom antes de confirmar.
-                </p>
-              </div>
+      <EditProfilePhotoModal
+  isOpen={photoEditorOpen}
+  file={photoSource}
+  onCancel={() => {
+    setPhotoEditorOpen(false)
+    setPhotoSource(null)
 
-              <button
-                type="button"
-                onClick={() => setPhotoEditorOpen(false)}
-                style={photoModalCloseButtonStyle}
-              >
-                ✕
-              </button>
-            </div>
+    setPhotoInputKey(
+      (prev) => prev + 1
+    )
+  }}
+  onConfirm={async (finalFile) => {
+    /*
+     * finalFile já é o JPEG 512x512
+     * produzido pelo novo editor.
+     */
+    setStudentPhoto(finalFile)
 
-            <div style={photoModalPreviewWrapStyle}>
-              <div style={photoModalPreviewCircleStyle}>
-                <img
-                  src={studentPhotoPreview}
-                  alt="Prévia da foto do aluno"
-                  style={{
-  width: '100%',
-  height: '100%',
-  objectFit: 'cover',
-  objectPosition: `${photoPositionX}% ${photoPositionY}%`,
-  transform: `scale(${photoZoom})`,
-  transformOrigin: `${photoPositionX}% ${photoPositionY}%`,
-}}
-                />
-              </div>
-            </div>
+    setStudentPhotoPreview(
+      URL.createObjectURL(finalFile)
+    )
 
-            <div style={photoModalControlsStyle}>
-              <label style={photoAdjustLabelStyle}>
-                Mover horizontalmente
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={photoPositionX}
-                  onChange={(e) => setPhotoPositionX(Number(e.target.value))}
-                  style={photoRangeStyle}
-                />
-              </label>
+    setPhotoEditorOpen(false)
+    setPhotoSource(null)
 
-              <label style={photoAdjustLabelStyle}>
-                Mover verticalmente
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={photoPositionY}
-                  onChange={(e) => setPhotoPositionY(Number(e.target.value))}
-                  style={photoRangeStyle}
-                />
-              </label>
-
-              <label style={photoAdjustLabelStyle}>
-                Zoom
-                <input
-                  type="range"
-                  min="1"
-                  max="2"
-                  step="0.01"
-                  value={photoZoom}
-                  onChange={(e) => setPhotoZoom(Number(e.target.value))}
-                  style={photoRangeStyle}
-                />
-              </label>
-            </div>
-
-            <div style={photoModalActionsStyle}>
-              <button
-                type="button"
-                onClick={() => setPhotoEditorOpen(false)}
-                style={thirdButtonStyle}
-              >
-                Cancelar
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setPhotoEditorOpen(false)}
-                style={primaryButtonStyle}
-              >
-                Usar esta foto
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+    setPhotoInputKey(
+      (prev) => prev + 1
+    )
+  }}
+/>
 
       <div style={cardStyle}>
         <div style={listHeaderStyle}>
