@@ -9,6 +9,7 @@ import {
   calculateFaceDistance,
   calculateFaceQuality,
 } from '@/lib/faceRecognition'
+import EditProfilePhotoModal from './EditProfilePhotoModal'
 
 type Student = {
   id: string
@@ -91,6 +92,11 @@ const [editEmail, setEditEmail] = useState('')
 const [editResponsibleEmail, setEditResponsibleEmail] = useState('')
 const [editResponsibleWhatsapp, setEditResponsibleWhatsapp] = useState('')
 const [editPhoto, setEditPhoto] = useState<File | null>(null)
+const [editPhotoSource, setEditPhotoSource] =
+  useState<File | null>(null)
+
+const [editPhotoEditorOpen, setEditPhotoEditorOpen] =
+  useState(false)
 const [studentToDelete, setStudentToDelete] = useState<Student | null>(null)
 const [deletingStudent, setDeletingStudent] = useState(false)
 const [editPhotoPreview, setEditPhotoPreview] = useState<string | null>(null)
@@ -646,24 +652,54 @@ useEffect(() => {
   })
 }, [students])
 
-function handleEditPhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+function handleEditPhotoChange(
+  e: React.ChangeEvent<HTMLInputElement>
+) {
   const file = e.target.files?.[0] || null
 
-  setEditPhoto(file)
-  setEditPhotoPositionX(50)
-  setEditPhotoPositionY(50)
-  setEditPhotoZoom(1)
-
-  if (editPhotoPreview) {
-    URL.revokeObjectURL(editPhotoPreview)
-  }
-
   if (!file) {
-    setEditPhotoPreview(null)
     return
   }
 
-  setEditPhotoPreview(URL.createObjectURL(file))
+  const allowedTypes = [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+  ]
+
+  const maxFileSize =
+    10 * 1024 * 1024
+
+  if (!allowedTypes.includes(file.type)) {
+    alert(
+      'Formato de imagem não permitido. Escolha uma imagem JPEG, PNG ou WebP.'
+    )
+
+    setEditPhotoInputKey((prev) => prev + 1)
+
+    return
+  }
+
+  if (file.size > maxFileSize) {
+    alert(
+      'A imagem é muito grande. Escolha um arquivo de até 10 MB.'
+    )
+
+    setEditPhotoInputKey((prev) => prev + 1)
+
+    return
+  }
+
+  /*
+   * Neste momento guardamos SOMENTE
+   * o arquivo original.
+   *
+   * editPhoto continua sendo reservado
+   * para o JPEG 512x512 final.
+   */
+  setEditPhotoSource(file)
+
+  setEditPhotoEditorOpen(true)
 }
 
 async function createAdjustedEditPhotoFile() {
@@ -1066,16 +1102,11 @@ useEffect(() => {
 <div style={editPhotoBoxStyle}>
   <div style={editPhotoPreviewStyle}>
     {editPhotoPreview ? (
-      <img
-        src={editPhotoPreview}
-        alt="Prévia da nova foto"
-        style={{
-          ...editPhotoPreviewImageStyle,
-          width: `${editPhotoZoom * 100}%`,
-          height: `${editPhotoZoom * 100}%`,
-          objectPosition: `${editPhotoPositionX}% ${editPhotoPositionY}%`,
-        }}
-      />
+  <img
+    src={editPhotoPreview}
+    alt="Prévia da nova foto"
+    style={editPhotoPreviewImageStyle}
+  />
 ) : photoUrls[student.id] ? (
   <img
     src={photoUrls[student.id] || ''}
@@ -1092,52 +1123,12 @@ useEffect(() => {
     <input
       key={editPhotoInputKey}
       type="file"
-      accept="image/*"
+      accept="image/jpeg,image/png,image/webp"
       onChange={handleEditPhotoChange}
       style={{ display: 'none' }}
     />
   </label>
 
-  {editPhotoPreview && (
-    <div style={editPhotoControlsStyle}>
-      <label style={editPhotoLabelStyle}>
-        Horizontal
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={editPhotoPositionX}
-          onChange={(e) => setEditPhotoPositionX(Number(e.target.value))}
-          style={editPhotoRangeStyle}
-        />
-      </label>
-
-      <label style={editPhotoLabelStyle}>
-        Vertical
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={editPhotoPositionY}
-          onChange={(e) => setEditPhotoPositionY(Number(e.target.value))}
-          style={editPhotoRangeStyle}
-        />
-      </label>
-
-      <label style={editPhotoLabelStyle}>
-        Zoom
-        <input
-          type="range"
-          min="1"
-          max="2"
-          step="0.01"
-          value={editPhotoZoom}
-          onChange={(e) => setEditPhotoZoom(Number(e.target.value))}
-          style={editPhotoRangeStyle}
-        />
-      </label>
-    </div>
-  )}
 </div>
               </div>
             ) : (
@@ -1215,19 +1206,19 @@ useEffect(() => {
     try {
       setSavingStudentId(student.id)
 
-      const adjustedPhoto = await createAdjustedEditPhotoFile()
-
       await onUpdateStudent(student.id, {
-        full_name: editName,
-        email: editEmail,
-        responsible_email: editResponsibleEmail,
-        responsible_whatsapp: editResponsibleWhatsapp,
-        photo: adjustedPhoto || editPhoto,
-      })
+  full_name: editName,
+  email: editEmail,
+  responsible_email: editResponsibleEmail,
+  responsible_whatsapp: editResponsibleWhatsapp,
+  photo: editPhoto,
+})
 
       setEditingStudentId(null)
       setEditPhoto(null)
       setEditPhotoPreview(null)
+      setEditPhotoSource(null)
+      setEditPhotoEditorOpen(false)
       setEditPhotoPositionX(50)
       setEditPhotoPositionY(50)
       setEditPhotoZoom(1)
@@ -1249,8 +1240,9 @@ useEffect(() => {
       onClick={() => {
         setEditingStudentId(null)
         setEditPhoto(null)
-        setEditPhoto(null)
 setEditPhotoPreview(null)
+setEditPhotoSource(null)
+setEditPhotoEditorOpen(false)
 setEditPhotoPositionX(50)
 setEditPhotoPositionY(50)
 setEditPhotoZoom(1)
@@ -1273,6 +1265,8 @@ setEditPhotoInputKey((prev) => prev + 1)
         setEditResponsibleWhatsapp(student.responsible_whatsapp || '')
         setEditPhoto(null)
         setEditPhotoPreview(null)
+        setEditPhotoSource(null)
+setEditPhotoEditorOpen(false)
 setEditPhotoPositionX(50)
 setEditPhotoPositionY(50)
 setEditPhotoZoom(1)
@@ -1379,6 +1373,36 @@ const message = encodeURIComponent(
       </div>
     ))}
 </div>
+<EditProfilePhotoModal
+  isOpen={editPhotoEditorOpen}
+  file={editPhotoSource}
+  onCancel={() => {
+    setEditPhotoEditorOpen(false)
+    setEditPhotoSource(null)
+
+    setEditPhotoInputKey(
+      (prev) => prev + 1
+    )
+  }}
+  onConfirm={async (finalFile) => {
+    /*
+     * Aqui recebemos o JPEG 512x512
+     * já completamente recortado.
+     */
+    setEditPhoto(finalFile)
+
+    setEditPhotoPreview(
+      URL.createObjectURL(finalFile)
+    )
+
+    setEditPhotoEditorOpen(false)
+    setEditPhotoSource(null)
+
+    setEditPhotoInputKey(
+      (prev) => prev + 1
+    )
+  }}
+/>
       {studentToDelete && (
   <div style={modalOverlayStyle}>
     <div style={modalCardStyle}>
