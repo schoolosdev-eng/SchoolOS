@@ -65,6 +65,7 @@ export default function EditProfilePhotoModal(
    */
   useEffect(() => {
     if (!props.isOpen || !props.file) {
+        dragStateRef.current = null
       setImageUrl(null)
       setErrorMessage('')
       setImageWidth(0)
@@ -78,6 +79,37 @@ export default function EditProfilePhotoModal(
 
       return
     }
+
+    const allowedTypes = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+]
+
+const maxFileSize =
+  10 * 1024 * 1024
+
+if (!allowedTypes.includes(props.file.type)) {
+  setImageUrl(null)
+
+  setErrorMessage(
+    'Formato de imagem não permitido. Escolha uma imagem JPEG, PNG ou WebP.'
+  )
+
+  return
+}
+
+if (props.file.size > maxFileSize) {
+  setImageUrl(null)
+
+  setErrorMessage(
+    'A imagem é muito grande. Escolha um arquivo de até 10 MB.'
+  )
+
+  return
+}
+
+    dragStateRef.current = null
 
     const objectUrl = URL.createObjectURL(props.file)
 
@@ -112,10 +144,10 @@ export default function EditProfilePhotoModal(
     function updateCropSize() {
       if (!cropAreaRef.current) return
 
-      const rect =
-        cropAreaRef.current.getBoundingClientRect()
+      const nextCropSize =
+  cropAreaRef.current.clientWidth
 
-      setCropSize(rect.width)
+setCropSize(nextCropSize)
     }
 
     updateCropSize()
@@ -217,6 +249,55 @@ export default function EditProfilePhotoModal(
     })
   }, [imageMetrics])
 
+  useEffect(() => {
+  if (!props.isOpen) {
+    return
+  }
+
+  function handleKeyDown(
+    event: KeyboardEvent
+  ) {
+    if (
+      event.key === 'Escape' &&
+      !isConfirming
+    ) {
+      dragStateRef.current = null
+
+      props.onCancel()
+    }
+  }
+
+  window.addEventListener(
+    'keydown',
+    handleKeyDown
+  )
+
+  return () => {
+    window.removeEventListener(
+      'keydown',
+      handleKeyDown
+    )
+  }
+}, [
+  props.isOpen,
+  props.onCancel,
+  isConfirming,
+])
+
+  function handleCancel() {
+  /*
+   * Não fechamos o editor enquanto o canvas
+   * está gerando/entregando o arquivo final.
+   */
+  if (isConfirming) {
+    return
+  }
+
+  dragStateRef.current = null
+
+  props.onCancel()
+}
+
   function handleImageLoad(
     event: React.SyntheticEvent<HTMLImageElement>
   ) {
@@ -249,7 +330,12 @@ export default function EditProfilePhotoModal(
   function handlePointerDown(
     event: React.PointerEvent<HTMLDivElement>
   ) {
-    if (!imageMetrics) return
+    if (
+  !imageMetrics ||
+  isConfirming
+) {
+  return
+}
 
     event.preventDefault()
 
@@ -272,12 +358,13 @@ export default function EditProfilePhotoModal(
     const dragState = dragStateRef.current
 
     if (
-      !dragState ||
-      dragState.pointerId !== event.pointerId ||
-      !imageMetrics
-    ) {
-      return
-    }
+  !dragState ||
+  dragState.pointerId !== event.pointerId ||
+  !imageMetrics ||
+  isConfirming
+) {
+  return
+}
 
     event.preventDefault()
 
@@ -487,9 +574,16 @@ async function handleConfirm() {
 
   return (
     <div
-      onClick={props.onCancel}
-      style={overlayStyle}
-    >
+  onClick={() => {
+    handleCancel()
+  }}
+  style={{
+    ...overlayStyle,
+    cursor: isConfirming
+      ? 'wait'
+      : 'default',
+  }}
+>
       <div
         onClick={(event) => event.stopPropagation()}
         style={modalStyle}
@@ -511,11 +605,24 @@ async function handleConfirm() {
           </div>
 
           <button
-            type="button"
-            onClick={props.onCancel}
-            aria-label="Fechar editor de foto"
-            style={closeButtonStyle}
-          >
+  type="button"
+  onClick={handleCancel}
+  disabled={isConfirming}
+  aria-label="Fechar editor de foto"
+  style={{
+    ...closeButtonStyle,
+
+    opacity:
+      isConfirming
+        ? 0.5
+        : 1,
+
+    cursor:
+      isConfirming
+        ? 'not-allowed'
+        : 'pointer',
+  }}
+>
             ✕
           </button>
         </div>
@@ -601,9 +708,10 @@ async function handleConfirm() {
             step="0.01"
             value={zoom}
             disabled={
-              !imageMetrics ||
-              Boolean(errorMessage)
-            }
+  !imageMetrics ||
+  Boolean(errorMessage) ||
+  isConfirming
+}
             onChange={(event) => {
               setZoom(
                 Number(event.target.value)
@@ -620,12 +728,25 @@ async function handleConfirm() {
 
         <div style={actionsStyle}>
           <button
-            type="button"
-            onClick={props.onCancel}
-            style={cancelButtonStyle}
-          >
-            Cancelar
-          </button>
+  type="button"
+  onClick={handleCancel}
+  disabled={isConfirming}
+  style={{
+    ...cancelButtonStyle,
+
+    opacity:
+      isConfirming
+        ? 0.55
+        : 1,
+
+    cursor:
+      isConfirming
+        ? 'not-allowed'
+        : 'pointer',
+  }}
+>
+  Cancelar
+</button>
 
           <button
   type="button"
@@ -739,6 +860,8 @@ const cropWrapperStyle: React.CSSProperties = {
 
 const cropAreaStyle: React.CSSProperties = {
   position: 'relative',
+
+  boxSizing: 'border-box',
 
   width: '100%',
   maxWidth: 360,
