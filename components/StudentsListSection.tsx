@@ -100,9 +100,6 @@ const [editPhotoEditorOpen, setEditPhotoEditorOpen] =
 const [studentToDelete, setStudentToDelete] = useState<Student | null>(null)
 const [deletingStudent, setDeletingStudent] = useState(false)
 const [editPhotoPreview, setEditPhotoPreview] = useState<string | null>(null)
-const [editPhotoPositionX, setEditPhotoPositionX] = useState(50)
-const [editPhotoPositionY, setEditPhotoPositionY] = useState(50)
-const [editPhotoZoom, setEditPhotoZoom] = useState(1)
 const [editPhotoInputKey, setEditPhotoInputKey] = useState(0)
 const [photoUrls, setPhotoUrls] = useState<Record<string, string | null>>({})
 const [selectedQrStudentIds, setSelectedQrStudentIds] = useState<string[]>([])
@@ -702,51 +699,6 @@ function handleEditPhotoChange(
   setEditPhotoEditorOpen(true)
 }
 
-async function createAdjustedEditPhotoFile() {
-  if (!editPhotoPreview) return null
-
-  const image = new Image()
-  image.src = editPhotoPreview
-  await image.decode()
-
-  const size = 512
-  const canvas = document.createElement('canvas')
-  canvas.width = size
-  canvas.height = size
-
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return null
-
-  const imageWidth = image.naturalWidth
-  const imageHeight = image.naturalHeight
-
-  const baseScale = Math.max(size / imageWidth, size / imageHeight)
-  const scale = baseScale * editPhotoZoom
-
-  const drawWidth = imageWidth * scale
-  const drawHeight = imageHeight * scale
-
-  const x = (size - drawWidth) * (editPhotoPositionX / 100)
-  const y = (size - drawHeight) * (editPhotoPositionY / 100)
-
-  ctx.drawImage(image, x, y, drawWidth, drawHeight)
-
-  return new Promise<File | null>((resolve) => {
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) return resolve(null)
-
-        resolve(
-          new File([blob], `foto-aluno-editada-${Date.now()}.jpg`, {
-            type: 'image/jpeg',
-          })
-        )
-      },
-      'image/jpeg',
-      0.92
-    )
-  })
-}
 
 function averageEmbeddings(embeddings: number[][]) {
   const length = embeddings[0].length
@@ -1219,9 +1171,6 @@ useEffect(() => {
       setEditPhotoPreview(null)
       setEditPhotoSource(null)
       setEditPhotoEditorOpen(false)
-      setEditPhotoPositionX(50)
-      setEditPhotoPositionY(50)
-      setEditPhotoZoom(1)
       setEditPhotoInputKey((prev) => prev + 1)
     } finally {
       setSavingStudentId(null)
@@ -1243,9 +1192,6 @@ useEffect(() => {
 setEditPhotoPreview(null)
 setEditPhotoSource(null)
 setEditPhotoEditorOpen(false)
-setEditPhotoPositionX(50)
-setEditPhotoPositionY(50)
-setEditPhotoZoom(1)
 setEditPhotoInputKey((prev) => prev + 1)
       }}
       style={cancelButtonStyle}
@@ -1267,9 +1213,6 @@ setEditPhotoInputKey((prev) => prev + 1)
         setEditPhotoPreview(null)
         setEditPhotoSource(null)
 setEditPhotoEditorOpen(false)
-setEditPhotoPositionX(50)
-setEditPhotoPositionY(50)
-setEditPhotoZoom(1)
 setEditPhotoInputKey((prev) => prev + 1)
       }}
       style={secondaryButtonStyle}
@@ -1850,20 +1793,3 @@ const editPhotoButtonStyle: React.CSSProperties = {
   fontSize: 13,
 }
 
-const editPhotoControlsStyle: React.CSSProperties = {
-  marginTop: 12,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 8,
-}
-
-const editPhotoLabelStyle: React.CSSProperties = {
-  fontSize: 12,
-  color: '#475569',
-  fontWeight: 800,
-}
-
-const editPhotoRangeStyle: React.CSSProperties = {
-  width: '100%',
-  marginTop: 4,
-}
