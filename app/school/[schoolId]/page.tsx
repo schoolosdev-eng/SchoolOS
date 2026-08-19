@@ -1705,19 +1705,25 @@ async function handleUpdateStudent(
   let profilePhotoPath: string | undefined
 
   if (data.photo) {
-    profilePhotoPath = await uploadStudentProfilePhoto(data.photo, schoolId)
+    profilePhotoPath = await uploadStudentProfilePhoto(
+      data.photo,
+      schoolId
+    )
   }
 
   const updateData: any = {
     name: data.full_name,
     full_name: data.full_name,
     email: data.email || null,
-    responsible_email: data.responsible_email || null,
-    responsible_whatsapp: data.responsible_whatsapp || null,
+    responsible_email:
+      data.responsible_email || null,
+    responsible_whatsapp:
+      data.responsible_whatsapp || null,
   }
 
   if (profilePhotoPath) {
-    updateData.profile_photo_path = profilePhotoPath
+    updateData.profile_photo_path =
+      profilePhotoPath
   }
 
   const { error } = await supabase
@@ -1727,21 +1733,86 @@ async function handleUpdateStudent(
     .eq('school_id', schoolId)
 
   if (error) {
-    showMessage(`Erro ao atualizar aluno: ${error.message}`)
+    showMessage(
+      `Erro ao atualizar aluno: ${error.message}`
+    )
     return
   }
 
+  /*
+   * Se a foto mudou, o embedding antigo
+   * não pode continuar relacionado ao aluno.
+   */
   if (data.photo && profilePhotoPath) {
-  await saveProfilePhotoFaceEmbedding({
-    studentId,
-    photoFile: data.photo,
-    profilePhotoPath,
-  })
-  await loadFacialPreparedSummary()
-}
+    const { error: deleteEmbeddingError } =
+      await supabase
+        .from('student_face_embeddings')
+        .delete()
+        .eq('school_id', schoolId)
+        .eq('student_id', studentId)
+        .eq('source', 'profile_photo')
 
+    if (deleteEmbeddingError) {
+      console.error(
+        '[FACIAL PROFILE] erro ao invalidar embedding anterior:',
+        studentId,
+        deleteEmbeddingError
+      )
+    }
+
+    /*
+     * Atualizamos a interface primeiro.
+     * Neste momento o aluno deve aparecer
+     * como Facial pendente.
+     */
+    await fetchStudents()
+    await loadFacialPreparedSummary()
+
+    showMessage(
+      'Aluno atualizado. Preparando reconhecimento facial.'
+    )
+
+    /*
+     * A geração facial NÃO faz mais parte
+     * do fluxo de salvamento do aluno.
+     */
+    window.setTimeout(() => {
+      void (async () => {
+        const success =
+          await saveProfilePhotoFaceEmbedding({
+            studentId,
+            photoFile: data.photo!,
+            profilePhotoPath,
+          })
+
+        if (!success) {
+          console.warn(
+            '[FACIAL PROFILE] aluno permaneceu com facial pendente:',
+            studentId
+          )
+        }
+
+        /*
+         * Atualiza tanto o contador do topo
+         * quanto o status visual da lista.
+         */
+        await loadFacialPreparedSummary()
+        await fetchStudents()
+      })()
+    }, 150)
+
+    return
+  }
+
+  /*
+   * Alteração apenas de dados,
+   * sem troca de foto.
+   */
   await fetchStudents()
-  showMessage('Aluno atualizado com sucesso.')
+
+  showMessage(
+    'Aluno atualizado com sucesso.'
+  )
 }
 
 function getSituationsByRisk(risk: string) {
