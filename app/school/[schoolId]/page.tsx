@@ -1025,10 +1025,29 @@ for (let i = 0; i < pendingStudents.length; i++) {
   continue
 }
 
-        const response = await fetch(signedData.signedUrl)
-        const blob = await response.blob()
+        const response = await withTimeout(
+  fetch(signedData.signedUrl),
+  15000,
+  'Tempo limite excedido ao baixar a foto.'
+)
 
-        const embedding = await generateFaceEmbeddingFromBlob(blob)
+if (!response.ok) {
+  throw new Error(
+    `Falha ao baixar foto: HTTP ${response.status}`
+  )
+}
+
+const blob = await withTimeout(
+  response.blob(),
+  10000,
+  'Tempo limite excedido ao preparar a imagem.'
+)
+
+const embedding = await withTimeout(
+  generateFaceEmbeddingFromBlob(blob),
+  20000,
+  'Tempo limite excedido durante a análise facial.'
+)
 
         if (!embedding) {
   failCount++
