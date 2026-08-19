@@ -149,6 +149,28 @@ type StudentLicenseReportRecord = {
   cancelled_at: string | null
 }
 
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      reject(new Error(timeoutMessage))
+    }, timeoutMs)
+
+    promise
+      .then((result) => {
+        window.clearTimeout(timeoutId)
+        resolve(result)
+      })
+      .catch((error) => {
+        window.clearTimeout(timeoutId)
+        reject(error)
+      })
+  })
+}
+
 export default function SchoolPage() {
   const params = useParams<{ schoolId: string }>()
   const router = useRouter()
@@ -1089,52 +1111,111 @@ async function saveProfilePhotoFaceEmbedding({
   studentId: string
   photoFile: File
   profilePhotoPath: string
-}) {
-  if (!schoolId) return
-
-  const embedding = await generateFaceEmbeddingFromBlob(photoFile)
-
-  if (!embedding) {
-    console.warn('[FACIAL PROFILE] nenhum rosto encontrado na foto do aluno:', studentId)
-    return
+}): Promise<boolean> {
+  if (!schoolId) {
+    console.warn(
+      '[FACIAL PROFILE] escola não identificada para o aluno:',
+      studentId
+    )
+    return false
   }
 
-  const { data: enrollment } = await supabase
-    .from('enrollments')
-    .select('class_id')
-    .eq('school_id', schoolId)
-    .eq('student_id', studentId)
-    .limit(1)
-    .maybeSingle()
+  try {
+    const embedding = await withTimeout(
+      generateFaceEmbeddingFromBlob(photoFile),
+      20000,
+      'Tempo limite excedido ao gerar reconhecimento facial.'
+    )
 
-  if (!enrollment?.class_id) {
-    console.warn('[FACIAL PROFILE] aluno sem matrícula:', studentId)
-    return
-  }
+    if (!embedding) {
+      console.warn(
+        '[FACIAL PROFILE] nenhum rosto encontrado na foto do aluno:',
+        studentId
+      )
+      return false
+    }
 
-  await supabase
-    .from('student_face_embeddings')
-    .delete()
-    .eq('school_id', schoolId)
-    .eq('student_id', studentId)
-    .eq('source', 'profile_photo')
+    const {
+      data: enrollment,
+      error: enrollmentError,
+    } = await supabase
+      .from('enrollments')
+      .select('class_id')
+      .eq('school_id', schoolId)
+      .eq('student_id', studentId)
+      .limit(1)
+      .maybeSingle()
 
-  const { error } = await supabase
-    .from('student_face_embeddings')
-    .insert({
-      id: crypto.randomUUID(),
-      school_id: schoolId,
-      student_id: studentId,
-      class_id: enrollment.class_id,
-      embedding,
-      source: 'profile_photo',
-      profile_photo_path: profilePhotoPath,
-      photo_order: 0,
-      created_at: new Date().toISOString(),
-    })
+    if (enrollmentError) {
+      console.error(
+        '[FACIAL PROFILE] erro ao buscar matrícula do aluno:',
+        studentId,
+        enrollmentError
+      )
+      return false
+    }
 
-  if (error) {
-    console.error('[FACIAL PROFILE] erro ao salvar embedding:', error)
+    if (!enrollment?.class_id) {
+      console.warn(
+        '[FACIAL PROFILE] aluno sem matrícula/turma:',
+        studentId
+      )
+      return false
+    }
+
+    const { error: deleteError } = await supabase
+      .from('student_face_embeddings')
+      .delete()
+      .eq('school_id', schoolId)
+      .eq('student_id', studentId)
+      .eq('source', 'profile_photo')
+
+    if (deleteError) {
+      console.error(
+        '[FACIAL PROFILE] erro ao remover embedding anterior:',
+        studentId,
+        deleteError
+      )
+      return false
+    }
+
+    const { error: insertError } = await supabase
+      .from('student_face_embeddings')
+      .insert({
+        id: crypto.randomUUID(),
+        school_id: schoolId,
+        student_id: studentId,
+        class_id: enrollment.class_id,
+        embedding,
+        source: 'profile_photo',
+        profile_photo_path: profilePhotoPath,
+        photo_order: 0,
+        created_at: new Date().toISOString(),
+      })
+
+    if (insertError) {
+      console.error(
+        '[FACIAL PROFILE] erro ao salvar embedding:',
+        studentId,
+        insertError
+      )
+      return false
+    }
+
+    console.log(
+      '[FACIAL PROFILE] embedding salvo com sucesso:',
+      studentId
+    )
+
+    return true
+  } catch (error) {
+    console.error(
+      '[FACIAL PROFILE] falha durante preparação facial:',
+      studentId,
+      error
+    )
+
+    return false
   }
 }
 
