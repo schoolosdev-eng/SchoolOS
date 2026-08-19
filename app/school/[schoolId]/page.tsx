@@ -988,8 +988,8 @@ for (let i = 0; i < pendingStudents.length; i++) {
         `Processando ${i + 1}/${pendingStudents.length}: ${student.full_name}`
       )
 
-      setFaceEmbeddingPercent(
-  Math.round(((i + 1) / pendingStudents.length) * 100)
+      setFaceEmbeddingProgress(
+  `${i + 1}/${pendingStudents.length} — ${student.full_name}: verificando dados...`
 )
 
       try {
@@ -1008,6 +1008,10 @@ for (let i = 0; i < pendingStudents.length; i++) {
   })
   continue
 }
+
+setFaceEmbeddingProgress(
+  `${i + 1}/${pendingStudents.length} — ${student.full_name}: baixando foto...`
+)
 
         const { data: signedData, error: signedError } = await supabase.storage
           .from('student-profile-photos')
@@ -1043,6 +1047,10 @@ const blob = await withTimeout(
   'Tempo limite excedido ao preparar a imagem.'
 )
 
+setFaceEmbeddingProgress(
+  `${i + 1}/${pendingStudents.length} — ${student.full_name}: analisando rosto...`
+)
+
 const embedding = await withTimeout(
   generateFaceEmbeddingFromBlob(blob),
   20000,
@@ -1060,6 +1068,10 @@ const embedding = await withTimeout(
 
   continue
 }
+
+setFaceEmbeddingProgress(
+  `${i + 1}/${pendingStudents.length} — ${student.full_name}: salvando facial...`
+)
 
         const { error: insertError } = await supabase
           .from('student_face_embeddings')
@@ -1089,14 +1101,24 @@ const embedding = await withTimeout(
 
         successCount++
       } catch (error) {
-  console.error('[FACIAL PROFILE BATCH] erro:', error)
+  console.error(
+    '[FACIAL PROFILE BATCH] erro:',
+    student.id,
+    student.full_name,
+    error
+  )
 
   failCount++
+
+  const reason =
+    error instanceof Error
+      ? error.message
+      : 'Erro inesperado durante o processamento.'
 
   failures.push({
     id: student.id,
     name: student.full_name,
-    reason: 'Erro inesperado durante o processamento.',
+    reason,
   })
 }
     }
