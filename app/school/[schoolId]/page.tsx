@@ -985,10 +985,6 @@ for (let i = 0; i < pendingStudents.length; i++) {
       const student: any = pendingStudents[i]
 
       setFaceEmbeddingProgress(
-        `Processando ${i + 1}/${pendingStudents.length}: ${student.full_name}`
-      )
-
-      setFaceEmbeddingProgress(
   `${i + 1}/${pendingStudents.length} — ${student.full_name}: verificando dados...`
 )
 
@@ -1119,6 +1115,16 @@ setFaceEmbeddingProgress(
     id: student.id,
     name: student.full_name,
     reason,
+  })
+} finally {
+  setFaceEmbeddingPercent(
+    Math.round(
+      ((i + 1) / pendingStudents.length) * 100
+    )
+  )
+
+  await new Promise<void>((resolve) => {
+    window.setTimeout(resolve, 150)
   })
 }
     }
