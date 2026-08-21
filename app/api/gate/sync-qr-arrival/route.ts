@@ -6,7 +6,6 @@ import {
 import {
   createClient,
 } from '@supabase/supabase-js'
-import sharp from 'sharp'
 
 import {
   processWhatsAppQueue,
@@ -144,6 +143,23 @@ function addFiveYears(
 async function normalizePhotoToJpeg(
   originalBuffer: Buffer
 ) {
+  /*
+   * Importação propositalmente dinâmica.
+   *
+   * O Sharp é usado somente na parte premium
+   * de foto/WhatsApp e nunca deve impedir
+   * a sincronização básica da presença.
+   *
+   * Se o módulo nativo não estiver disponível
+   * na Vercel, o erro acontecerá dentro desta
+   * função e poderá ser tratado pelo POST().
+   */
+  const sharpModule =
+    await import('sharp')
+
+  const sharp =
+    sharpModule.default
+
   const {
     data,
     info,
@@ -865,33 +881,41 @@ export async function POST(
         Buffer
 
       try {
-        const profileBuffer =
-          Buffer.from(
-            await profilePhotoBlob
-              .arrayBuffer()
-          )
+  const profileBuffer =
+    Buffer.from(
+      await profilePhotoBlob
+        .arrayBuffer()
+    )
 
-        normalizedPhoto =
-          await normalizePhotoToJpeg(
-            profileBuffer
-          )
-      } catch (error) {
-        console.error(
-          '[SINCRONIZAÇÃO QR] erro ao preparar foto:',
-          error
-        )
+  normalizedPhoto =
+    await normalizePhotoToJpeg(
+      profileBuffer
+    )
+} catch (error) {
+  console.error(
+    '[SINCRONIZAÇÃO QR] erro ao preparar foto:',
+    error
+  )
 
-        return NextResponse.json(
-          {
-            ...baseResponse,
-            error:
-              'A presença foi registrada, mas não foi possível preparar a foto do aluno.',
-          },
-          {
-            status: 500,
-          }
-        )
-      }
+  /*
+   * A presença já foi sincronizada.
+   *
+   * Falha no Sharp/foto é apenas uma falha
+   * do recurso adicional e não pode devolver
+   * HTTP 500, pois isso faria o IndexedDB
+   * considerar a presença ainda pendente.
+   */
+  return NextResponse.json({
+    ...baseResponse,
+    addonEligible: true,
+    evidenceSaved: false,
+    whatsappQueued: false,
+    whatsappStatus:
+      'photo_processing_failed',
+    warning:
+      'A presença foi sincronizada, mas não foi possível preparar a foto para o comprovante e WhatsApp.',
+  })
+}
 
       const [
         year,
