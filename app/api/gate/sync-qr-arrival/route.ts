@@ -342,26 +342,35 @@ export async function POST(
      * 3. Confere a permissão na escola.
      */
     const {
-      data: membership,
-      error: membershipError,
-    } = await supabaseAdmin
-      .from(
-        'school_memberships'
-      )
-      .select('role, status')
-      .eq(
-        'school_id',
-        schoolId
-      )
-      .eq(
-        'user_id',
-        user.id
-      )
-      .eq(
-        'status',
-        'active'
-      )
-      .maybeSingle()
+  data: membership,
+  error: membershipError,
+} = await supabaseAdmin
+  .from(
+    'school_memberships'
+  )
+  .select('role, status')
+  .eq(
+    'school_id',
+    schoolId
+  )
+  .eq(
+    'user_id',
+    user.id
+  )
+  .eq(
+    'status',
+    'active'
+  )
+  .in(
+    'role',
+    [
+      'admin',
+      'gestor',
+      'professor',
+    ]
+  )
+  .limit(1)
+  .maybeSingle()
 
     if (
       membershipError ||
