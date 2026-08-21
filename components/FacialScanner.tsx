@@ -164,29 +164,34 @@ if (!videoElement) {
 }
 
 const camera = new CameraClass(videoElement, {
-      onFrame: async () => {
-        try {
-          if (!isActive || !videoRef.current || !faceDetectionRef.current) {
-  return
-}
+  onFrame: async () => {
+    try {
+      if (
+        !isActive ||
+        !videoRef.current ||
+        !faceDetectionRef.current
+      ) {
+        return
+      }
 
-          await faceDetection.send({
-            image: videoElement,
-          })
+      await faceDetection.send({
+        image: videoElement,
+      })
+    } catch (error) {
+      console.error(
+        '[FACIAL] erro no onFrame:',
+        error
+      )
+    }
+  },
 
-        } catch (error) {
-          console.error(
-            '[FACIAL] erro no onFrame:',
-            error
-          )
-        }
-      },
-      width: isSlowDevice ? 640 : 1280,
-height: isSlowDevice ? 480 : 720,
-facingMode: {
-  ideal: cameraMode,
-},
-    })
+  width: 640,
+  height: 480,
+
+  facingMode: {
+    ideal: cameraMode,
+  },
+})
 
     cameraRef.current = camera
 
