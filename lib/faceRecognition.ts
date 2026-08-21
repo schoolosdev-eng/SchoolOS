@@ -74,31 +74,44 @@ export async function loadFaceModels() {
 export async function generateFaceEmbeddingFromBlob(
   imageBlob: Blob
 ): Promise<number[] | null> {
-  if (imageBlob.size === 0) {
+  if (
+    !imageBlob ||
+    imageBlob.size === 0
+  ) {
     return null
   }
 
   await loadFaceModels()
 
-  const imageUrl = URL.createObjectURL(imageBlob)
+  const imageCanvas =
+    await createCanvasFromBlob(
+      imageBlob
+    )
 
-  try {
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const image = new Image()
-      image.onload = () => resolve(image)
-      image.onerror = reject
-      image.src = imageUrl
-    })
+  console.log(
+    '[FACE API] iniciando detecção:',
+    {
+      width:
+        imageCanvas.width,
+      height:
+        imageCanvas.height,
+    }
+  )
 
-    const detection = await faceapi
-      .detectSingleFace(
-        img,
-        new faceapi.TinyFaceDetectorOptions({
-          inputSize: 416,
-          scoreThreshold: 0.4,
-        })
-      )
-      .withFaceLandmarks()
+    const detection =
+  await faceapi
+    .detectSingleFace(
+      imageCanvas,
+      new faceapi
+        .TinyFaceDetectorOptions(
+          {
+            inputSize: 416,
+            scoreThreshold:
+              0.4,
+          }
+        )
+    )
+    .withFaceLandmarks()
 
     if (!detection) return null
 
@@ -108,8 +121,19 @@ export async function generateFaceEmbeddingFromBlob(
 
     const sx = Math.max(0, box.x - padding)
     const sy = Math.max(0, box.y - padding)
-    const sw = Math.min(img.width - sx, box.width + padding * 2)
-    const sh = Math.min(img.height - sy, box.height + padding * 2)
+    const sw =
+  Math.min(
+    imageCanvas.width - sx,
+    box.width +
+      padding * 2
+  )
+
+const sh =
+  Math.min(
+    imageCanvas.height - sy,
+    box.height +
+      padding * 2
+  )
 
     const faceCanvas = document.createElement('canvas')
     faceCanvas.width = 224
@@ -118,7 +142,38 @@ export async function generateFaceEmbeddingFromBlob(
     const ctx = faceCanvas.getContext('2d')
     if (!ctx) return null
 
-    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, 224, 224)
+    if (
+  sw <= 0 ||
+  sh <= 0
+) {
+  console.error(
+    '[FACE API] recorte facial inválido:',
+    {
+      sx,
+      sy,
+      sw,
+      sh,
+      imageWidth:
+        imageCanvas.width,
+      imageHeight:
+        imageCanvas.height,
+    }
+  )
+
+  return null
+}
+
+    ctx.drawImage(
+  imageCanvas,
+  sx,
+  sy,
+  sw,
+  sh,
+  0,
+  0,
+  224,
+  224
+)
 
     const refinedDetection = await faceapi
       .detectSingleFace(
@@ -132,9 +187,10 @@ export async function generateFaceEmbeddingFromBlob(
       .withFaceDescriptor()
 
     if (!refinedDetection) {
-      const fallbackDetection = await faceapi
-        .detectSingleFace(
-          img,
+      const fallbackDetection =
+  await faceapi
+    .detectSingleFace(
+      imageCanvas,
           new faceapi.TinyFaceDetectorOptions({
             inputSize: 416,
             scoreThreshold: 0.4,
@@ -149,8 +205,145 @@ export async function generateFaceEmbeddingFromBlob(
     }
 
     return Array.from(refinedDetection.descriptor)
+
+}
+
+async function createCanvasFromBlob(
+  imageBlob: Blob
+): Promise<HTMLCanvasElement> {
+  if (!imageBlob || imageBlob.size === 0) {
+    throw new Error(
+      'Blob de imagem vazio.'
+    )
+  }
+
+  const imageUrl =
+    URL.createObjectURL(imageBlob)
+
+  try {
+    const image =
+      new Image()
+
+    image.src =
+      imageUrl
+
+    /*
+     * Primeiro tentamos decode().
+     *
+     * Em alguns navegadores Android o evento
+     * load pode ocorrer antes de todas as
+     * propriedades da imagem estarem prontas
+     * para determinadas bibliotecas.
+     */
+    if (
+      typeof image.decode ===
+      'function'
+    ) {
+      try {
+        await image.decode()
+      } catch {
+        /*
+         * O fallback abaixo aguardará onload.
+         */
+      }
+    }
+
+    if (
+      !image.complete ||
+      image.naturalWidth <= 0 ||
+      image.naturalHeight <= 0
+    ) {
+      await new Promise<void>(
+        (resolve, reject) => {
+          image.onload = () =>
+            resolve()
+
+          image.onerror = () =>
+            reject(
+              new Error(
+                'Não foi possível decodificar a imagem facial.'
+              )
+            )
+        }
+      )
+    }
+
+    const width =
+      image.naturalWidth
+
+    const height =
+      image.naturalHeight
+
+    console.log(
+      '[FACE API] imagem decodificada:',
+      {
+        width,
+        height,
+        blobSize:
+          imageBlob.size,
+      }
+    )
+
+    if (
+      !Number.isFinite(width) ||
+      !Number.isFinite(height) ||
+      width <= 0 ||
+      height <= 0
+    ) {
+      throw new Error(
+        `Imagem facial possui dimensões inválidas: ${width}x${height}.`
+      )
+    }
+
+    const canvas =
+      document.createElement(
+        'canvas'
+      )
+
+    canvas.width =
+      width
+
+    canvas.height =
+      height
+
+    const ctx =
+      canvas.getContext(
+        '2d',
+        {
+          willReadFrequently:
+            true,
+        }
+      )
+
+    if (!ctx) {
+      throw new Error(
+        'Não foi possível criar o canvas facial.'
+      )
+    }
+
+    ctx.drawImage(
+      image,
+      0,
+      0,
+      width,
+      height
+    )
+
+    console.log(
+      '[FACE API] canvas preparado:',
+      {
+        width:
+          canvas.width,
+        height:
+          canvas.height,
+      }
+    )
+
+    return canvas
   } finally {
-    URL.revokeObjectURL(imageUrl)
+    URL.revokeObjectURL(
+      imageUrl
+    )
   }
 }
 
