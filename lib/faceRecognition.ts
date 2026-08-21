@@ -27,7 +27,10 @@ export async function loadFaceModels() {
   }
 
   modelsLoadingPromise = (async () => {
-    if (typeof window === 'undefined') {
+    if (
+      typeof window ===
+      'undefined'
+    ) {
       return
     }
 
@@ -35,7 +38,8 @@ export async function loadFaceModels() {
       'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js'
     )
 
-    faceapi = (window as any).faceapi
+    faceapi =
+      (window as any).faceapi
 
     if (!faceapi) {
       throw new Error(
@@ -43,18 +47,42 @@ export async function loadFaceModels() {
       )
     }
 
+    console.log(
+      '[FACE API] backend inicial:',
+      faceapi.tf?.getBackend?.()
+    )
+
+    if (faceapi.tf) {
+      await faceapi.tf.setBackend(
+        'cpu'
+      )
+
+      await faceapi.tf.ready()
+
+      console.log(
+        '[FACE API] backend ativo:',
+        faceapi.tf.getBackend()
+      )
+    }
+
     await Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri(
-        '/models'
-      ),
+      faceapi.nets
+        .tinyFaceDetector
+        .loadFromUri(
+          '/models'
+        ),
 
-      faceapi.nets.faceRecognitionNet.loadFromUri(
-        '/models'
-      ),
+      faceapi.nets
+        .faceRecognitionNet
+        .loadFromUri(
+          '/models'
+        ),
 
-      faceapi.nets.faceLandmark68Net.loadFromUri(
-        '/models'
-      ),
+      faceapi.nets
+        .faceLandmark68Net
+        .loadFromUri(
+          '/models'
+        ),
     ])
 
     modelsLoaded = true
