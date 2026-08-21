@@ -150,7 +150,6 @@ const [
 ] = useState(false)
 
 const facialProcessingRef = useRef(false)
-const facialCooldownRef = useRef(false)
 
 const facialEmbeddingsCacheRef = useRef<any[]>([])
 const facialEmbeddingsLoadedRef = useRef(false)
@@ -2348,8 +2347,10 @@ async function loadCandidatePhotos(candidates: any[]) {
 }
 
   async function handleFaceCapture(imageBlob: Blob) {
-  if (facialProcessingRef.current || facialCooldownRef.current) {
-    console.log('[FACIAL DEBUG] bloqueado por processing/cooldown')
+  if (facialProcessingRef.current) {
+    console.log(
+      '[FACIAL DEBUG] bloqueado: processamento já em andamento'
+    )
     return false
   }
 
@@ -2505,11 +2506,6 @@ return true
   return false
   } finally {
     facialProcessingRef.current = false
-    facialCooldownRef.current = true
-
-    setTimeout(() => {
-      facialCooldownRef.current = false
-    }, 1500)
   }
 }
 
