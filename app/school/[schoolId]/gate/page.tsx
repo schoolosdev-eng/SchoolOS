@@ -2665,15 +2665,56 @@ async function saveConfirmedFaceEmbedding(student: any) {
     return
   }
 
-  if (supabaseCaptures && supabaseCaptures.length >= 10) {
-    const oldest = supabaseCaptures[0]
+  if (
+  supabaseCaptures &&
+  supabaseCaptures.length >= 10
+) {
+  const oldest =
+    supabaseCaptures[0]
 
-    photoOrder = oldest.photo_order || 1
+  photoOrder =
+    oldest.photo_order || 1
 
+  const {
+    error: deleteError,
+  } =
     await supabase
-      .from('student_face_embeddings')
+      .from(
+        'student_face_embeddings'
+      )
       .delete()
-      .eq('id', oldest.id)
+      .eq(
+        'id',
+        oldest.id
+      )
+
+  if (deleteError) {
+    console.error(
+      '[FACIAL APRENDIZADO] erro ao remover captura antiga:',
+      deleteError
+    )
+
+    setResultWithTimeout({
+      status: 'error',
+      message:
+        'Erro ao atualizar o histórico facial.',
+    })
+
+    return
+  }
+
+  /*
+   * Remove imediatamente do cache
+   * local o mesmo embedding apagado
+   * do Supabase.
+   */
+  facialEmbeddingsCacheRef.current =
+    facialEmbeddingsCacheRef.current
+      .filter(
+        (item) =>
+          item.id !==
+          oldest.id
+      )
   } else {
     const usedOrders = new Set(
       (supabaseCaptures || []).map((item) => item.photo_order)
@@ -2729,7 +2770,138 @@ async function saveConfirmedFaceEmbedding(student: any) {
     created_at: now.toISOString(),
   })
 
+  const cacheTrimResult =
+  trimFacialCaptureCacheForStudent(
+    student.id,
+    10
+  )
+
+console.log(
+  '[FACIAL CACHE] limpeza concluída:',
+  {
+    studentId:
+      student.id,
+
+    captureCount:
+      cacheTrimResult
+        .captureCount,
+
+    removedCount:
+      cacheTrimResult
+        .removedCount,
+
+    totalCacheCount:
+      facialEmbeddingsCacheRef
+        .current.length,
+  }
+)
+
   setPendingFacialEmbedding(null)
+}
+
+function trimFacialCaptureCacheForStudent(
+  studentId: string,
+  maxCaptures = 10
+) {
+  const cache =
+    facialEmbeddingsCacheRef.current
+
+  const studentCaptures =
+    cache
+      .filter(
+        (item) =>
+          item.student_id ===
+            studentId &&
+          item.source ===
+            'capture'
+      )
+      .sort(
+        (a, b) =>
+          new Date(
+            b.created_at || 0
+          ).getTime() -
+          new Date(
+            a.created_at || 0
+          ).getTime()
+      )
+
+  if (
+    studentCaptures.length <=
+    maxCaptures
+  ) {
+    return {
+      removedCount: 0,
+      captureCount:
+        studentCaptures.length,
+    }
+  }
+
+  /*
+   * Mantém somente as capturas
+   * mais recentes desse aluno.
+   */
+  const allowedIds =
+    new Set(
+      studentCaptures
+        .slice(
+          0,
+          maxCaptures
+        )
+        .map(
+          (item) =>
+            item.id
+        )
+    )
+
+  const beforeCount =
+    cache.length
+
+  facialEmbeddingsCacheRef.current =
+    cache.filter(
+      (item) => {
+        /*
+         * Não altera embeddings
+         * de outros alunos.
+         */
+        if (
+          item.student_id !==
+          studentId
+        ) {
+          return true
+        }
+
+        /*
+         * Não remove foto de perfil,
+         * média manual, importação etc.
+         */
+        if (
+          item.source !==
+          'capture'
+        ) {
+          return true
+        }
+
+        return allowedIds.has(
+          item.id
+        )
+      }
+    )
+
+  const afterCount =
+    facialEmbeddingsCacheRef
+      .current.length
+
+  return {
+    removedCount:
+      beforeCount -
+      afterCount,
+
+    captureCount:
+      Math.min(
+        studentCaptures.length,
+        maxCaptures
+      ),
+  }
 }
 
 function selectFacialCandidateForConfirmation(
