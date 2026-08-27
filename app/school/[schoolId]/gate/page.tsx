@@ -84,7 +84,44 @@ const [facialConfirming, setFacialConfirming] =
 const [
   nextReadCountdown,
   setNextReadCountdown,
-] = useState<number | null>(null)   
+] = useState<number | null>(null)  
+
+const [
+  facialStandby,
+  setFacialStandby,
+] = useState(false)
+
+const [
+  standbyOffset,
+  setStandbyOffset,
+] = useState({
+  x: 0,
+  y: 0,
+})
+
+const [
+  currentTime,
+  setCurrentTime,
+] = useState(
+  new Date().toLocaleTimeString(
+    'pt-BR'
+  )
+)
+
+const [
+  currentDate,
+  setCurrentDate,
+] = useState(
+  new Date().toLocaleDateString(
+    'pt-BR',
+    {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    }
+  )
+)
 
 const facialRestartTimeoutRef =
   useRef<ReturnType<typeof setTimeout> | null>(null) 
@@ -98,6 +135,7 @@ const regularExitQrRestartTimeoutRef =
 function changeGateMode(
   nextMode: GateMode
 ) {
+  setFacialStandby(false)
   if (
     facialRestartTimeoutRef.current
   ) {
@@ -297,6 +335,63 @@ async function downloadOfflineData() {
     setLoadingOffline(false)
   }
 }
+
+useEffect(() => {
+  const interval =
+    setInterval(() => {
+      setCurrentTime(
+        new Date()
+          .toLocaleTimeString(
+            'pt-BR',
+            {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+            }
+          )
+      )
+
+      setCurrentDate(
+        new Date()
+          .toLocaleDateString(
+            'pt-BR',
+            {
+              weekday: 'long',
+              day: '2-digit',
+              month: 'long',
+              year: 'numeric',
+            }
+          )
+      )
+    }, 1000)
+
+  return () =>
+    clearInterval(interval)
+}, [])
+
+useEffect(() => {
+  if (!facialStandby) {
+    return
+  }
+
+  const interval =
+    setInterval(() => {
+      setStandbyOffset({
+        x:
+          Math.floor(
+            Math.random() * 21
+          ) - 10,
+
+        y:
+          Math.floor(
+            Math.random() * 21
+          ) - 10,
+      })
+    }, 60000)
+
+  return () =>
+    clearInterval(interval)
+}, [facialStandby])
 
 useEffect(() => {
   async function loadManualStudents() {
@@ -2012,10 +2107,36 @@ async function handleStartReading() {
   }
 
   setManualMode(false)
-  setIsScannerActive(true)
+
+/*
+ * Entrada por reconhecimento facial
+ * começa pela tela de standby.
+ *
+ * A câmera somente será aberta quando
+ * o usuário tocar em "Registrar chegada".
+ */
+if (
+  gateMode === 'entry' &&
+  readingMethod === 'facial'
+) {
+  setFacialCandidates([])
+  setFacialConfirmationResult(null)
+  setPendingFacialConfirmation(null)
+  setPendingFacialCapture(null)
+  setPendingFacialEmbedding(null)
+
+  setIsScannerActive(false)
+  setFacialStandby(true)
+
+  return
+}
+
+setFacialStandby(false)
+setIsScannerActive(true)
 }
 
   async function handleStopReading() {
+  setFacialStandby(false)  
   setIsScannerActive(false)
 
   setResultWithTimeout({
@@ -2028,6 +2149,7 @@ async function handleStartReading() {
   if (closingGateMode) return
 
   setClosingGateMode(true)
+  setFacialStandby(false)
   setIsScannerActive(false)
   setManualMode(false)
 
@@ -2705,7 +2827,23 @@ useEffect(() => {
       setNextReadCountdown(null)
 
       setReadingMethod('facial')
-      setIsScannerActive(true)
+
+if (
+  gateMode === 'entry'
+) {
+  /*
+   * Entrada volta para a tela
+   * "Registrar chegada".
+   */
+  setIsScannerActive(false)
+  setFacialStandby(true)
+} else {
+  /*
+   * Mantém o funcionamento atual
+   * da saída normal.
+   */
+  setIsScannerActive(true)
+}
 
       facialRestartTimeoutRef.current =
         null
@@ -2723,7 +2861,10 @@ useEffect(() => {
         null
     }
   }
-}, [nextReadCountdown])
+}, [
+  nextReadCountdown,
+  gateMode,
+])
 
 function restartRegularExitQrScanner() {
   if (
@@ -4119,6 +4260,194 @@ loadFaceModels().catch((error) => {
     </div>
   </div>
 )}
+
+{facialStandby &&
+  gateMode === 'entry' &&
+  readingMethod === 'facial' && (
+  <div
+    style={{
+      position: 'fixed',
+      inset: 0,
+      zIndex: 20000,
+
+      background:
+        'rgba(0,0,0,0.94)',
+
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+
+      gap: 24,
+      color: '#ffffff',
+      padding: 24,
+    }}
+  >
+    <div
+      style={{
+        transform:
+          `translate(${standbyOffset.x}px, ${standbyOffset.y}px)`,
+
+        transition:
+          'transform 0.8s ease',
+
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 24,
+      }}
+    >
+      <div
+        style={{
+          fontSize:
+            'clamp(52px, 8vw, 96px)',
+
+          fontWeight: 900,
+          letterSpacing: 2,
+        }}
+      >
+        {currentTime}
+      </div>
+
+      <div
+        style={{
+          fontSize:
+            'clamp(16px, 2vw, 24px)',
+
+          color: '#cbd5e1',
+
+          textTransform:
+            'capitalize',
+        }}
+      >
+        {currentDate}
+      </div>
+
+      <button
+        onClick={() => {
+          playScanSound(
+            'success'
+          )
+
+          setFacialStandby(
+            false
+          )
+
+          setFacialCandidates(
+            []
+          )
+
+          setPendingFacialConfirmation(
+            null
+          )
+
+          setPendingFacialCapture(
+            null
+          )
+
+          setPendingFacialEmbedding(
+            null
+          )
+
+          setFacialConfirmationResult(
+            null
+          )
+
+          setReadingMethod(
+            'facial'
+          )
+
+          /*
+           * Somente aqui a câmera
+           * realmente é aberta.
+           */
+          setIsScannerActive(
+            true
+          )
+        }}
+        style={{
+          marginTop: 30,
+
+          width:
+            'min(420px, 90vw)',
+
+          minHeight: 110,
+
+          borderRadius: 32,
+          border: 'none',
+
+          background:
+            'linear-gradient(135deg, #2563eb, #1d4ed8)',
+
+          color: '#ffffff',
+
+          fontSize: 30,
+          fontWeight: 900,
+
+          cursor: 'pointer',
+
+          boxShadow:
+            '0 24px 70px rgba(37,99,235,0.45)',
+        }}
+      >
+        Registrar chegada
+      </button>
+
+      <div
+        style={{
+          color: '#cbd5e1',
+
+          fontSize: 18,
+          fontWeight: 700,
+
+          textAlign:
+            'center',
+        }}
+      >
+        Toque para registrar sua chegada
+      </div>
+    </div>
+
+    <button
+      onClick={async () => {
+        setFacialStandby(
+          false
+        )
+
+        await handleCloseGateMode()
+      }}
+      style={{
+        position: 'fixed',
+
+        right: 24,
+        bottom: 24,
+
+        width: 'auto',
+
+        padding:
+          '12px 16px',
+
+        borderRadius: 999,
+
+        border:
+          '1px solid rgba(255,255,255,0.18)',
+
+        background:
+          'rgba(255,255,255,0.08)',
+
+        color: '#cbd5e1',
+
+        fontSize: 13,
+        fontWeight: 800,
+
+        cursor: 'pointer',
+      }}
+    >
+      Encerrar portaria
+    </button>
+  </div>
+)}
+
     </main>
   )
 }
