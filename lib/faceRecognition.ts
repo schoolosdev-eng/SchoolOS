@@ -19,6 +19,100 @@ function loadScript(src: string) {
   })
 }
 
+function getFaceApiBackendDecision() {
+  if (
+    typeof window === 'undefined' ||
+    typeof navigator === 'undefined'
+  ) {
+    return {
+      backend: 'webgl' as const,
+      reason: 'server_or_unknown',
+    }
+  }
+
+  const platform =
+    (navigator.platform || '')
+      .toLowerCase()
+
+  const userAgent =
+    (navigator.userAgent || '')
+      .toLowerCase()
+
+  const touchPoints =
+    navigator.maxTouchPoints || 0
+
+  const screenWidth =
+    window.screen.width || 0
+
+  const screenHeight =
+    window.screen.height || 0
+
+  const minScreenDimension =
+    Math.min(
+      screenWidth,
+      screenHeight
+    )
+
+  /*
+   * Tablet ou dispositivo grande
+   * controlado por toque.
+   *
+   * Em celulares, normalmente a menor
+   * dimensão fica abaixo de 600.
+   */
+  const isLargeTouchDevice =
+    touchPoints > 0 &&
+    minScreenDimension >= 600
+
+  const isAndroid =
+    userAgent.includes('android')
+
+  /*
+   * Alguns tablets Android em modo
+   * desktop podem esconder "Android"
+   * no User Agent.
+   *
+   * O Galaxy Tab pode aparecer como
+   * Linux ARM.
+   */
+  const isArmLinux =
+    platform.includes('linux') &&
+    (
+      platform.includes('arm') ||
+      platform.includes('aarch')
+    )
+
+  /*
+   * CPU para tablets Android / ARM
+   * grandes controlados por toque.
+   */
+  if (
+    isLargeTouchDevice &&
+    (
+      isAndroid ||
+      isArmLinux
+    )
+  ) {
+    return {
+      backend: 'cpu' as const,
+
+      reason:
+        isAndroid
+          ? 'large_android_touch_device'
+          : 'large_arm_linux_touch_device',
+    }
+  }
+
+  /*
+   * Celulares, notebooks e desktops
+   * continuam com WebGL.
+   */
+  return {
+    backend: 'webgl' as const,
+    reason: 'default_webgl',
+  }
+}
+
 export async function loadFaceModels() {
   if (modelsLoaded) return
 
@@ -47,23 +141,89 @@ export async function loadFaceModels() {
       )
     }
 
-    console.log(
-      '[FACE API] backend inicial:',
-      faceapi.tf?.getBackend?.()
+    const initialBackend =
+  typeof faceapi.tf?.getBackend ===
+    'function'
+    ? faceapi.tf.getBackend()
+    : null
+
+const backendDecision =
+  getFaceApiBackendDecision()
+
+const preferredBackend =
+  backendDecision.backend
+
+console.log(
+  '[FACE API] decisão de backend:',
+  {
+    initialBackend,
+    preferredBackend,
+    reason:
+      backendDecision.reason,
+
+    platform:
+      navigator.platform ||
+      null,
+
+    userAgent:
+      navigator.userAgent ||
+      null,
+
+    touchPoints:
+      navigator.maxTouchPoints ||
+      0,
+
+    screenWidth:
+      window.screen.width,
+
+    screenHeight:
+      window.screen.height,
+  }
+)
+
+if (faceapi.tf) {
+
+  const backendSet =
+    await faceapi.tf.setBackend(
+      preferredBackend
     )
 
-    if (faceapi.tf) {
-      await faceapi.tf.setBackend(
-        'cpu'
-      )
+  await faceapi.tf.ready()
 
-      await faceapi.tf.ready()
+  const activeBackend =
+    typeof faceapi.tf.getBackend ===
+      'function'
+      ? faceapi.tf.getBackend()
+      : null
 
-      console.log(
-        '[FACE API] backend ativo:',
-        faceapi.tf.getBackend()
-      )
+  console.log(
+    '[FACE API] backend selecionado:',
+    {
+      requestedBackend:
+        preferredBackend,
+
+      activeBackend,
+
+      backendSet:
+        Boolean(backendSet),
+
+      reason:
+        backendDecision.reason,
     }
+  )
+
+  if (
+    activeBackend !==
+    preferredBackend
+  ) {
+    throw new Error(
+      `Não foi possível ativar o backend ${preferredBackend} do face-api. Backend atual: ${
+        activeBackend ||
+        'desconhecido'
+      }.`
+    )
+  }
+}
 
     await Promise.all([
       faceapi.nets
