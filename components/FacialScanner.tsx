@@ -369,6 +369,48 @@ setFaceMessage(null)
       flexDirection: 'column',
     }}
   >
+
+  <style jsx>{`
+  @keyframes facialProcessingSlide {
+    0% {
+      transform: translateX(-100%);
+    }
+
+    50% {
+      transform: translateX(45%);
+    }
+
+    100% {
+      transform: translateX(200%);
+    }
+  }
+
+  @keyframes facialProcessingGlow {
+    0%,
+    100% {
+      opacity: 0.82;
+      filter: brightness(0.96);
+    }
+
+    50% {
+      opacity: 1;
+      filter: brightness(1.08);
+    }
+  }
+
+  @keyframes facialProcessingDot {
+    0%,
+    80%,
+    100% {
+      opacity: 0.3;
+    }
+
+    40% {
+      opacity: 1;
+    }
+  }
+`}</style>
+
     <div
       style={{
         flex: 1,
@@ -396,30 +438,221 @@ setFaceMessage(null)
       style={{
         position: 'absolute',
         inset: 0,
-        border: '6px solid #22c55e',
+
+        border:
+          '6px solid #22c55e',
+
         borderRadius: 24,
         margin: 24,
-        boxShadow: '0 0 40px rgba(34,197,94,0.65)',
-        pointerEvents: 'none',
+
+        boxShadow:
+          '0 0 40px rgba(34,197,94,0.65)',
+
+        pointerEvents:
+          'none',
       }}
     />
 
     <div
       style={{
         position: 'absolute',
-        bottom: 120,
+
+        bottom: 105,
         left: '50%',
-        transform: 'translateX(-50%)',
-        background: 'rgba(22,163,74,0.92)',
-        color: '#fff',
-        padding: '16px 24px',
-        borderRadius: 18,
-        fontWeight: 900,
-        fontSize: 22,
-        boxShadow: '0 12px 30px rgba(22,163,74,0.45)',
+
+        transform:
+          'translateX(-50%)',
+
+        width:
+          'min(520px, 88vw)',
+
+        background:
+          'linear-gradient(145deg, rgba(15,23,42,0.96), rgba(22,101,52,0.96))',
+
+        color: '#ffffff',
+
+        padding:
+          '20px 22px',
+
+        borderRadius: 24,
+
+        border:
+          '1px solid rgba(134,239,172,0.45)',
+
+        boxShadow:
+          '0 20px 55px rgba(0,0,0,0.45), 0 0 35px rgba(34,197,94,0.28)',
+
+        backdropFilter:
+          'blur(10px)',
+
+        textAlign:
+          'center',
+
+        overflow:
+          'hidden',
+
+        animation:
+          'facialProcessingGlow 2s ease-in-out infinite',
       }}
     >
-      Rosto capturado. Aguarde...
+      <div
+        style={{
+          display: 'flex',
+
+          alignItems:
+            'center',
+
+          justifyContent:
+            'center',
+
+          gap: 10,
+
+          fontSize: 22,
+          fontWeight: 950,
+        }}
+      >
+        <span
+          style={{
+            width: 30,
+            height: 30,
+
+            borderRadius:
+              '50%',
+
+            display: 'flex',
+
+            alignItems:
+              'center',
+
+            justifyContent:
+              'center',
+
+            background:
+              '#22c55e',
+
+            boxShadow:
+              '0 0 20px rgba(34,197,94,0.7)',
+
+            fontSize: 18,
+          }}
+        >
+          ✓
+        </span>
+
+        Rosto capturado
+      </div>
+
+      <div
+        style={{
+          marginTop: 7,
+
+          color:
+            '#dcfce7',
+
+          fontSize: 16,
+
+          fontWeight:
+            800,
+        }}
+      >
+        Aguarde
+        <span
+          style={{
+            animation:
+              'facialProcessingDot 1.4s infinite',
+          }}
+        >
+          .
+        </span>
+
+        <span
+          style={{
+            animation:
+              'facialProcessingDot 1.4s 0.2s infinite',
+          }}
+        >
+          .
+        </span>
+
+        <span
+          style={{
+            animation:
+              'facialProcessingDot 1.4s 0.4s infinite',
+          }}
+        >
+          .
+        </span>
+      </div>
+
+      <div
+        style={{
+          position:
+            'relative',
+
+          height: 10,
+
+          marginTop: 18,
+
+          borderRadius:
+            999,
+
+          overflow:
+            'hidden',
+
+          background:
+            'rgba(255,255,255,0.16)',
+
+          border:
+            '1px solid rgba(255,255,255,0.12)',
+
+          boxShadow:
+            'inset 0 2px 5px rgba(0,0,0,0.25)',
+        }}
+      >
+        <div
+          style={{
+            position:
+              'absolute',
+
+            top: 0,
+            bottom: 0,
+
+            width:
+              '48%',
+
+            borderRadius:
+              999,
+
+            background:
+              'linear-gradient(90deg, transparent, #86efac, #ffffff, #4ade80, transparent)',
+
+            boxShadow:
+              '0 0 18px rgba(134,239,172,0.9)',
+
+            animation:
+              'facialProcessingSlide 1.7s ease-in-out infinite',
+          }}
+        />
+      </div>
+
+      <div
+        style={{
+          marginTop: 11,
+
+          color:
+            '#bbf7d0',
+
+          fontSize: 13,
+
+          fontWeight:
+            750,
+
+          letterSpacing:
+            0.3,
+        }}
+      >
+        Processando reconhecimento facial
+      </div>
     </div>
   </>
 )}

@@ -4243,10 +4243,55 @@ loadFaceModels().catch((error) => {
         <button
           disabled={facialConfirming}
           onClick={() => {
-            setPendingFacialConfirmation(
-              null
-            )
-          }}
+  /*
+   * Descarta completamente a
+   * captura que foi cancelada.
+   */
+  setPendingFacialConfirmation(
+    null
+  )
+
+  setPendingFacialCapture(
+    null
+  )
+
+  setPendingFacialEmbedding(
+    null
+  )
+
+  setFacialCandidates(
+    []
+  )
+
+  setFacialConfirmationResult(
+    null
+  )
+
+  setNextReadCountdown(
+    null
+  )
+
+  /*
+   * Não volta para a tela
+   * "Registrar chegada".
+   *
+   * O usuário cancelou apenas
+   * esta identificação, então
+   * fazemos imediatamente
+   * uma nova leitura facial.
+   */
+  setFacialStandby(
+    false
+  )
+
+  setReadingMethod(
+    'facial'
+  )
+
+  setIsScannerActive(
+    true
+  )
+}}
           style={{
             ...secondaryButtonStyle,
             flex: 1,
