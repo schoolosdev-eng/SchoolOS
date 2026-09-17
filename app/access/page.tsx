@@ -36,136 +36,44 @@ useEffect(() => {
 const isMobile = windowWidth < 768
 const isTablet = windowWidth >= 768 && windowWidth < 1024
 
-  async function handleCreateSchool() {
-    const schoolName = prompt('Nome da escola:')
 
-    if (!schoolName || !schoolName.trim()) return
+  async function claimPendingInvitations() {
+  const { data, error } = await supabase.rpc(
+    'claim_my_schoolos_pending_invitations'
+  )
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) return
-
-    const { data: school, error: schoolError } = await supabase
-      .from('schools')
-      .insert({
-        name: schoolName.trim(),
-        owner_user_id: user.id,
-      })
-      .select()
-      .single()
-
-    if (schoolError || !school) {
-      alert('Erro ao criar escola')
-      return
-    }
-
-    const { error: membershipError } = await supabase
-      .from('school_memberships')
-      .insert({
-        user_id: user.id,
-        school_id: school.id,
-        role: 'admin',
-        status: 'active',
-      })
-
-    if (membershipError) {
-      alert('Erro ao vincular usuário à escola')
-      return
-    }
-
-    window.location.href = `/school/${school.id}`
-  }
-
-  async function linkPendingInvitationsByEmail(userId: string, userEmail: string) {
-    const normalizedEmail = userEmail.trim().toLowerCase()
-
-    const { data: invitations, error } = await supabase
-      .from('pending_invitations')
-      .select('id, school_id, role, status')
-      .eq('email', normalizedEmail)
-      .eq('status', 'pending')
-
-    if (error || !invitations || invitations.length === 0) {
-      return
-    }
-
-    for (const invitation of invitations) {
-      const { error: membershipError } = await supabase
-        .from('school_memberships')
-        .insert({
-          school_id: invitation.school_id,
-          user_id: userId,
-          role: invitation.role,
-          status: 'active',
-        })
-
-      if (membershipError) {
-        const msg = membershipError.message.toLowerCase()
-        if (!msg.includes('duplicate key')) {
-          continue
-        }
-      }
-
-      await supabase
-        .from('pending_invitations')
-        .update({
-          status: 'accepted',
-          accepted_at: new Date().toISOString(),
-        })
-        .eq('id', invitation.id)
-    }
-  }
-
-  async function linkStudentByEmail(userId: string, userEmail: string) {
-  const normalizedEmail = userEmail.trim().toLowerCase()
-  console.log('linkStudentByEmail email:', normalizedEmail)
-
-  const { data: studentRecords, error } = await supabase
-    .from('students')
-    .select('id, school_id, email, full_name')
-    .eq('email', normalizedEmail)
-
-  console.log('studentRecords:', studentRecords)
-  console.log('studentRecords error:', error)
-
-  if (error || !studentRecords || studentRecords.length === 0) {
-    console.log('Nenhum aluno encontrado para esse e-mail.')
+  if (error) {
+    console.error(
+      'Erro ao processar vínculos pendentes do SchoolOS:',
+      error
+    )
     return
   }
 
-  for (const student of studentRecords) {
-    const { data: existingMembership, error: existingError } = await supabase
-      .from('school_memberships')
-      .select('id, role, school_id')
-      .eq('user_id', userId)
-      .eq('school_id', student.school_id)
-      .eq('role', 'aluno')
-      .limit(1)
-      .maybeSingle()
+  if ((data ?? 0) > 0) {
+    console.log(
+      `Vínculos ativados automaticamente: ${data}`
+    )
+  }
+}
 
-    console.log('existingMembership:', existingMembership)
-    console.log('existingMembership error:', existingError)
+  async function claimStudentMemberships() {
+  const { data, error } = await supabase.rpc(
+    'claim_my_schoolos_student_memberships'
+  )
 
-    if (existingMembership) {
-      console.log('Membership de aluno já existe para essa escola.')
-      continue
-    }
+  if (error) {
+    console.error(
+      'Erro ao processar vínculos de aluno:',
+      error
+    )
+    return
+  }
 
-    const { data: insertData, error: insertError } = await supabase
-      .from('school_memberships')
-      .insert({
-        user_id: userId,
-        school_id: student.school_id,
-        role: 'aluno',
-        status: 'active',
-        area: null,
-      })
-      .select()
-
-    console.log('insert membership data:', insertData)
-    console.log('insert membership error:', insertError)
+  if ((data ?? 0) > 0) {
+    console.log(
+      `Vínculos de aluno ativados automaticamente: ${data}`
+    )
   }
 }
 
@@ -219,8 +127,8 @@ const user = session.user
         (user.user_metadata?.full_name as string) || ''
       )
 
-      await linkPendingInvitationsByEmail(user.id, user.email || '')
-      await linkStudentByEmail(user.id, user.email || '')
+      await claimPendingInvitations()
+      await claimStudentMemberships()
 
       const { data, error } = await supabase
         .from('school_memberships')

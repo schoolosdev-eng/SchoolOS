@@ -33,66 +33,59 @@ const isMobile = windowWidth < 768
 const isTablet = windowWidth >= 768 && windowWidth < 1024
 
   async function handleCreateSchool() {
-    setLoading(true)
-    setMessage('Criando escola...')
+  setLoading(true)
+  setMessage('Criando escola...')
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser()
 
-    if (userError || !user) {
-      setMessage('Usuário não autenticado.')
-      setLoading(false)
-      router.replace('/')
-      return
-    }
-
-    if (!schoolName.trim()) {
-      setMessage('Informe o nome da escola.')
-      setLoading(false)
-      return
-    }
-
-    const { data: schoolData, error: schoolError } = await supabase
-      .from('schools')
-      .insert({
-        name: schoolName.trim(),
-        email: schoolEmail.trim().toLowerCase() || null,
-        phone: schoolPhone.trim() || null,
-        address: schoolAddress.trim() || null,
-        cep: schoolCep.trim() || null,
-        plan: 'basic',
-        student_limit: 100,
-        status: 'active',
-      })
-      .select('id, name')
-      .single()
-
-    if (schoolError || !schoolData) {
-      setMessage(`Erro ao criar escola: ${schoolError?.message}`)
-      setLoading(false)
-      return
-    }
-
-    const { error: membershipError } = await supabase
-      .from('school_memberships')
-      .insert({
-        school_id: schoolData.id,
-        user_id: user.id,
-        role: 'admin',
-        status: 'active',
-      })
-
-    if (membershipError) {
-      setMessage(`Escola criada, mas houve erro ao vincular o admin: ${membershipError.message}`)
-      setLoading(false)
-      return
-    }
-
-    setMessage('Escola criada com sucesso.')
-    router.replace(`/school/${schoolData.id}`)
+  if (userError || !user) {
+    setMessage('Usuário não autenticado.')
+    setLoading(false)
+    router.replace('/')
+    return
   }
+
+  if (!schoolName.trim()) {
+    setMessage('Informe o nome da escola.')
+    setLoading(false)
+    return
+  }
+
+  const { data, error } = await supabase.rpc(
+    'create_schoolos_school',
+    {
+      p_name: schoolName.trim(),
+      p_email: schoolEmail.trim() || null,
+      p_phone: schoolPhone.trim() || null,
+      p_address: schoolAddress.trim() || null,
+      p_cep: schoolCep.trim() || null,
+    }
+  )
+
+  if (error) {
+    setMessage(`Erro ao criar escola: ${error.message}`)
+    setLoading(false)
+    return
+  }
+
+  const schoolData = Array.isArray(data)
+    ? data[0]
+    : data
+
+  if (!schoolData?.school_id) {
+    setMessage('Escola criada sem retorno válido do banco.')
+    setLoading(false)
+    return
+  }
+
+  setMessage('Escola criada com sucesso.')
+  setLoading(false)
+
+  router.replace(`/school/${schoolData.school_id}`)
+}
   const appShellStyle: React.CSSProperties = {
   minHeight: '100vh',
   display: 'flex',
